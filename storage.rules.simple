@@ -1,0 +1,31 @@
+rules_version = '2';
+
+// SIMPLIFIED STORAGE RULES - FOR DEVELOPMENT/TESTING
+// ⚠️ Use role-based rules (storage.rules) in production
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // User profile images
+    match /user_images/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Product images - authenticated users can upload
+    match /products/{productId}/{allPaths=**} {
+      allow read: if true;
+      allow write, delete: if request.auth != null;
+    }
+    
+    // Category images - authenticated users can upload
+    match /categories/{imageId} {
+      allow read: if true;
+      allow write, delete: if request.auth != null;
+    }
+    
+    // Temporary uploads
+    match /temp/{userId}/{allPaths=**} {
+      allow read, write, delete: if request.auth != null;
+    }
+  }
+}

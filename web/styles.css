@@ -1,0 +1,28 @@
+/* Disable all hover effects */
+* {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+/* Remove hover effects on clickable elements */
+button:hover,
+a:hover,
+div:hover {
+  background-color: transparent !important;
+  opacity: 1 !important;
+}
+
+/* Disable pointer cursor changes */
+* {
+  cursor: default !important;
+}
+
+/* Keep pointer for clickable items but no visual hover */
+button, a, input[type="button"], input[type="submit"] {
+  cursor: pointer !important;
+}
+
+/* Remove Material ripple/overlay effects */
+.flt-semantics-button:hover,
+.flt-semantics-link:hover {
+  background-color: transparent !important;
+}

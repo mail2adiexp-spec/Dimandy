@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// SIMPLIFIED FIRESTORE RULES - FOR DEVELOPMENT/TESTING
+// ⚠️ Use role-based rules (firestore.rules) in production
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Products collection - everyone can read, authenticated users can write
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Categories collection - everyone can read, authenticated users can write
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+    
+    // Users collection
+    match /users/{userId} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "110161971301",
+    "firebase_url": "https://bong-bazar-3659f-default-rtdb.firebaseio.com",
+    "project_id": "bong-bazar-3659f",
+    "storage_bucket": "bong-bazar-3659f.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:110161971301:android:1ca561a37bca76699ede8c",
+        "android_client_info": {
+          "package_name": "com.example.ecommerce_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyANwTZrdVIP7sLoJzXq2KXJ7gatAbKS6yY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

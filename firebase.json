@@ -1,0 +1,43 @@
+{
+	"firestore": {
+		"rules": "firestore.rules"
+	},
+	"storage": {
+		"rules": "storage.rules"
+	},
+	"functions": [
+		{
+			"source": "functions",
+			"codebase": "default",
+			"ignore": [
+				"node_modules",
+				".git",
+				"firebase-debug.log",
+				"firebase-debug.*.log"
+			]
+		}
+	],
+	"flutter": {
+		"platforms": {
+			"android": {
+				"default": {
+					"projectId": "bong-bazar-3659f",
+					"appId": "1:110161971301:android:1ca561a37bca76699ede8c",
+					"fileOutput": "android/app/google-services.json"
+				}
+			},
+			"dart": {
+				"lib/firebase_options.dart": {
+					"projectId": "bong-bazar-3659f",
+					"configurations": {
+						"android": "1:110161971301:android:1ca561a37bca76699ede8c",
+						"ios": "1:110161971301:ios:b048c547edde247e9ede8c",
+						"macos": "1:110161971301:ios:b048c547edde247e9ede8c",
+						"web": "1:110161971301:web:985cb712126f0ec89ede8c",
+						"windows": "1:110161971301:web:c7681f274adb53c89ede8c"
+					}
+				}
+			}
+		}
+	}
+}
