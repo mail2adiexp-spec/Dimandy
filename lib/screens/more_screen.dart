@@ -503,7 +503,7 @@ class MoreScreen extends StatelessWidget {
         const SizedBox(height: 24),
         _buildInfoSection(
           'Still Need Help?',
-          'Contact our support team:\n📧 support@dimandy.com\n📞 +91 7479223366\n\nSupport Hours: 9 AM - 9 PM (Mon-Sat)',
+          'Contact our support team:\n📧 support@dimandy.in\n📞 +91 7479223366\n\nSupport Hours: 9 AM - 9 PM (Mon-Sat)',
         ),
       ],
     );

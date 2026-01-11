@@ -4894,10 +4894,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               margin: const EdgeInsets.only(bottom: 12),
               child: ExpansionTile(
                 title: Text('Order #${order.id.substring(0, 8)}'),
-                subtitle: Text(
-                  DateFormat('MMM dd, yyyy').format(
-                    (data['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
-                  ),
+                subtitle: Builder(
+                  builder: (context) {
+                    final dynamic rawDate = data['orderDate'];
+                    DateTime date = DateTime.now();
+                    if (rawDate is Timestamp) {
+                      date = rawDate.toDate();
+                    } else if (rawDate is String) {
+                      date = DateTime.tryParse(rawDate) ?? DateTime.now();
+                    }
+                    return Text(DateFormat('MMM dd, yyyy').format(date));
+                  },
                 ),
                 trailing: Chip(
                   label: Text(
@@ -5516,12 +5523,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   'No products yet',
                   style: TextStyle(fontSize: 18, color: Colors.grey[600]),
                 ),
-                const SizedBox(height: 8),
-                ElevatedButton.icon(
-                  onPressed: _showAddProductDialog,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Add First Product'),
-                ),
               ],
             ),
           );
@@ -5529,26 +5530,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
         return Column(
           children: [
-            // Header with Add Button
+            // Header
             Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     'Total Products: ${products.length}',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  ElevatedButton.icon(
-                    onPressed: _showAddProductDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Product'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
                     ),
                   ),
                 ],
@@ -5560,179 +5551,190 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 padding: const EdgeInsets.all(16),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 8, // Reduced spacing
+                  mainAxisSpacing: 8, // Reduced spacing
+                  childAspectRatio: 1.0, // Square tiles
                 ),
                 itemCount: products.length,
                 itemBuilder: (context, index) {
                   final product = products[index];
                   final data = product.data() as Map<String, dynamic>;
                   final images = data['images'] as List<dynamic>? ?? [];
-                  final imageUrl = images.isNotEmpty ? images[0] : null;
+                  final imageUrl = images.isNotEmpty ? images[0] : (data['imageUrl'] as String?); // Handle both formats
+                  final isListed = data['isListed'] ?? true;
+                  final name = data['name'] ?? 'Unknown';
+                  final price = (data['price'] as num?)?.toDouble() ?? 0;
+                  final stock = (data['stock'] as num?)?.toInt() ?? 0;
+                  final isFeatured = data['isFeatured'] ?? false;
 
                   return Card(
                     elevation: 2,
+                    margin: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Product Image
-                        Expanded(
-                          child: Container(
+                    child: InkWell(
+                      onTap: () {
+                        // Show Details & Actions Dialog
+                        showDialog(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            title: Text(name, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (imageUrl != null)
+                                  Center(
+                                    child: SizedBox(
+                                      height: 120,
+                                      width: 120,
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.network(imageUrl, fit: BoxFit.cover),
+                                      ),
+                                    ),
+                                  ),
+                                const SizedBox(height: 16),
+                                Text('Price: ₹${price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                const SizedBox(height: 4),
+                                Text('Stock: $stock', style: TextStyle(color: stock < 5 ? Colors.red : Colors.grey[800])),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    const Text('Status: '),
+                                    Text(
+                                      isListed ? 'Listed' : 'Unlisted',
+                                      style: TextStyle(
+                                        color: isListed ? Colors.green : Colors.orange,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (isFeatured)
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.star, color: Colors.amber, size: 16),
+                                        SizedBox(width: 4),
+                                        Text('Featured Product', style: TextStyle(color: Colors.amber, fontWeight: FontWeight.bold)),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            actions: [
+                              // Unlist/List Button
+                              TextButton.icon(
+                                onPressed: () async {
+                                  try {
+                                    await FirebaseFirestore.instance
+                                        .collection('products')
+                                        .doc(product.id)
+                                        .update({'isListed': !isListed});
+                                    if (context.mounted) Navigator.pop(ctx);
+                                  } catch (e) {
+                                    debugPrint('Error updating product status: $e');
+                                  }
+                                },
+                                icon: Icon(
+                                  isListed ? Icons.visibility_off : Icons.visibility,
+                                  color: isListed ? Colors.orange : Colors.green,
+                                ),
+                                label: Text(
+                                  isListed ? 'Unlist' : 'List',
+                                  style: TextStyle(color: isListed ? Colors.orange : Colors.green),
+                                ),
+                              ),
+                              // Delete Button
+                              TextButton.icon(
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (dialogCtx) => AlertDialog(
+                                      title: const Text('Delete'),
+                                      content: const Text('Delete this product permanently?'),
+                                      actions: [
+                                        TextButton(onPressed: () => Navigator.pop(dialogCtx, false), child: const Text('No')),
+                                        TextButton(onPressed: () => Navigator.pop(dialogCtx, true), child: const Text('Yes')),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm == true) {
+                                     await FirebaseFirestore.instance.collection('products').doc(product.id).delete();
+                                     if (context.mounted) Navigator.pop(ctx);
+                                  }
+                                },
+                                icon: const Icon(Icons.delete, color: Colors.red),
+                                label: const Text('Delete', style: TextStyle(color: Colors.red)),
+                              ),
+                              // Edit Button
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _showEditProductDialog(product.id, data);
+                                },
+                                icon: const Icon(Icons.edit, size: 16),
+                                label: const Text('Edit'),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      child: Stack(
+                        children: [
+                          Container(
                             width: double.infinity,
+                            height: double.infinity,
                             decoration: BoxDecoration(
                               color: Colors.grey[200],
-                              borderRadius: const BorderRadius.only(
-                                topLeft: Radius.circular(12),
-                                topRight: Radius.circular(12),
-                              ),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             child: imageUrl != null
                                 ? ClipRRect(
-                                    borderRadius: const BorderRadius.only(
-                                      topLeft: Radius.circular(12),
-                                      topRight: Radius.circular(12),
-                                    ),
+                                    borderRadius: BorderRadius.circular(8),
                                     child: Image.network(
                                       imageUrl,
                                       fit: BoxFit.cover,
                                       errorBuilder: (c, e, s) => const Icon(
                                         Icons.image_not_supported,
                                         size: 40,
+                                        color: Colors.grey,
                                       ),
                                     ),
                                   )
-                                : const Icon(Icons.inventory_2, size: 40),
+                                : const Icon(Icons.inventory_2, size: 40, color: Colors.grey),
                           ),
-                        ),
-                        // Product Details
-                        Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                data['name'] ?? 'Unknown',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 14,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
+                          // Unlisted Overlay
+                          if (!isListed)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '₹${data['price'] ?? 0}',
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
+                              child: const Center(
+                                child: Icon(Icons.visibility_off, color: Colors.white, size: 32),
                               ),
-                              const SizedBox(height: 4),
-                              Row(
-                                children: [
-                                  Icon(
-                                    data['isFeatured'] == true
-                                        ? Icons.star
-                                        : Icons.star_border,
-                                    size: 16,
-                                    color: Colors.amber,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      'Stock: ${data['stock'] ?? 0}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.grey[600],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  IconButton(
-                                    icon: const Icon(Icons.edit, size: 20),
-                                    onPressed: () {
-                                      _showEditProductDialog(product.id, data);
-                                    },
-                                    color: Colors.blue,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(Icons.delete, size: 20),
-                                    onPressed: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          title: const Text('Delete Product'),
-                                          content: Text(
-                                            'Delete "${data['name']}"?',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, false),
-                                              child: const Text('Cancel'),
-                                            ),
-                                            ElevatedButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, true),
-                                              style: ElevatedButton.styleFrom(
-                                                backgroundColor: Colors.red,
-                                              ),
-                                              child: const Text('Delete'),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-
-                                      if (confirm == true) {
-                                        try {
-                                          await FirebaseFirestore.instance
-                                              .collection('products')
-                                              .doc(product.id)
-                                              .delete();
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              const SnackBar(
-                                                content: Text(
-                                                  'Product deleted successfully',
-                                                ),
-                                              ),
-                                            );
-                                          }
-                                        } catch (e) {
-                                          if (context.mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(
-                                              SnackBar(
-                                                content: Text('Error: $e'),
-                                                backgroundColor: Colors.red,
-                                              ),
-                                            );
-                                          }
-                                        }
-                                      }
-                                    },
-                                    color: Colors.red,
-                                    visualDensity: VisualDensity.compact,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                            ),
+                          // Featured Badge (Optional, small icon)
+                          if (isFeatured)
+                             Positioned(
+                               top: 4,
+                               right: 4,
+                               child: Container(
+                                 padding: const EdgeInsets.all(4),
+                                 decoration: const BoxDecoration(
+                                   color: Colors.white,
+                                   shape: BoxShape.circle,
+                                   boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 2)],
+                                 ),
+                                 child: const Icon(Icons.star, color: Colors.amber, size: 16),
+                               ),
+                             ),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -5750,18 +5752,57 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final descCtrl = TextEditingController(text: productData['description']);
     final priceCtrl = TextEditingController(text: productData['price'].toString());
     final stockCtrl = TextEditingController(text: productData['stock'].toString());
+    final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
+    final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
     
     String selectedCategory = productData['category'] ?? ProductCategory.dailyNeeds;
     String selectedUnit = productData['unit'] ?? 'Pic';
     bool isFeatured = productData['isFeatured'] ?? false;
     bool isLoading = false;
+    
+    // Image Handling
+    List<String> existingImages = List<String>.from(productData['imageUrls'] ?? []);
+    if (existingImages.isEmpty && productData['imageUrl'] != null) {
+      existingImages.add(productData['imageUrl']);
+    }
+    List<Uint8List> newImages = [];
+    final ImagePicker picker = ImagePicker();
+
+    Future<void> pickImages(StateSetter setState) async {
+       try {
+         final List<XFile> images = await picker.pickMultiImage();
+         if (images.isNotEmpty) {
+            if (existingImages.length + newImages.length + images.length > 6) {
+               if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Max 6 images allowed total')));
+               return;
+            }
+            for (var img in images) {
+              final bytes = await img.readAsBytes();
+              newImages.add(bytes);
+            }
+            setState(() {});
+         }
+       } catch (e) {
+         debugPrint('Error picking images: $e');
+       }
+    }
+
+    Future<List<String>> uploadNewImages() async {
+      List<String> uploadedUrls = [];
+      for (int i = 0; i < newImages.length; i++) {
+         final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('new_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
+         await ref.putData(newImages[i]);
+         uploadedUrls.add(await ref.getDownloadURL());
+      }
+      return uploadedUrls;
+    }
 
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => Dialog(
           child: Container(
-            width: 600,
+            width: 700,
             padding: const EdgeInsets.all(24),
             child: Form(
               key: formKey,
@@ -5808,41 +5849,41 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                     const SizedBox(height: 16),
                     
-                    // Price and Stock
+                    // Price, MRP, Stock, MinQty
                     Row(
                       children: [
                         Expanded(
                           child: TextFormField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Price *',
-                              border: OutlineInputBorder(),
-                              prefixText: '₹',
-                            ),
+                            controller: mrpCtrl,
+                            decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
                             keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final price = double.tryParse(v!);
-                              if (price == null || price <= 0) return 'Invalid price';
-                              return null;
-                            },
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: priceCtrl,
+                            decoration: const InputDecoration(labelText: 'Price *', border: OutlineInputBorder(), prefixText: '₹'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
                         Expanded(
                           child: TextFormField(
                             controller: stockCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Stock *',
-                              border: OutlineInputBorder(),
-                            ),
+                            decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final stock = int.tryParse(v!);
-                              if (stock == null || stock < 0) return 'Invalid stock';
-                              return null;
-                            },
+                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: TextFormField(
+                            controller: minQtyCtrl,
+                            decoration: const InputDecoration(labelText: 'Min Qty', border: OutlineInputBorder()),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
                         ),
                       ],
@@ -5853,22 +5894,46 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     Row(
                       children: [
                         Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedCategory,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: ProductCategory.all.map((cat) {
-                              return DropdownMenuItem(value: cat, child: Text(cat));
-                            }).toList(),
-                            onChanged: (val) => setState(() => selectedCategory = val!),
+                          child: StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance.collection('categories').orderBy('order').snapshots(),
+                            builder: (context, snapshot) {
+                              if (!snapshot.hasData) {
+                                return const SizedBox(height: 50, child: Center(child: CircularProgressIndicator()));
+                              }
+                              
+                              final categories = snapshot.data!.docs.map((doc) {
+                                return (doc.data() as Map<String, dynamic>)['name'] as String;
+                              }).toList();
+                              
+                              // Ensure selectedCategory is in the list
+                              if (selectedCategory != null && !categories.contains(selectedCategory)) {
+                                categories.add(selectedCategory!);
+                              }
+
+                              return DropdownButtonFormField<String>(
+                                value: selectedCategory,
+                                isExpanded: true,
+                                menuMaxHeight: 300,
+                                decoration: const InputDecoration(
+                                  labelText: 'Category',
+                                  border: OutlineInputBorder(),
+                                ),
+                                items: categories.map((cat) {
+                                  return DropdownMenuItem(
+                                    value: cat, 
+                                    child: Text(cat, overflow: TextOverflow.ellipsis),
+                                  );
+                                }).toList(),
+                                onChanged: (val) => setState(() => selectedCategory = val!),
+                              );
+                            }
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
                           child: DropdownButtonFormField<String>(
                             value: selectedUnit,
+                            isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Unit',
                               border: OutlineInputBorder(),
@@ -5888,6 +5953,87 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       title: const Text('Featured Product'),
                       value: isFeatured,
                       onChanged: (val) => setState(() => isFeatured = val),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Image Management
+                    const Text('Product Images', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      height: 100,
+                      child: ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          // Existing Images
+                          ...existingImages.asMap().entries.map((entry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(entry.value, width: 100, height: 100, fit: BoxFit.cover),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: InkWell(
+                                      onTap: () => setState(() => existingImages.removeAt(entry.key)),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                        child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                          
+                          // New Images
+                          ...newImages.asMap().entries.map((entry) {
+                            return Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.memory(entry.value, width: 100, height: 100, fit: BoxFit.cover),
+                                  ),
+                                  Positioned(
+                                    top: 0,
+                                    right: 0,
+                                    child: InkWell(
+                                      onTap: () => setState(() => newImages.removeAt(entry.key)),
+                                      child: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                        child: const Icon(Icons.close, size: 16, color: Colors.white),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+
+                          // Add Button
+                          if ((existingImages.length + newImages.length) < 6)
+                            InkWell(
+                              onTap: () => pickImages(setState),
+                              child: Container(
+                                width: 100,
+                                height: 100,
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey),
+                              ),
+                            ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 24),
                     
@@ -5909,6 +6055,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                   setState(() => isLoading = true);
                                   
                                   try {
+                                    // Upload new images
+                                    final newUrls = await uploadNewImages();
+                                    final allImages = [...existingImages, ...newUrls];
+                                    
                                     await FirebaseFirestore.instance
                                         .collection('products')
                                         .doc(productId)
@@ -5916,10 +6066,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                       'name': nameCtrl.text,
                                       'description': descCtrl.text,
                                       'price': double.parse(priceCtrl.text),
+                                      'mrp': double.tryParse(mrpCtrl.text) ?? 0,
                                       'stock': int.parse(stockCtrl.text),
+                                      'minimumQuantity': int.tryParse(minQtyCtrl.text) ?? 1,
                                       'category': selectedCategory,
                                       'unit': selectedUnit,
                                       'isFeatured': isFeatured,
+                                      'imageUrls': allImages,
+                                      'imageUrl': allImages.isNotEmpty ? allImages.first : null,
                                       'updatedAt': FieldValue.serverTimestamp(),
                                     });
                                     

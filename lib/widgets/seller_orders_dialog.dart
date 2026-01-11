@@ -166,13 +166,29 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                           backgroundColor: statusColor.withOpacity(0.1),
                           child: Icon(Icons.shopping_bag, color: statusColor),
                         ),
-                        title: Text(
-                          'Order #${orderId.substring(0, 8)}...',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        title: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Order ID:',
+                              style: TextStyle(fontSize: 11, color: Colors.grey),
+                            ),
+                            Text(
+                              '#${orderId.substring(0, 8)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '${sellerItems.length} Items',
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                            Text(
+                              '₹${sellerTotal.toStringAsFixed(0)}',
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                            ),
+                          ],
                         ),
-                        subtitle: Text(
-                          '${sellerItems.length} item(s) • ₹${sellerTotal.toStringAsFixed(0)}',
-                        ),
+                        subtitle: null,
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(

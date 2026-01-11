@@ -11,7 +11,7 @@ import '../widgets/edit_product_dialog.dart';
 import '../providers/category_provider.dart';
 import 'seller_analytics_screen.dart';
 import 'seller_wallet_screen.dart';
-import '../services/transaction_service.dart'; // Added for wallet balance
+import '../widgets/notifications_dialog.dart';
 
 
 
@@ -549,8 +549,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                     return GridView.builder(
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 3,
-                        childAspectRatio: 1.0, // Square tiles
-                        crossAxisSpacing: 4, // Tighter spacing
+                        childAspectRatio: 1.0, // Square tiles for images
+                        crossAxisSpacing: 4,
                         mainAxisSpacing: 4,
                       ),
                       padding: const EdgeInsets.all(4),
@@ -563,6 +563,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                         final mrp = (productData['mrp'] as num?)?.toDouble() ?? 0;
                         final stock = (productData['stock'] as num?)?.toInt() ?? 0;
                         final imageUrl = productData['imageUrl'] as String?;
+                        final isListed = productData['isListed'] ?? true; // Default to true
 
                         return Card(
                           elevation: 2,
@@ -594,10 +595,48 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                        Text('Price: ₹${price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
                                        if (mrp > price)
                                          Text('MRP: ₹${mrp.toStringAsFixed(0)}', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)),
-                                       Text('Stock: $stock', style: TextStyle(color: stock > 0 ? Colors.green : Colors.red)),
+                                       const SizedBox(height: 4),
+                                       Text(
+                                         'Stock: $stock', 
+                                         style: TextStyle(
+                                           color: stock > 0 ? Colors.green : Colors.red,
+                                           fontWeight: FontWeight.bold
+                                         )
+                                       ),
+                                       const SizedBox(height: 4),
+                                       Row(
+                                         children: [
+                                           Text('Status: ', style: TextStyle(color: Colors.grey[700])),
+                                           Text(
+                                             isListed ? 'Listed' : 'Unlisted',
+                                             style: TextStyle(
+                                               color: isListed ? Colors.green : Colors.orange,
+                                               fontWeight: FontWeight.bold,
+                                             ),
+                                           ),
+                                         ],
+                                       ),
                                     ],
                                   ),
                                   actions: [
+                                     // Unlist/List Button
+                                     TextButton.icon(
+                                        onPressed: () async {
+                                          await FirebaseFirestore.instance
+                                              .collection('products')
+                                              .doc(productId)
+                                              .update({'isListed': !isListed});
+                                          if (context.mounted) Navigator.pop(ctx);
+                                        },
+                                        icon: Icon(
+                                          isListed ? Icons.visibility_off : Icons.visibility,
+                                          color: isListed ? Colors.orange : Colors.green
+                                        ),
+                                        label: Text(
+                                          isListed ? 'Unlist' : 'List',
+                                          style: TextStyle(color: isListed ? Colors.orange : Colors.green)
+                                        ),
+                                     ),
                                      TextButton.icon(
                                        onPressed: () async {
                                            final confirm = await showDialog<bool>(
@@ -637,16 +676,34 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                 ),
                               );
                             },
-                            child: imageUrl != null
-                                ? ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(
-                                      imageUrl,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (c, e, s) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                            child: Stack(
+                              children: [
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  child: imageUrl != null
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.network(
+                                            imageUrl,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (c, e, s) => const Icon(Icons.image_not_supported, color: Colors.grey),
+                                          ),
+                                        )
+                                      : const Icon(Icons.inventory_2, color: Colors.grey),
+                                ),
+                                if (!isListed)
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.5),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                  )
-                                : const Icon(Icons.inventory_2, color: Colors.grey),
+                                    child: const Center(
+                                      child: Icon(Icons.visibility_off, color: Colors.white),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -693,9 +750,54 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('notifications')
+                .where('toUserId', isEqualTo: user?.uid)
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final unreadCount = snapshot.data?.docs.length ?? 0;
+              return Stack(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    onPressed: () {
+                      if (user == null) return;
+                      showDialog(
+                        context: context,
+                        builder: (context) => NotificationsDialog(userId: user.uid),
+                      );
+                    },
+                  ),
+                  if (unreadCount > 0)
+                    Positioned(
+                      right: 8,
+                      top: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        constraints: const BoxConstraints(
+                          minWidth: 16,
+                          minHeight: 16,
+                        ),
+                        child: Text(
+                          '$unreadCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            }
           ),
           const SizedBox(width: 8),
         ],

@@ -145,7 +145,7 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 itemCount: users.length,
                 itemBuilder: (context, index) {
                   final userData = users[index].data() as Map<String, dynamic>;

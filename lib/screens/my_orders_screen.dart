@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import '../models/order_model.dart';
 import '../providers/order_provider.dart';
+import '../services/notification_service.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -61,7 +62,7 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
           }
 
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
             itemCount: orderProvider.orders.length,
             itemBuilder: (context, index) {
               final order = orderProvider.orders[index];
@@ -557,7 +558,45 @@ class OrderTrackingScreen extends StatelessWidget {
           );
           Navigator.pop(context); // Go back to refresh list
         }
-      } catch (e) {
+        
+        // Notify Sellers
+        try {
+          final Set<String> sellerIds = {};
+          for (var item in order.items) {
+             // OrderItem might not have sellerId depending on model, let's check definition.
+             // Looking at checkout logic: item.sellerId exists.
+             if (item.sellerId.isNotEmpty) {
+                sellerIds.add(item.sellerId);
+             }
+          }
+
+          final notificationService = NotificationService();
+          for (var sellerId in sellerIds) {
+             String title = 'Order Update';
+             String body = 'Order #${order.id.substring(0,8)} has been updated.';
+             String type = 'order_update';
+
+             if (newStatus == 'cancelled') {
+               title = 'Order Cancelled';
+               body = 'Order #${order.id.substring(0,8)} has been cancelled by the user.';
+               type = 'order_cancelled';
+             } else if (newStatus == 'return_requested') {
+               title = 'Return Requested';
+               body = 'Return requested for Order #${order.id.substring(0,8)}.';
+               type = 'return_requested';
+             }
+
+             await notificationService.sendNotification(
+               toUserId: sellerId,
+               title: title,
+               body: body,
+               type: type,
+               relatedId: order.id,
+             );
+          }
+        } catch (e) {
+          debugPrint('Error sending notifications: $e');
+        }      } catch (e) {
         debugPrint('DEBUG: Error updating order status: $e');
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

@@ -8,6 +8,7 @@ import '../models/order_model.dart';
 import '../utils/currency.dart';
 import '../models/address_model.dart';
 import '../providers/address_provider.dart';
+import '../services/notification_service.dart';
 
 class CheckoutScreen extends StatefulWidget {
   static const routeName = '/checkout';
@@ -406,6 +407,29 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           );
         }
         return;
+      }
+
+      // Notify Sellers
+      try {
+        final Set<String> sellerIds = {};
+        for (var item in orderItems) {
+          if (item.sellerId.isNotEmpty) {
+            sellerIds.add(item.sellerId);
+          }
+        }
+        
+        final notificationService = NotificationService();
+        for (var sellerId in sellerIds) {
+          await notificationService.sendNotification(
+            toUserId: sellerId,
+            title: 'New Order Received',
+            body: 'You have a new order (#${orderId.substring(0, 8)}) containing ${orderItems.where((i) => i.sellerId == sellerId).length} items.',
+            type: 'order_new',
+            relatedId: orderId,
+          );
+        }
+      } catch (e) {
+        debugPrint('Error sending notifications: $e');
       }
 
       debugPrint('Checkout: Order created successfully, clearing cart');

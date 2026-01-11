@@ -295,7 +295,7 @@ class InvoiceService {
         children: [
           pw.Divider(),
           pw.Text('Thank you for shopping with Dimandy!', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
-          pw.Text('For support contact: support@dimandy.com', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+          pw.Text('For support contact: support@dimandy.in', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
         ],
       ),
     );

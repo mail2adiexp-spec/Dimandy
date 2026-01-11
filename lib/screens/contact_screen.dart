@@ -204,12 +204,12 @@ class _ContactScreenState extends State<ContactScreen> {
             _buildContactInfoCard(
               icon: Icons.email_outlined,
               title: 'Email',
-              info: 'support@dimandy.com',
+              info: 'support@dimandy.in',
               color: Colors.orange,
               onTap: () async {
                 final Uri emailUri = Uri(
                   scheme: 'mailto',
-                  path: 'support@dimandy.com',
+                  path: 'support@dimandy.in',
                   query: 'subject=Customer Support',
                 );
                 try {

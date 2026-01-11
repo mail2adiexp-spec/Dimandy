@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'package:intl/intl.dart';
+import 'package:printing/printing.dart';
 import '../providers/auth_provider.dart';
+import '../services/analytics_service.dart';
 
 class SellerAnalyticsScreen extends StatefulWidget {
   final AppUser user;
@@ -30,6 +32,14 @@ class _SellerAnalyticsScreenState extends State<SellerAnalyticsScreen> {
         title: const Text('Sales Analytics'),
         elevation: 0,
         actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0),
+            child: IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: _downloadPdf,
+              tooltip: 'Download PDF Report',
+            ),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: DropdownButtonHideUnderline(
@@ -212,7 +222,51 @@ class _SellerAnalyticsScreenState extends State<SellerAnalyticsScreen> {
         for (var key in sortedKeys) {
             sortedMap[key] = _dailySales[key]!;
         }
-        _dailySales = sortedMap;
+      _dailySales = sortedMap;
+    }
+
+  }
+
+  Future<void> _downloadPdf() async {
+    try {
+      if (_totalOrders == 0 && _totalSales == 0) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No data to export')));
+        return;
+      }
+
+      final topProductsList = _productPerformance.values.toList()
+        ..sort((a, b) => (b['revenue'] as double).compareTo(a['revenue'] as double));
+      
+      final top5 = topProductsList.take(5).toList();
+
+      DateTime? start, end;
+      final now = DateTime.now();
+      if (_selectedRange == 'Last 7 Days') {
+        start = now.subtract(const Duration(days: 7));
+        end = now;
+      } else if (_selectedRange == 'Last 30 Days') {
+         start = now.subtract(const Duration(days: 30));
+         end = now;
+      }
+
+      final pdfBytes = await AnalyticsService().generateSellerPdfReport(
+        sellerName: widget.user.name,
+        start: start,
+        end: end,
+        totalSales: _totalSales,
+        totalOrders: _totalOrders,
+        itemsSold: _totalItemsSold,
+        topProducts: top5,
+      );
+
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: 'analytics_report_${DateFormat('yyyyMMdd').format(now)}.pdf',
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error generating PDF: $e')));
+      }
     }
   }
 

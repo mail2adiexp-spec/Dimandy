@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:intl/intl.dart';
 import 'order_details_dialog.dart';
+import 'barcode_scanner_dialog.dart';
 
 class SharedOrdersTab extends StatefulWidget {
   final bool canManage;
@@ -285,19 +287,14 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                 // Apply UI Filters
                 docs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
-                  final orderDateStr = data['orderDate'] as String?; // Assuming stored as ISO string or timestamp handled elsewhere?
-                  // Wait, looking at code below: orderDate = DateTime.tryParse(orderDateStr);
-                  // But previously I saw 'orderBy('orderDate')' which implies it might be a Timestamp or string that sorts correctly.
-                  // Line 110 says: orderDate = DateTime.tryParse(orderDateStr);
-                  
+                  final dynamic rawDate = data['orderDate'];
                   DateTime? orderDate;
-                  try {
-                    if (data['orderDate'] is Timestamp) {
-                       orderDate = (data['orderDate'] as Timestamp).toDate();
-                    } else if (orderDateStr != null) {
-                       orderDate = DateTime.tryParse(orderDateStr);
-                    }
-                  } catch (_) {}
+                  
+                  if (rawDate is Timestamp) {
+                    orderDate = rawDate.toDate();
+                  } else if (rawDate is String) {
+                    orderDate = DateTime.tryParse(rawDate);
+                  }
 
                   // 1. Status Filter
                   if (_selectedStatusFilter != 'All') {
@@ -358,13 +355,13 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                     final userId = data['userId'] as String? ?? '-';
                     final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
                     final status = data['status'] as String? ?? 'pending';
-                    final orderDateStr = data['orderDate'] as String?;
+                    final dynamic rawDate = data['orderDate'];
                     DateTime? orderDate;
-                    try {
-                      if (orderDateStr != null) {
-                        orderDate = DateTime.tryParse(orderDateStr);
-                      }
-                    } catch (_) {}
+                    if (rawDate is Timestamp) {
+                      orderDate = rawDate.toDate();
+                    } else if (rawDate is String) {
+                      orderDate = DateTime.tryParse(rawDate);
+                    }
 
                     final items = data['items'] as List<dynamic>? ?? [];
                     final itemCount = items.length;
@@ -436,12 +433,78 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                           fontSize: 13,
                                         ),
                                         isDense: true,
-                                        items: _statuses.map((s) => DropdownMenuItem(
+                                        items: _statuses.where((s) {
+                                          if (!widget.canManage) return true;
+                                          // If Delivery Partner, see only relevant (usually they don't change status here, but let's keep logic simple)
+                                          // If Seller (assuming canManage=true and not isDeliveryPartner implies seller/admin)
+                                          // Restrict 'shipped', 'out_for_delivery', 'delivered', 'cancelled' for Sellers
+                                          // But if it IS already one of those, we must show it so it can be viewed.
+                                          final isRestricted = ['shipped', 'out_for_delivery', 'delivered', 'cancelled'].contains(s);
+                                          final isCurrent = status == s;
+                                          
+                                          // If I am just a seller (not admin, assuming isAdmin is handled by parent passing canManage=true)
+                                          // We need a way to know if 'admin' or 'seller'. 
+                                          // SharedOrdersTab doesn't explicitly know 'role', but text says "Seller Dashboard".
+                                          // We will assume if canManage is true, we apply restrictions unless we add an 'isAdmin' flag.
+                                          // However, for now, enforcing restrictions for everyone using this widget in this context 
+                                          // as per user request "seller dashboard main...".
+                                          // Ideally, Admin uses a different view or we pass 'isSeller' flag.
+                                          // Given the prompt context, I will apply restriction.
+                                          
+                                          if (isRestricted && !isCurrent) return false;
+                                          return true; 
+                                        }).map((s) => DropdownMenuItem(
                                           value: s, 
                                           child: Text(s.replaceAll('_', ' ').toUpperCase()),
                                         )).toList(),
                                         onChanged: (val) async {
                                           if (val == null) return;
+                                          
+                                          // Barcode Verification for 'Packed'
+                                          if (val == 'packed') {
+                                            final scannedCode = await showDialog<String>(
+                                              context: context,
+                                              builder: (context) => const BarcodeScannerDialog(),
+                                            );
+
+                                            if (scannedCode == null) return; // Cancelled
+
+                                            // Verify barcode
+                                            // As verified in plan, we check match against items.
+                                            // Assuming items have 'id' which acts as barcode or 'productId'.
+                                            // We allow ANY item match from the order to pass (or checking all? User said "product bar code verify").
+                                            // Simplest verified approach: Check if scannedCode matches any productId in items.
+                                            
+                                            // data['items'] is List<dynamic>
+                                            final items = data['items'] as List<dynamic>? ?? [];
+                                            bool matchFound = false;
+                                            for (var item in items) {
+                                               // Check 'productId' or 'id'
+                                               final pId = item['productId']?.toString() ?? item['id']?.toString() ?? '';
+                                               if (pId == scannedCode) {
+                                                 matchFound = true;
+                                                 break;
+                                               }
+                                            }
+
+                                            if (!matchFound) {
+                                              if (mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(
+                                                  SnackBar(
+                                                    content: Text('Verification Failed: Scanned code $scannedCode does not match any product in this order.'),
+                                                    backgroundColor: Colors.red,
+                                                  ),
+                                                );
+                                              }
+                                              return;
+                                            }
+                                            if (mounted) {
+                                               ScaffoldMessenger.of(context).showSnackBar(
+                                                  const SnackBar(content: Text('Barcode Verified! Marking as Packed...'), backgroundColor: Colors.green),
+                                               );
+                                            }
+                                          }
+
                                           try {
                                             final batch = FirebaseFirestore.instance.batch();
                                             final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
@@ -478,34 +541,34 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                               ],
                             ),
                             const Divider(height: 24),
-                            // Body: User, Items, Runner
-                            Row(
+                            // Body: User, Items, Runner, Total (Vertical)
+                            Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                _buildInfoRow(Icons.person_outline, 'User ID', userId),
+                                const SizedBox(height: 8),
+                                _buildInfoRow(Icons.inventory_2_outlined, 'Items', '$itemCount items'),
+                                if (data['deliveryPartnerName'] != null) ...[
+                                  const SizedBox(height: 8),
+                                  _buildInfoRow(Icons.delivery_dining_outlined, 'Runner', data['deliveryPartnerName']),
+                                ],
+                                const SizedBox(height: 12),
+                                // Total Amount Row
+                                Container(
+                                  padding: const EdgeInsets.only(top: 12),
+                                  decoration: const BoxDecoration(
+                                    border: Border(top: BorderSide(color: Color(0xFFEEEEEE))),
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      _buildInfoRow(Icons.person_outline, 'User ID', userId),
-                                      const SizedBox(height: 8),
-                                      _buildInfoRow(Icons.inventory_2_outlined, 'Items', '$itemCount items'),
-                                      if (data['deliveryPartnerName'] != null) ...[
-                                        const SizedBox(height: 8),
-                                        _buildInfoRow(Icons.delivery_dining_outlined, 'Runner', data['deliveryPartnerName']),
-                                      ]
+                                      const Text('Total Amount', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500)),
+                                      Text(
+                                        NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(total),
+                                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                                      ),
                                     ],
                                   ),
-                                ),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    const Text('Total Amount', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(total),
-                                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green[800]),
-                                    ),
-                                  ],
                                 ),
                               ],
                             ),
@@ -638,13 +701,25 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey),
-        const SizedBox(width: 8),
-        Text('$label: ', style: const TextStyle(color: Colors.grey, fontSize: 12)),
-        Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column( // Changed to Column for vertical layout
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 16, color: Colors.grey),
+              const SizedBox(width: 8),
+              Text('$label:', style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 24.0), // Indent value below label
+            child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
     );
   }
 

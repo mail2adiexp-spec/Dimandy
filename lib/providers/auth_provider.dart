@@ -110,6 +110,7 @@ class AuthProvider extends ChangeNotifier {
       String userRole = 'user';
       Map<String, dynamic> permissions = {};
 
+      String? firestorePhone;
       try {
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
@@ -119,6 +120,7 @@ class AuthProvider extends ChangeNotifier {
           final data = userDoc.data() ?? {};
           userRole = data['role'] ?? 'user';
           permissions = data['permissions'] as Map<String, dynamic>? ?? {};
+          firestorePhone = data['phoneNumber'] as String? ?? data['phone'] as String?;
           
           // Update lastLogin
           await FirebaseFirestore.instance
@@ -137,7 +139,7 @@ class AuthProvider extends ChangeNotifier {
             firebaseUser.displayName ??
             firebaseUser.email?.split('@').first ??
             'User',
-        phoneNumber: firebaseUser.phoneNumber,
+        phoneNumber: firestorePhone ?? firebaseUser.phoneNumber,
         photoURL: firebaseUser.photoURL,
         role: userRole,
         permissions: permissions,
