@@ -10,10 +10,28 @@ class PayoutService {
   // Request a payout
   Future<void> requestPayout(String userId, double amount, String paymentDetails) async {
     try {
+      if (amount < 1000) {
+        throw Exception('Minimum withdrawal amount is ₹1000');
+      }
+
       // Check balance first
       final balance = await _transactionService.getBalance(userId);
       if (balance < amount) {
         throw Exception('Insufficient balance');
+      }
+
+      // Check for daily limit (max 2 requests in last 24 hours)
+      final now = DateTime.now();
+      final last24Hours = now.subtract(const Duration(hours: 24));
+      
+      final recentPayoutsOrEmpty = await _firestore
+          .collection('payouts')
+          .where('userId', isEqualTo: userId)
+          .where('requestDate', isGreaterThan: Timestamp.fromDate(last24Hours))
+          .get();
+          
+      if (recentPayoutsOrEmpty.docs.length >= 2) {
+         throw Exception('You can only make 2 payout requests every 24 hours');
       }
 
       final payout = PayoutModel(
@@ -21,7 +39,7 @@ class PayoutService {
         userId: userId,
         amount: amount,
         status: PayoutStatus.pending,
-        requestDate: DateTime.now(),
+        requestDate: now,
         paymentDetails: paymentDetails,
       );
 

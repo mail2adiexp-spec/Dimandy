@@ -81,9 +81,10 @@ class InvoiceService {
               // DELIVERY ADDRESS (TO)
               pw.Text('DELIVER TO:', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
               pw.SizedBox(height: 4),
-              // We don't have customer name separate in OrderModel, currently utilizing User ID or manual fetch. 
-              // Assuming address contains name or just showing address.
-              pw.Text(customerName ?? order.userId, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
+              pw.Text(
+                (customerName != null && customerName.isNotEmpty) ? customerName : order.userId, 
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16) // Increased size
+              ),
               pw.Text(order.deliveryAddress, style: pw.TextStyle(fontSize: 14)),
               pw.SizedBox(height: 4),
               pw.Text('Phone: ${order.phoneNumber}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12)),
@@ -202,9 +203,10 @@ class InvoiceService {
             children: [
               pw.Text('BILL TO:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
               pw.SizedBox(height: 4),
-              // Again, using UserId/Address as Name isn't available directly in OrderModel yet. 
-              // Ideally update OrderModel to store customerName.
-              pw.Text(customerName ?? order.userId, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)), 
+              pw.Text(
+                (customerName != null && customerName.isNotEmpty) ? customerName : order.userId, 
+                style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)
+              ), 
               pw.Text(order.deliveryAddress),
               pw.Text(order.phoneNumber),
             ],

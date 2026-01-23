@@ -7,8 +7,13 @@ import '../models/product_model.dart';
 class CartItem {
   final Product product;
   int quantity;
+  final Map<String, dynamic>? metadata;
 
-  CartItem({required this.product, this.quantity = 1});
+  CartItem({
+    required this.product, 
+    this.quantity = 1,
+    this.metadata,
+  });
 
   double get totalPrice => product.price * quantity;
 
@@ -20,6 +25,7 @@ class CartItem {
     'price': product.price,
     'imageUrl': product.imageUrl,
     'quantity': quantity,
+    if (metadata != null) 'metadata': metadata,
   };
 
   factory CartItem.fromMap(Map<String, dynamic> map) => CartItem(
@@ -32,6 +38,7 @@ class CartItem {
       imageUrl: map['imageUrl'] as String,
     ),
     quantity: (map['quantity'] as num).toInt(),
+    metadata: map['metadata'] as Map<String, dynamic>?,
   );
 }
 
@@ -51,13 +58,13 @@ class CartProvider extends ChangeNotifier {
       _items.values.fold(0.0, (sum, item) => sum + item.totalPrice);
   bool get isEmpty => _items.isEmpty;
 
-  void addProduct(Product product) {
+  void addProduct(Product product, {Map<String, dynamic>? metadata}) {
     debugPrint('CartProvider: addProduct called for ${product.id}');
     final id = product.id;
     if (_items.containsKey(id)) {
       _items[id]!.quantity += 1;
     } else {
-      _items[id] = CartItem(product: product, quantity: 1);
+      _items[id] = CartItem(product: product, quantity: 1, metadata: metadata);
     }
     _persistAndNotify();
   }

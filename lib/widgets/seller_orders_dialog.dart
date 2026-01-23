@@ -11,6 +11,7 @@ import 'package:printing/printing.dart';
 
 import '../services/transaction_service.dart';
 import '../models/transaction_model.dart';
+import '../utils/toast_utils.dart';
 
 
 
@@ -355,21 +356,11 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                         );
                                         
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            const SnackBar(
-                                              content: Text('✓ Shipping label ready!'),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
+                                          showToast(context, '✓ Shipping label ready!');
                                         }
                                       } catch (e) {
                                         if (context.mounted) {
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Error generating label: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
+                                          showToast(context, 'Error generating label: $e', isError: true);
                                         }
                                       }
                                     },
@@ -409,18 +400,11 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                               'updatedBy': widget.user.uid,
                                             });
                                             if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                const SnackBar(
-                                                  content: Text('✓ Order verified and marked as Packed'),
-                                                  backgroundColor: Colors.green,
-                                                ),
-                                              );
+                                              showToast(context, '✓ Order verified and marked as Packed');
                                             }
                                           } catch (e) {
                                             if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(
-                                                SnackBar(content: Text('Error: $e')),
-                                              );
+                                              showToast(context, 'Error: $e', isError: true);
                                             }
                                           }
                                         }
@@ -448,15 +432,11 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                             'updatedBy': widget.user.uid,
                                           });
                                           if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Order marked as Ready/Out for Delivery')),
-                                            );
+                                            showToast(context, 'Order marked as Ready/Out for Delivery');
                                           }
                                         } catch (e) {
                                           if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('Error: $e')),
-                                            );
+                                            showToast(context, 'Error: $e', isError: true);
                                           }
                                         }
                                       },
@@ -525,15 +505,11 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                           }
 
                                           if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('✓ Order Delivered & Wallets Credited'), backgroundColor: Colors.green),
-                                            );
+                                            showToast(context, '✓ Order Delivered & Wallets Credited');
                                           }
                                         } catch (e) {
                                           if (context.mounted) {
-                                            ScaffoldMessenger.of(context).showSnackBar(
-                                              SnackBar(content: Text('Error: $e')),
-                                            );
+                                            showToast(context, 'Error: $e', isError: true);
                                           }
                                         }
                                       },

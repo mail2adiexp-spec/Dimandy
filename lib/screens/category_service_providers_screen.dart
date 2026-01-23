@@ -114,7 +114,7 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
-                  hintText: 'Search provider or location...',
+                  hintText: 'Search service or provider...',
                   prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
@@ -131,13 +131,13 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
               ),
             ),
           ),
-          // Providers List
+          // Services List (Querying 'services' collection instead of 'users')
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .where('role', isEqualTo: 'service_provider')
-                  .where('serviceCategoryId', isEqualTo: widget.category.id)
+                  .collection('services')
+                  .where('category', isEqualTo: widget.category.name)
+                  .orderBy('createdAt', descending: true)
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
@@ -146,42 +146,43 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
 
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text(
-                      'Error loading providers',
+                    child: SelectableText(
+                      'Error loading services: ${snapshot.error}',
                       style: TextStyle(color: Colors.red[700]),
+                      textAlign: TextAlign.center,
                     ),
                   );
                 }
 
-                final providers = snapshot.data?.docs ?? [];
+                final services = snapshot.data?.docs ?? [];
                 
                 // Filter locally
-                final filteredProviders = _searchQuery.isEmpty 
-                    ? providers 
-                    : providers.where((doc) {
+                final filteredServices = _searchQuery.isEmpty 
+                    ? services 
+                    : services.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
                         final name = (data['name'] ?? '').toString().toLowerCase();
-                        final businessName = (data['businessName'] ?? '').toString().toLowerCase();
-                        final district = (data['district'] ?? '').toString().toLowerCase();
+                        final providerName = (data['providerName'] ?? '').toString().toLowerCase();
+                        final description = (data['description'] ?? '').toString().toLowerCase();
                         return name.contains(_searchQuery) ||
-                               businessName.contains(_searchQuery) ||
-                               district.contains(_searchQuery);
+                               providerName.contains(_searchQuery) ||
+                               description.contains(_searchQuery);
                       }).toList();
 
-                if (filteredProviders.isEmpty) {
+                if (filteredServices.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.person_off_outlined,
+                          Icons.design_services_outlined,
                           size: 64,
                           color: Colors.grey[400],
                         ),
                         const SizedBox(height: 16),
                         Text(
                           _searchQuery.isEmpty 
-                              ? 'No service providers found'
+                              ? 'No services found in ${widget.category.name}'
                               : 'No matches found',
                           style: TextStyle(
                             fontSize: 16,
@@ -196,10 +197,11 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
 
                 return ListView.builder(
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
-                  itemCount: filteredProviders.length,
+                  itemCount: filteredServices.length,
                   itemBuilder: (context, index) {
-                    final data = filteredProviders[index].data() as Map<String, dynamic>;
-                    return _buildProviderCard(context, data);
+                    final data = filteredServices[index].data() as Map<String, dynamic>;
+                    final serviceId = filteredServices[index].id;
+                    return _buildServiceCard(context, data, serviceId);
                   },
                 );
               },
@@ -210,12 +212,14 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
     );
   }
 
-  Widget _buildProviderCard(BuildContext context, Map<String, dynamic> data) {
-    final name = data['name'] ?? 'Unknown';
-    final businessName = data['businessName'] ?? name;
-    final minCharge = (data['minCharge'] ?? widget.category.basePrice).toDouble();
-    final district = data['district'] ?? '';
-    final photoURL = data['photoURL'] as String?;
+  Widget _buildServiceCard(BuildContext context, Map<String, dynamic> data, String serviceId) {
+    final serviceName = data['name'] ?? 'Unknown Service';
+    final providerName = data['providerBusinessName'] ?? data['providerName'] ?? 'Service Provider';
+    final price = (data['price'] ?? 0.0).toDouble();
+    final description = data['description'] ?? '';
+    final imageUrl = data['imageUrl'] as String?;
+    final providerImage = data['providerImage'] as String?;
+    final providerId = data['providerId'] ?? '';
 
     return Card(
       elevation: 2,
@@ -226,25 +230,26 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Provider Image
-            ClipOval(
+            // Service Image
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
               child: Container(
-                width: 60,
-                height: 60,
+                width: 80,
+                height: 80,
                 color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                child: photoURL != null && photoURL.isNotEmpty
+                child: imageUrl != null && imageUrl.isNotEmpty
                     ? Image.network(
-                        photoURL,
+                        imageUrl,
                         fit: BoxFit.cover,
                         errorBuilder: (_, __, ___) => Icon(
-                          Icons.person,
-                          size: 30,
+                          Icons.build_circle,
+                          size: 40,
                           color: Theme.of(context).primaryColor,
                         ),
                       )
                     : Icon(
-                        Icons.person,
-                        size: 30,
+                        Icons.build_circle,
+                        size: 40,
                         color: Theme.of(context).primaryColor,
                       ),
               ),
@@ -255,53 +260,86 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    businessName,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                  // 1. Service Name (Hide if redundant or specific 'vehical' typo)
+                  if (!widget.category.name.toLowerCase().contains(serviceName.toLowerCase()) && 
+                      !serviceName.toLowerCase().contains(widget.category.name.toLowerCase()) &&
+                      serviceName.toLowerCase() != 'vehical' &&
+                      serviceName.toLowerCase() != 'vehicle')
+                    Text(
+                      serviceName,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                  ),
+                  
                   const SizedBox(height: 4),
-                  if (district.isNotEmpty)
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, size: 14, color: Colors.grey),
-                        const SizedBox(width: 4),
-                        Text(
-                          district,
-                          style: TextStyle(color: Colors.grey[600], fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Starts from ₹${minCharge.toStringAsFixed(0)}',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
-                      fontSize: 14,
-                    ),
+                  
+                  // 2. Provider Name
+                  ProviderNameWidget(
+                    providerId: providerId,
+                    cachedName: providerName,
+                    providerImage: providerImage,
                   ),
+                  
+                  const SizedBox(height: 6),
+                  
+                  if (description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8.0),
+                      child: Text(
+                         description,
+                         maxLines: 2,
+                         overflow: TextOverflow.ellipsis,
+                         style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ),
+                  
+                  // 3. Pre-booking Amount (Green text only, no box)
+                  Row(
+                    children: [
+                      const Text(
+                        'Pre-booking: ', 
+                        style: TextStyle(
+                          fontSize: 12, 
+                          color: Colors.green,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      Text(
+                        '₹${((data['preBookingAmount'] ?? 0).toDouble()).toStringAsFixed(0)}', 
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold, 
+                          fontSize: 14, 
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  )
                 ],
               ),
             ),
             // Book Button
             Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: () {
                     Navigator.pushNamed(
                       context,
                       BookServiceScreen.routeName,
                       arguments: {
-                        'serviceName': widget.category.name,
-                        'providerName': businessName,
-                        'providerImage': photoURL,
-                        'minCharge': minCharge >= 50 ? minCharge : 50.0,
+                        'serviceName': serviceName,
+                        'providerName': providerName,
+                        'providerId': providerId,
+                        'providerImage': providerImage,
+                        'ratePerKm': (data['ratePerKm'] ?? 0).toDouble(),
+                        'minBookingAmount': (data['price'] ?? 0).toDouble(), // Use customer billable price
+                        'preBookingAmount': (data['preBookingAmount'] ?? 0).toDouble(),
                       },
                     );
+                    print('DEBUG BOOK: ratePerKm=${data['ratePerKm']}, minBooking=${data['price']}, prebook=${data['preBookingAmount']}');
                   },
                   style: ElevatedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
@@ -314,6 +352,83 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
           ],
         ),
       ),
+    );
+  }
+}
+
+class ProviderNameWidget extends StatelessWidget {
+  final String providerId;
+  final String? cachedName;
+  final String? providerImage;
+
+  const ProviderNameWidget({
+    super.key,
+    required this.providerId,
+    this.cachedName,
+    this.providerImage,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // If we have a good cached name, show it (filtering out generic/empty)
+    if (cachedName != null && 
+        cachedName != 'Service Provider' && 
+        cachedName != 'Unknown Service' && 
+        cachedName!.isNotEmpty) {
+       return _buildContent(cachedName!, providerImage);
+    }
+
+    // If no providerId, fallback
+    if (providerId.isEmpty) return _buildContent('Service Provider', providerImage);
+
+    // Otherwise, fetch it from Firestore
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(providerId).get(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+           return const SizedBox(width: 80, height: 16, child: LinearProgressIndicator(color: Colors.grey, minHeight: 2));
+        }
+        
+        String name = 'Service Provider';
+        String? image = providerImage;
+
+        if (snapshot.hasData && snapshot.data != null && snapshot.data!.exists) {
+           final data = snapshot.data!.data() as Map<String, dynamic>;
+           name = data['businessName'] ?? data['name'] ?? 'Service Provider';
+           image = data['photoURL'] ?? image;
+        }
+
+        return _buildContent(name, image);
+      },
+    );
+  }
+
+  Widget _buildContent(String name, String? image) {
+    return Row(
+      children: [
+        if (image != null && image.isNotEmpty)
+            Container(
+              width: 20, height: 20,
+              margin: const EdgeInsets.only(right: 6),
+              decoration: const BoxDecoration(shape: BoxShape.circle),
+              child: ClipOval(child: Image.network(image, fit: BoxFit.cover, errorBuilder: (_,__,___)=> const Icon(Icons.store, size: 18, color: Colors.blueGrey)))
+            )
+        else  
+            const Icon(Icons.store, size: 18, color: Colors.blueGrey),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(
+            name,
+            style: TextStyle(
+              color: Colors.grey[900],
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      ],
     );
   }
 }

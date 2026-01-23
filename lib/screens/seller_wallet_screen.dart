@@ -43,79 +43,101 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
   }
 
   void _showRequestPayoutDialog() {
+    String? errorMessage;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Request Payout'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Available Balance: ₹${_balance.toStringAsFixed(2)}'),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _amountController,
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixText: '₹',
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          return AlertDialog(
+            title: const Text('Request Payout'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Available Balance: ₹${_balance.toStringAsFixed(2)}'),
+                const SizedBox(height: 16),
+                if (errorMessage != null) ...[
+                  Text(
+                    errorMessage!,
+                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                TextField(
+                  controller: _amountController,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount',
+                    prefixText: '₹',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) {
+                    if (errorMessage != null) {
+                      setStateDialog(() => errorMessage = null);
+                    }
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _detailsController,
+                  decoration: const InputDecoration(
+                    labelText: 'UPI ID / Bank Details',
+                    border: OutlineInputBorder(),
+                    hintText: 'e.g., name@upi or Bank Name, A/C No',
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _detailsController,
-              decoration: const InputDecoration(
-                labelText: 'UPI ID / Bank Details',
-                border: OutlineInputBorder(),
-                hintText: 'e.g., name@upi or Bank Name, A/C No',
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
               ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final amount = double.tryParse(_amountController.text) ?? 0;
-              final details = _detailsController.text.trim();
-              
-              if (amount <= 0 || amount > _balance) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Invalid amount')),
-                );
-                return;
-              }
-              if (details.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Please provide payment details')),
-                );
-                return;
-              }
+              ElevatedButton(
+                onPressed: () async {
+                  setStateDialog(() => errorMessage = null);
+                  
+                  final amount = double.tryParse(_amountController.text) ?? 0;
+                  final details = _detailsController.text.trim();
+                  
+                  if (amount <= 0 || amount > _balance) {
+                    setStateDialog(() => errorMessage = 'Invalid amount');
+                    return;
+                  }
+                  if (amount < 1000) {
+                     setStateDialog(() => errorMessage = 'Minimum withdrawal amount is ₹1000');
+                    return;
+                  }
+                  if (details.isEmpty) {
+                     setStateDialog(() => errorMessage = 'Please provide payment details');
+                    return;
+                  }
 
-              try {
-                await _payoutService.requestPayout(widget.user.uid, amount, details);
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Payout requested successfully')),
-                  );
-                  _fetchBalance();
-                  _amountController.clear();
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Request'),
-          ),
-        ],
+                  try {
+                    await _payoutService.requestPayout(widget.user.uid, amount, details);
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Payout requested successfully')),
+                      );
+                      _fetchBalance();
+                      _amountController.clear();
+                    }
+                  } catch (e) {
+                     // Extract cleaner message if possible, or show full error
+                     String msg = e.toString();
+                     if (msg.contains('Exception: ')) {
+                       msg = msg.replaceAll('Exception: ', '');
+                     }
+                     setStateDialog(() => errorMessage = msg);
+                  }
+                },
+                child: const Text('Request'),
+              ),
+            ],
+          );
+        }
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/product_model.dart';
 import '../providers/category_provider.dart';
+import '../providers/auth_provider.dart';
 
 class SharedProductsTab extends StatefulWidget {
   final bool canManage;
@@ -576,17 +577,29 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Added 80 bottom padding
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: MediaQuery.of(context).size.width < 600 ? 2 : 3,
-          crossAxisSpacing: 12,
-          mainAxisSpacing: 12,
-          childAspectRatio: 0.65, // Slightly taller cards to accommodate details
+          crossAxisCount: MediaQuery.of(context).size.width < 600 
+              ? 3 
+              : 4,
+          crossAxisSpacing: 8, // Reduced spacing for denser grid
+          mainAxisSpacing: 8,
+          childAspectRatio: 0.55, // Adjusted aspect ratio for narrower columns
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) {
             final product = products[index];
             final data = product.data() as Map<String, dynamic>;
-            final images = data['images'] as List<dynamic>? ?? [];
-            final imageUrl = images.isNotEmpty ? images[0] : null;
+            
+            // Robust image extraction
+            String? imageUrl = data['imageUrl'] as String?;
+            if (imageUrl == null || imageUrl.isEmpty) {
+              final List<dynamic> imagesList = 
+                  (data['imageUrls'] as List<dynamic>?) ?? 
+                  (data['images'] as List<dynamic>?) ?? [];
+              
+              if (imagesList.isNotEmpty) {
+                imageUrl = imagesList.first.toString();
+              }
+            }
             
             return Stack(
               children: [
@@ -636,51 +649,17 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(data['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14), maxLines: 2, overflow: TextOverflow.ellipsis),
+                          Text(data['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 4),
-                          Text(NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(data['price'] ?? 0), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                          Text(NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(data['price'] ?? 0), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
                           const SizedBox(height: 4),
                           Row(
                             children: [
-                              Icon(data['isFeatured'] == true ? Icons.star : Icons.star_border, size: 16, color: Colors.amber),
+                              Icon(data['isFeatured'] == true ? Icons.star : Icons.star_border, size: 14, color: Colors.amber),
                               const SizedBox(width: 4),
-                              Expanded(child: Text('Stock: ${data['stock'] ?? 0}', style: TextStyle(fontSize: 12, color: Colors.grey[600]))),
+                              Expanded(child: Text('Stock: ${data['stock'] ?? 0}', style: TextStyle(fontSize: 10, color: Colors.grey[600]))),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                          if (widget.canManage)
-                            PopupMenuButton<String>(
-                              onSelected: (value) {
-                                if (value == 'edit') {
-                                  _showEditProductDialog(product.id, data);
-                                } else if (value == 'delete') {
-                                  _deleteProduct(product.id, data['name']);
-                                }
-                              },
-                              itemBuilder: (context) => [
-                                const PopupMenuItem(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit, color: Colors.blue),
-                                      SizedBox(width: 8),
-                                      Text('Edit'),
-                                    ],
-                                  ),
-                                ),
-                                const PopupMenuItem(
-                                  value: 'delete',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.delete, color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('Delete'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              icon: const Icon(Icons.more_vert),
-                            ),
                         ],
                       ),
                     ),
@@ -706,6 +685,55 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                        });
                      },
                      shape: const CircleBorder(),
+                   ),
+                 ),
+               ),
+             if (!_isProductSelectionMode && widget.canManage)
+               Positioned(
+                 top: 4,
+                 right: 4,
+                 child: Container(
+                   width: 32,
+                   height: 32,
+                   decoration: BoxDecoration(
+                     color: Colors.white.withOpacity(0.9), 
+                     shape: BoxShape.circle,
+                     boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]
+                   ),
+                   child: PopupMenuButton<String>(
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(Icons.more_vert, size: 18, color: Colors.black87),
+                     onSelected: (value) {
+                       if (value == 'edit') {
+                         _showEditProductDialog(product.id, data);
+                       } else if (value == 'delete') {
+                         _deleteProduct(product.id, data['name']);
+                       }
+                     },
+                     itemBuilder: (context) => [
+                       const PopupMenuItem(
+                         value: 'edit',
+                         height: 32,
+                         child: Row(
+                           children: [
+                             Icon(Icons.edit, color: Colors.blue, size: 18),
+                             SizedBox(width: 8),
+                             Text('Edit', style: TextStyle(fontSize: 14)),
+                           ],
+                         ),
+                       ),
+                       const PopupMenuItem(
+                         value: 'delete',
+                         height: 32,
+                         child: Row(
+                           children: [
+                             Icon(Icons.delete, color: Colors.red, size: 18),
+                             SizedBox(width: 8),
+                             Text('Delete', style: TextStyle(fontSize: 14)),
+                           ],
+                         ),
+                       ),
+                     ],
                    ),
                  ),
                ),
@@ -750,8 +778,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
   void _showAddProductDialog() {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
+    final descCtrl = TextEditingController(text: '\u2022 '); // Start with dot
     final priceCtrl = TextEditingController();
+    final basePriceCtrl = TextEditingController(); // Added
     final mrpCtrl = TextEditingController();
     final stockCtrl = TextEditingController();
     final minQtyCtrl = TextEditingController(text: '1');
@@ -764,10 +793,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
         : 'Daily Needs';
         
     if (categories.isEmpty) {
-       // Fallback or fetch if empty (though provider should be loaded at app start)
-       // For now, assume loaded or allow user to add?
-       // This might be why "Daily Needs" hardcoded is safer as default?
-       // But we want DYNAMIC.
+       // Fallback logic
     }
     
     String selectedUnit = 'Pic';
@@ -776,6 +802,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     bool isCustomerChoice = false;
     bool isLoading = false;
     List<Uint8List> selectedImages = [];
+    List<String> selectedStoreIds = []; // Added for store linking
 
     Future<void> pickImages(StateSetter setState) async {
       try {
@@ -849,14 +876,32 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       controller: descCtrl,
                       decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
                       maxLines: 3,
+                      onChanged: (value) {
+                         if (value.endsWith('\n')) {
+                            descCtrl.text = '$value\u2022 ';
+                            descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                         } else if (value.isEmpty) {
+                            descCtrl.text = '\u2022 ';
+                            descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                         }
+                      },
                     ),
                     const SizedBox(height: 16),
                     Row(
                       children: [
                         Expanded(
                           child: TextFormField(
+                            controller: basePriceCtrl,
+                            decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '₹'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextFormField(
                             controller: mrpCtrl,
-                            decoration: const InputDecoration(labelText: 'MRP (Original Price)', border: OutlineInputBorder(), prefixText: '₹'),
+                            decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
                             keyboardType: TextInputType.number,
                             onChanged: (val) {
                                 final p = double.tryParse(priceCtrl.text) ?? 0;
@@ -867,13 +912,17 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             }
                           ),
                         ),
-                        const SizedBox(width: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
                         Expanded(
                           child: TextFormField(
                             controller: priceCtrl,
                             decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
                             keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid Price' : null,
+                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
                             onChanged: (val) {
                                 final p = double.tryParse(val) ?? 0;
                                 final m = double.tryParse(mrpCtrl.text) ?? 0;
@@ -889,7 +938,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             controller: stockCtrl,
                             decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid Stock' : null,
+                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
                         ),
                       ],
@@ -966,6 +1015,103 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         ),
                       ),
                     ],
+                    const SizedBox(height: 16),
+                    // Store Selection (Admin/Core Staff Only)
+                    Consumer<AuthProvider>(
+                      builder: (context, auth, child) {
+                         if (!auth.isAdmin && !auth.isCoreStaff) return const SizedBox.shrink();
+                         return Column(
+                           crossAxisAlignment: CrossAxisAlignment.start,
+                           children: [
+                             const Text('Available in Stores:', style: TextStyle(fontWeight: FontWeight.bold)),
+                             const SizedBox(height: 8),
+                             StreamBuilder<QuerySnapshot>(
+                               stream: FirebaseFirestore.instance.collection('stores').where('isActive', isEqualTo: true).snapshots(),
+                               builder: (context, snapshot) {
+                                  if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                                  final stores = snapshot.data!.docs;
+                                  if (stores.isEmpty) return const Text('No active stores found.');
+                                  
+                                  // Calculate selected names
+                                  final selectedNames = stores
+                                      .where((doc) => selectedStoreIds.contains(doc.id))
+                                      .map((doc) => doc['name'] as String)
+                                      .join(', ');
+
+                                  return InkWell(
+                                    onTap: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) {
+                                          return StatefulBuilder(
+                                            builder: (context, setDialogState) {
+                                              return AlertDialog(
+                                                title: const Text('Select Stores'),
+                                                content: SizedBox(
+                                                  width: double.maxFinite,
+                                                  child: ListView.builder(
+                                                    shrinkWrap: true,
+                                                    itemCount: stores.length,
+                                                    itemBuilder: (context, index) {
+                                                      final doc = stores[index];
+                                                      final storeId = doc.id;
+                                                      final storeName = doc['name'] ?? 'Unknown';
+                                                      final isSelected = selectedStoreIds.contains(storeId);
+
+                                                      return CheckboxListTile(
+                                                        title: Text(storeName),
+                                                        value: isSelected,
+                                                        onChanged: (bool? value) {
+                                                          setDialogState(() {
+                                                            if (value == true) {
+                                                              selectedStoreIds.add(storeId);
+                                                            } else {
+                                                              selectedStoreIds.remove(storeId);
+                                                            }
+                                                          });
+                                                        },
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                                actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+                                              );
+                                            },
+                                          );
+                                        },
+                                      ).then((_) => setState(() {}));
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                      decoration: BoxDecoration(
+                                        border: Border.all(color: Colors.grey),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              selectedNames.isEmpty ? 'Select Stores' : selectedNames,
+                                              style: TextStyle(
+                                                color: selectedNames.isEmpty ? Colors.grey[700] : Colors.black87,
+                                                fontSize: 16,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          const Icon(Icons.arrow_drop_down),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                               },
+                             ),
+                             const SizedBox(height: 16),
+                           ],
+                         );
+                      }
+                    ),
                     const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
@@ -980,6 +1126,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                final docRef = await FirebaseFirestore.instance.collection('products').add({
                                  'name': nameCtrl.text,
                                  'description': descCtrl.text,
+                                 'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
                                  'price': double.parse(priceCtrl.text),
                                  'stock': int.parse(stockCtrl.text),
                                  'minimumQuantity': int.parse(minQtyCtrl.text),
@@ -993,6 +1140,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                  'sellerId': 'admin', // Or current user? Admin panel implies admin.
                                  'createdAt': FieldValue.serverTimestamp(),
                                  'updatedAt': FieldValue.serverTimestamp(),
+                                 'storeIds': selectedStoreIds,
                                });
                                if (selectedImages.isNotEmpty) {
                                  final urls = await uploadImages(docRef.id);
@@ -1030,6 +1178,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       final nameCtrl = TextEditingController(text: productData['name']);
       final descCtrl = TextEditingController(text: productData['description']);
       final priceCtrl = TextEditingController(text: productData['price'].toString());
+      final basePriceCtrl = TextEditingController(text: (productData['basePrice'] ?? 0.0).toString()); // Added
       final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
       final stockCtrl = TextEditingController(text: productData['stock'].toString());
       final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
@@ -1046,6 +1195,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       bool isHotDeal = productData['isHotDeal'] ?? false;
       bool isCustomerChoice = productData['isCustomerChoice'] ?? false;
       bool isLoading = false;
+      List<String> selectedStoreIds = List<String>.from(productData['storeIds'] ?? []);
 
       showDialog(
         context: context,
@@ -1072,13 +1222,32 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       const SizedBox(height: 16),
                       TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Product Name *', border: OutlineInputBorder()), validator: (v) => v?.isNotEmpty == true ? null : 'Required'),
                        const SizedBox(height: 16),
-                      TextFormField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()), maxLines: 3),
+                      TextFormField(
+                        controller: descCtrl, 
+                        decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()), 
+                        maxLines: 3,
+                        onChanged: (value) {
+                           if (value.endsWith('\n')) {
+                              descCtrl.text = '$value\u2022 ';
+                              descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                           } else if (value.isEmpty) {
+                              descCtrl.text = '\u2022 ';
+                              descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                           }
+                        },
+                      ),
                       const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(child: TextFormField(
+                              controller: basePriceCtrl,
+                              decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '₹'),
+                              keyboardType: TextInputType.number,
+                          )),
+                          const SizedBox(width: 16),
+                          Expanded(child: TextFormField(
                               controller: mrpCtrl,
-                              decoration: const InputDecoration(labelText: 'MRP (Original Price)', border: OutlineInputBorder(), prefixText: '₹'),
+                              decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
                               keyboardType: TextInputType.number,
                               onChanged: (val) {
                                 final p = double.tryParse(priceCtrl.text) ?? 0;
@@ -1088,7 +1257,11 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 }
                               }
                           )),
-                          const SizedBox(width: 16),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
                           Expanded(child: TextFormField(
                               controller: priceCtrl,
                               decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
@@ -1141,7 +1314,103 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       ),
                       const SizedBox(height: 16),
                       SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                      // Store Selection (Admin/Core Staff Only)
+                      Consumer<AuthProvider>(
+                        builder: (context, auth, child) {
+                           if (!auth.isAdmin && !auth.isCoreStaff) return const SizedBox.shrink();
+                           return Column(
+                             crossAxisAlignment: CrossAxisAlignment.start,
+                             children: [
+                               const Text('Available in Stores:', style: TextStyle(fontWeight: FontWeight.bold)),
+                               const SizedBox(height: 8),
+                               StreamBuilder<QuerySnapshot>(
+                                 stream: FirebaseFirestore.instance.collection('stores').where('isActive', isEqualTo: true).snapshots(),
+                                 builder: (context, snapshot) {
+                                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                                    final stores = snapshot.data!.docs;
+                                    if (stores.isEmpty) return const Text('No active stores found.');
+
+                                    // Calculate selected names
+                                    final selectedNames = stores
+                                        .where((doc) => selectedStoreIds.contains(doc.id))
+                                        .map((doc) => doc['name'] as String)
+                                        .join(', ');
+                                    
+                                    return InkWell(
+                                      onTap: () {
+                                        showDialog(
+                                          context: context,
+                                          builder: (context) {
+                                            return StatefulBuilder(
+                                              builder: (context, setDialogState) {
+                                                return AlertDialog(
+                                                  title: const Text('Select Stores'),
+                                                  content: SizedBox(
+                                                    width: double.maxFinite,
+                                                    child: ListView.builder(
+                                                      shrinkWrap: true,
+                                                      itemCount: stores.length,
+                                                      itemBuilder: (context, index) {
+                                                        final doc = stores[index];
+                                                        final storeId = doc.id;
+                                                        final storeName = doc['name'] ?? 'Unknown';
+                                                        final isSelected = selectedStoreIds.contains(storeId);
+
+                                                        return CheckboxListTile(
+                                                          title: Text(storeName),
+                                                          value: isSelected,
+                                                          onChanged: (bool? value) {
+                                                            setDialogState(() {
+                                                              if (value == true) {
+                                                                selectedStoreIds.add(storeId);
+                                                              } else {
+                                                                selectedStoreIds.remove(storeId);
+                                                              }
+                                                            });
+                                                          },
+                                                        );
+                                                      },
+                                                    ),
+                                                  ),
+                                                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Done'))],
+                                                );
+                                              },
+                                            );
+                                          },
+                                        ).then((_) => setState(() {}));
+                                      },
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                                        decoration: BoxDecoration(
+                                          border: Border.all(color: Colors.grey),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                selectedNames.isEmpty ? 'Select Stores' : selectedNames,
+                                                style: TextStyle(
+                                                  color: selectedNames.isEmpty ? Colors.grey[700] : Colors.black87,
+                                                  fontSize: 16,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const Icon(Icons.arrow_drop_down),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                 },
+                               ),
+                               const SizedBox(height: 16),
+                             ],
+                           );
+                        }
+                      ),
                         Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
@@ -1155,6 +1424,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 await FirebaseFirestore.instance.collection('products').doc(productId).update({
                                   'name': nameCtrl.text,
                                   'description': descCtrl.text,
+                                  'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
                                   'price': double.parse(priceCtrl.text),
                                   'stock': int.parse(stockCtrl.text),
                                   'minimumQuantity': int.parse(minQtyCtrl.text),
@@ -1164,7 +1434,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                   'isFeatured': isFeatured,
                                   'isHotDeal': (double.tryParse(mrpCtrl.text) ?? 0) > double.parse(priceCtrl.text),
                                   // isCustomerChoice not updated manually anymore
+                                  // isCustomerChoice not updated manually anymore
                                   'updatedAt': FieldValue.serverTimestamp(),
+                                  'storeIds': selectedStoreIds,
                                 });
                                 if (mounted) {
                                   Navigator.pop(context);

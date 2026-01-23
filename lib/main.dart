@@ -19,6 +19,7 @@ import 'package:ecommerce_app/screens/book_service_screen.dart';
 import 'package:ecommerce_app/screens/service_provider_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/delivery_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/core_staff_dashboard_screen.dart';
+import 'package:ecommerce_app/screens/store_manager_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
 import 'package:ecommerce_app/models/service_category_model.dart';
 
@@ -189,6 +190,8 @@ class MyApp extends StatelessWidget {
                   const ServiceProviderDashboardScreen(),
               CoreStaffDashboardScreen.routeName: (ctx) =>
                   const CoreStaffDashboardScreen(),
+              StoreManagerDashboardScreen.routeName: (ctx) =>
+                  const StoreManagerDashboardScreen(),
               // BookServiceScreen removed from routes - handled in onGenerateRoute
             },
             // For routes needing arguments
@@ -207,8 +210,11 @@ class MyApp extends StatelessWidget {
                     builder: (_) => BookServiceScreen(
                       serviceName: args['serviceName'] as String? ?? '',
                       providerName: args['providerName'] as String? ?? '',
+                      providerId: args['providerId'] as String? ?? '',
                       providerImage: args['providerImage'] as String?,
-                      minCharge: (args['minCharge'] as num?)?.toDouble() ?? 0.0,
+                      ratePerKm: (args['ratePerKm'] as num?)?.toDouble() ?? 0.0,
+                      minBookingAmount: (args['minBookingAmount'] as num?)?.toDouble() ?? 0.0,
+                      preBookingAmount: (args['preBookingAmount'] as num?)?.toDouble() ?? 0.0,
                     ),
                   );
                 }

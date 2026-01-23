@@ -8,7 +8,9 @@ import 'edit_profile_screen.dart';
 import 'admin_panel_screen.dart';
 import 'seller_dashboard_screen.dart';
 import 'service_provider_dashboard_screen.dart';
+import 'service_provider_dashboard_screen.dart';
 import 'core_staff_dashboard_screen.dart';
+import 'store_manager_dashboard_screen.dart';
 
 class AccountScreen extends StatefulWidget {
   static const routeName = '/account';
@@ -338,14 +340,9 @@ class _AccountScreenState extends State<AccountScreen> {
                                     subtitle:
                                         'Manage store inventory and staff',
                                     onTap: () {
-                                      ScaffoldMessenger.of(
+                                      Navigator.pushNamed(
                                         context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Store Manager Dashboard - Coming Soon',
-                                          ),
-                                        ),
+                                        StoreManagerDashboardScreen.routeName,
                                       );
                                     },
                                   ),

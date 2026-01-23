@@ -84,7 +84,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
     if (user == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Service Provider Dashboard')),
+        appBar: AppBar(title: const Text('My Dashboard')),
         body: const Center(child: Text('Please login to continue')),
       );
     }
@@ -94,7 +94,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
       child: Scaffold(
         backgroundColor: Colors.grey[100],
         appBar: AppBar(
-          title: const Text('Service Provider Dashboard'),
+          title: const Text('My Dashboard'),
           elevation: 2,
           bottom: const TabBar(
             tabs: [
@@ -140,12 +140,21 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
              stream: _partnerRequestsStream,
              builder: (context, snapshot) {
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox();
+                
+                // Filter out approved requests
+                final pendingRequests = snapshot.data!.docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return (data['status'] ?? '').toString().toLowerCase() != 'approved';
+                }).toList();
+
+                if (pendingRequests.isEmpty) return const SizedBox();
+
                 return Column(
                    crossAxisAlignment: CrossAxisAlignment.start,
                    children: [
                       const Text('Service Provider Status', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                       const SizedBox(height: 12),
-                      ...snapshot.data!.docs.map((doc) => _buildRequestCard(context, doc.data() as Map<String, dynamic>)),
+                      ...pendingRequests.map((doc) => _buildRequestCard(context, doc.data() as Map<String, dynamic>, doc.id)),
                       const SizedBox(height: 24),
                    ],
                 );
@@ -260,7 +269,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
     );
   }
 
-  Widget _buildRequestCard(BuildContext context, Map<String, dynamic> data) {
+  Widget _buildRequestCard(BuildContext context, Map<String, dynamic> data, String docId) {
     final status = data['status'] ?? 'pending';
     final role = data['role'] ?? 'N/A';
     final name = data['fullName'] ?? 'N/A';
@@ -312,16 +321,23 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     ),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: statusColor),
-                  ),
+                Row(
+                  children: [
+                    IconButton(
+                        icon: const Icon(Icons.edit, size: 20, color: Colors.blue),
+                        onPressed: () => _showEditRequestDialog(context, docId, data),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: statusColor),
+                      ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -338,6 +354,8 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     ],
                   ),
                 ),
+              ],
+            ),
               ],
             ),
             const Divider(height: 24),
@@ -711,13 +729,16 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance.collection('services').where('providerId', isEqualTo: user.uid).orderBy('createdAt', descending: true).snapshots(),
                   builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Center(child: SelectableText('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red)));
+                    }
                     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                     final services = snapshot.data?.docs ?? [];
                     if (services.isEmpty) {
                       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.build_outlined, size: 80, color: Colors.grey[400]), const SizedBox(height: 16), const Text('No services yet', style: TextStyle(fontSize: 18, color: Colors.grey)), const SizedBox(height: 8), ElevatedButton.icon(onPressed: () { Navigator.pop(ctx); _showAddServiceDialog(context, user); }, icon: const Icon(Icons.add), label: const Text('Add Your First Service'))]));
                     }
-                    return GridView.builder(
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 16, mainAxisSpacing: 16, childAspectRatio: 0.75),
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(16),
                       itemCount: services.length,
                       itemBuilder: (context, index) {
                         final serviceData = services[index].data() as Map<String, dynamic>;
@@ -726,124 +747,161 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                         final basePrice = (serviceData['basePrice'] as num?)?.toDouble() ?? 0;
                         final imageUrl = serviceData['imageUrl'] as String?;
                         final category = serviceData['category'] ?? 'General';
+                        final ratePerKm = (serviceData['ratePerKm'] as num?)?.toDouble() ?? 0;
+                        final preBookingAmount = (serviceData['preBookingAmount'] as num?)?.toDouble() ?? 0;
                         
                         return Card(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(10),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Image (smaller)
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Container(
+                                    width: 60,
+                                    height: 60,
                                     color: Colors.grey[200],
-                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                                  ),
-                                  child: imageUrl != null
-                                      ? ClipRRect(
-                                          borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                                          child: Image.network(
+                                    child: imageUrl != null
+                                        ? Image.network(
                                             imageUrl,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 40),
-                                          ),
-                                        )
-                                      : const Icon(Icons.build, size: 40),
+                                            errorBuilder: (c, e, s) => const Icon(Icons.broken_image, size: 24),
+                                          )
+                                        : const Icon(Icons.build, size: 24),
+                                  ),
                                 ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '₹${basePrice.toStringAsFixed(0)}/hr',
-                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      category,
-                                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: OutlinedButton.icon(
-                                            onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                                              const SnackBar(content: Text('Edit coming soon!')),
-                                            ),
-                                            icon: const Icon(Icons.edit, size: 16),
-                                            label: const Text('Edit', style: TextStyle(fontSize: 12)),
-                                            style: OutlinedButton.styleFrom(
-                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                const SizedBox(width: 10),
+                                // Details
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                        name,
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        category,
+                                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        children: [
+                                          Flexible(
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const Icon(Icons.currency_rupee, size: 14, color: Colors.green),
+                                                Flexible(
+                                                  child: Text(
+                                                    '${basePrice.toStringAsFixed(0)}/hr',
+                                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green),
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
                                             ),
                                           ),
+                                          if (ratePerKm > 0) ...[
+                                            const SizedBox(width: 8),
+                                            Flexible(
+                                              child: Text(
+                                                '₹${ratePerKm.toStringAsFixed(0)}/km',
+                                                style: TextStyle(fontSize: 11, color: Colors.grey[700]),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // 3-dot menu
+                                PopupMenuButton<String>(
+                                  icon: const Icon(Icons.more_vert),
+                                  onSelected: (value) async {
+                                    if (value == 'edit') {
+                                      _showEditServiceDialog(context, serviceId, serviceData);
+                                    } else if (value == 'delete') {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (dialogCtx) => AlertDialog(
+                                          title: const Text('Delete Service'),
+                                          content: Text('Delete "$name"?'),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(dialogCtx, false),
+                                              child: const Text('Cancel'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () => Navigator.pop(dialogCtx, true),
+                                              style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                              child: const Text('Delete'),
+                                            ),
+                                          ],
                                         ),
-                                        const SizedBox(width: 8),
-                                        IconButton(
-                                          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(),
-                                          onPressed: () async {
-                                            final confirm = await showDialog<bool>(
-                                              context: context,
-                                              builder: (dialogCtx) => AlertDialog(
-                                                title: const Text('Delete Service'),
-                                                content: Text('Delete "$name"?'),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () => Navigator.pop(dialogCtx, false),
-                                                    child: const Text('Cancel'),
-                                                  ),
-                                                  TextButton(
-                                                    onPressed: () => Navigator.pop(dialogCtx, true),
-                                                    style: TextButton.styleFrom(foregroundColor: Colors.red),
-                                                    child: const Text('Delete'),
-                                                  ),
-                                                ],
+                                      );
+                                      
+                                      if (confirm == true) {
+                                        try {
+                                          await FirebaseFirestore.instance
+                                              .collection('services')
+                                              .doc(serviceId)
+                                              .delete();
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Service deleted'),
+                                                backgroundColor: Colors.green,
                                               ),
                                             );
-                                            
-                                            if (confirm == true) {
-                                              try {
-                                                await FirebaseFirestore.instance
-                                                    .collection('services')
-                                                    .doc(serviceId)
-                                                    .delete();
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    const SnackBar(
-                                                      content: Text('Service deleted'),
-                                                      backgroundColor: Colors.green,
-                                                    ),
-                                                  );
-                                                }
-                                              } catch (e) {
-                                                if (context.mounted) {
-                                                  ScaffoldMessenger.of(context).showSnackBar(
-                                                    SnackBar(
-                                                      content: Text('Error: $e'),
-                                                      backgroundColor: Colors.red,
-                                                    ),
-                                                  );
-                                                }
-                                              }
-                                            }
-                                          },
-                                        ),
-                                      ],
+                                          }
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              SnackBar(
+                                                content: Text('Error: $e'),
+                                                backgroundColor: Colors.red,
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      }
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                      value: 'edit',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.edit, size: 20),
+                                          SizedBox(width: 12),
+                                          Text('Edit'),
+                                        ],
+                                      ),
+                                    ),
+                                    const PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.delete, size: 20, color: Colors.red),
+                                          SizedBox(width: 12),
+                                          Text('Delete', style: TextStyle(color: Colors.red)),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -858,7 +916,293 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
     );
   }
 
-  // Add Service Dialog
+  // Edit Service Dialog
+  void _showEditServiceDialog(BuildContext context, String serviceId, Map<String, dynamic> data) {
+    final formKey = GlobalKey<FormState>();
+    final nameController = TextEditingController(text: data['name']);
+    final descriptionController = TextEditingController(text: data['description']);
+    final basePriceController = TextEditingController(text: (data['price'] ?? 0).toString());
+    
+    // Platform fee (use stored or default)
+    final double platformFeePercentage = (data['platformFeePercentage'] as num?)?.toDouble() ?? 10.0;
+    
+    // Existing images
+    List<String> existingImages = List<String>.from(data['imageUrls'] ?? [data['imageUrl'] ?? '']);
+    existingImages.removeWhere((url) => url.isEmpty);
+
+    // New images
+    List<Uint8List> newImagesData = [];
+    final ImagePicker picker = ImagePicker();
+    
+    double listingPrice = double.tryParse(basePriceController.text) ?? 0.0;
+    
+    // Helper to calculate earnings
+    double calculateEarnings(double inputPrice) {
+      return inputPrice / (1 + platformFeePercentage / 100);
+    }
+    double earnings = calculateEarnings(listingPrice);
+    
+    final ratePerKmController = TextEditingController(text: (data['ratePerKm'] ?? 0).toString());
+    final preBookingAmountController = TextEditingController(text: (data['preBookingAmount'] ?? 0).toString());
+
+    String? selectedCategory = data['category'];
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        String? errorMessage;
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+
+          Future<void> pickNewImages() async {
+             try {
+               final List<XFile> pickedFiles = await picker.pickMultiImage();
+               if (pickedFiles.isNotEmpty) {
+                 final currentCount = existingImages.length + newImagesData.length;
+                 if (currentCount + pickedFiles.length > 6) {
+                   setState(() => errorMessage = 'Max 6 images allowed');
+                   return;
+                 }
+                 
+                 for (var file in pickedFiles) {
+                   var bytes = await file.readAsBytes();
+                   if (mounted) setState(() => newImagesData.add(bytes));
+                 }
+                 setState(() => errorMessage = null);
+               }
+             } catch (e) {
+               setState(() => errorMessage = 'Error picking images: $e');
+             }
+          }
+
+          Future<List<String>> uploadNewImages() async {
+            List<String> urls = [];
+            for (int i = 0; i < newImagesData.length; i++) {
+               final ref = FirebaseStorage.instance.ref().child('service_images').child(serviceId).child('new_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
+               await ref.putData(newImagesData[i], SettableMetadata(contentType: 'image/jpeg'));
+               urls.add(await ref.getDownloadURL());
+            }
+            return urls;
+          }
+
+          return AlertDialog(
+            title: const Text('Edit Service'),
+            content: SizedBox(
+               width: double.maxFinite,
+               child: SingleChildScrollView(
+                 child: Form(
+                   key: formKey,
+                   child: ConstrainedBox(
+                     constraints: const BoxConstraints(maxWidth: 500),
+                     child: Column(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                          if (errorMessage != null)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(8),
+                              margin: const EdgeInsets.only(bottom: 12),
+                              color: Colors.red[100],
+                              child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                            ),
+                          
+                          // Image Preview (Existing + New)
+                          SizedBox(
+                            height: 120,
+                            child: ListView(
+                              scrollDirection: Axis.horizontal,
+                              children: [
+                                // Existing
+                                ...existingImages.asMap().entries.map((entry) {
+                                   return Padding(
+                                     padding: const EdgeInsets.only(right: 8),
+                                     child: Stack(
+                                       children: [
+                                         ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.network(entry.value, width: 100, height: 100, fit: BoxFit.cover)),
+                                         Positioned(
+                                           top: 0, right: 0,
+                                           child: IconButton(
+                                             icon: const Icon(Icons.close, color: Colors.red),
+                                             onPressed: () => setState(() => existingImages.removeAt(entry.key))
+                                           )
+                                         )
+                                       ]
+                                     )
+                                   );
+                                }),
+                                // New
+                                ...newImagesData.asMap().entries.map((entry) {
+                                   return Padding(
+                                     padding: const EdgeInsets.only(right: 8),
+                                     child: Stack(
+                                       children: [
+                                         ClipRRect(borderRadius: BorderRadius.circular(8), child: Image.memory(entry.value, width: 100, height: 100, fit: BoxFit.cover)),
+                                         Positioned(
+                                           top: 0, right: 0,
+                                           child: IconButton(
+                                             icon: const Icon(Icons.close, color: Colors.red),
+                                             onPressed: () => setState(() => newImagesData.removeAt(entry.key))
+                                           )
+                                         )
+                                       ]
+                                     )
+                                   );
+                                }),
+                                // Add Button
+                                if ((existingImages.length + newImagesData.length) < 6)
+                                  InkWell(
+                                    onTap: pickNewImages,
+                                    child: Container(
+                                      width: 100, height: 100,
+                                      decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
+                                      child: const Icon(Icons.add_a_photo, size: 30, color: Colors.grey),
+                                    )
+                                  )
+                              ]
+                            )
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          TextFormField(
+                            controller: nameController,
+                            decoration: const InputDecoration(labelText: 'Service Name', border: OutlineInputBorder()),
+                            validator: (v) => v?.isEmpty == true ? 'Required' : null
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          TextFormField(
+                            controller: descriptionController,
+                            decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
+                            maxLines: 3,
+                            validator: (v) {
+                               if (v == null || v.isEmpty) return 'Required';
+                               if (v.trim() == '\u2022') return 'Required';
+                               return null;
+                            }
+                          ),
+                          const SizedBox(height: 16),
+
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: basePriceController,
+                                  decoration: const InputDecoration(labelText: 'Minimum Price', border: OutlineInputBorder(), prefixText: '₹'),
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (val) {
+                                    final price = double.tryParse(val) ?? 0.0;
+                                    setState(() {
+                                       listingPrice = price;
+                                       earnings = calculateEarnings(price);
+                                    });
+                                  },
+                                  validator: (v) {
+                                     final p = double.tryParse(v ?? '');
+                                     if (p == null || p <= 0) return 'Invalid';
+                                     return null;
+                                  }
+                                )
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance.collection('service_categories').orderBy('name').snapshots(),
+                                  builder: (context, snapshot) {
+                                    List<String> categories = ['General'];
+                                    if (snapshot.hasData) {
+                                      categories = snapshot.data!.docs.map((d) => (d.data() as Map<String,dynamic>)['name'] as String).toSet().toList();
+                                    }
+                                    return DropdownButtonFormField<String>(
+                                      isExpanded: true,
+                                      value: categories.contains(selectedCategory) ? selectedCategory : null,
+                                      decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                                      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                                      onChanged: (v) => setState(() => selectedCategory = v!)
+                                    );
+                                  }
+                                )
+                              )
+                            ]
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: ratePerKmController,
+                            decoration: const InputDecoration(labelText: 'Rate per Km (₹/km)', border: OutlineInputBorder(), helperText: 'Set 0 for fixed price services'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: preBookingAmountController,
+                            decoration: const InputDecoration(labelText: 'Pre-booking Amount (₹)', border: OutlineInputBorder(), helperText: 'Amount to pay in advance (set 0 if not required)'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                          ),
+                          
+                          const SizedBox(height: 12),
+                          Container(
+                             width: double.maxFinite,
+                             padding: const EdgeInsets.all(12),
+                             decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                             child: Text('Your Earnings: ₹${earnings.toStringAsFixed(2)}', style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center)
+                          )
+                       ]
+                     )
+                   )
+                 )
+               )
+            ),
+            actions: [
+               TextButton(onPressed: isLoading ? null : () => Navigator.pop(ctx), child: const Text('Cancel')),
+               ElevatedButton(
+                 onPressed: isLoading ? null : () async {
+                    if (!formKey.currentState!.validate()) return;
+                    if (existingImages.isEmpty && newImagesData.isEmpty) {
+                       setState(() => errorMessage = 'At least 1 image required');
+                       return;
+                    }
+
+                    setState(() => isLoading = true);
+                    try {
+                       List<String> newUrls = await uploadNewImages();
+                       List<String> finalImages = [...existingImages, ...newUrls];
+                       
+                       double price = double.parse(basePriceController.text);
+                       
+                       await FirebaseFirestore.instance.collection('services').doc(serviceId).update({
+                          'name': nameController.text.trim(),
+                          'description': descriptionController.text.trim(),
+                          'price': price,
+                          'ratePerKm': double.tryParse(ratePerKmController.text) ?? 0,
+                          'preBookingAmount': double.tryParse(preBookingAmountController.text) ?? 0,
+                          'basePrice': price / (1 + platformFeePercentage / 100),
+                          'category': selectedCategory,
+                          'imageUrl': finalImages.first,
+                          'imageUrls': finalImages,
+                          'updatedAt': FieldValue.serverTimestamp()
+                       });
+                       
+                       if (context.mounted) {
+                          Navigator.pop(ctx);
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service updated!'), backgroundColor: Colors.green));
+                       }
+                    } catch (e) {
+                       setState(() => errorMessage = e.toString());
+                    } finally {
+                       if (mounted) setState(() => isLoading = false);
+                    }
+                 },
+                 child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Update')
+               )
+            ]
+          );
+        });
+      }
+    );
+  }
+
   // Add Service Dialog
   Future<void> _showAddServiceDialog(BuildContext context, dynamic user) async {
     // Fetch Platform Fee
@@ -877,8 +1221,10 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
     final formKey = GlobalKey<FormState>();
     final nameController = TextEditingController();
-    final descriptionController = TextEditingController();
+    final descriptionController = TextEditingController(text: '\u2022 '); // Auto-bullet start
     final basePriceController = TextEditingController();
+    final ratePerKmController = TextEditingController(text: '0');
+    final preBookingAmountController = TextEditingController(text: '0');
     String selectedCategory = 'General';
     bool isLoading = false;
     List<Uint8List> selectedImages = [];
@@ -901,8 +1247,8 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
       final List<String> imageUrls = [];
       for (int i = 0; i < selectedImages.length; i++) {
         try {
-          final ref = FirebaseStorage.instance.ref().child('services').child(serviceId).child('image_$i.jpg');
-          await ref.putData(selectedImages[i]);
+          final ref = FirebaseStorage.instance.ref().child('service_images').child(serviceId).child('image_$i.jpg');
+          await ref.putData(selectedImages[i], SettableMetadata(contentType: 'image/jpeg'));
           imageUrls.add(await ref.getDownloadURL());
         } catch (e) { print('Error uploading image $i: $e'); }
       }
@@ -911,16 +1257,15 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
+      builder: (ctx) {
+        String? errorMessage;
+        return StatefulBuilder(
         builder: (context, setState) {
           
           // Helper to update listing price
           void updateListingPrice(String val) {
              final price = double.tryParse(val) ?? 0.0;
-             final calculated = price + (price * platformFeePercentage / 100);
-             // We can't call setState inside the listener simply because it might cycle.
-             // But here we're inside builder.
-             // Best way: use onChanged in TextFormField.
+             final earnings = price / (1 + platformFeePercentage / 100);
           }
 
           return AlertDialog(
@@ -935,8 +1280,23 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                   child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    if (errorMessage != null)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(8),
+                        margin: const EdgeInsets.only(bottom: 12),
+                        color: Colors.red[100],
+                        child: Text(errorMessage!, style: const TextStyle(color: Colors.red)),
+                      ),
                     InkWell(
-                      onTap: () => pickImages(setState),
+                      onTap: () async {
+                         try {
+                            await pickImages(setState);
+                            setState(() => errorMessage = null);
+                         } catch (e) {
+                            setState(() => errorMessage = e.toString());
+                         }
+                      },
                       child: Container(
                         height: 120,
                         decoration: BoxDecoration(
@@ -987,9 +1347,25 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                       controller: descriptionController,
                       decoration: const InputDecoration(labelText: 'Description *', border: OutlineInputBorder()),
                       maxLines: 3,
-                      validator: (v) => v?.isEmpty == true ? 'Required' : null
+                      onChanged: (value) {
+                          if (value.endsWith('\n')) {
+                            // User pressed enter, add bullet
+                            descriptionController.text = '$value\u2022 ';
+                            descriptionController.selection = TextSelection.fromPosition(TextPosition(offset: descriptionController.text.length));
+                          } else if (value.isEmpty) {
+                            // User cleared everything, add bullet back
+                            descriptionController.text = '\u2022 ';
+                            descriptionController.selection = TextSelection.fromPosition(TextPosition(offset: descriptionController.text.length));
+                          }
+                      },
+                      validator: (v) {
+                         if (v == null || v.isEmpty) return 'Required';
+                         if (v.trim() == '\u2022') return 'Required'; // Don't allow just a bullet
+                         return null;
+                      }
                     ),
                     const SizedBox(height: 16),
+
 
                     Row(
                       children: [
@@ -1014,7 +1390,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                         const SizedBox(width: 12),
                         Expanded(
                           child: StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('categories').orderBy('name').snapshots(),
+                            stream: FirebaseFirestore.instance.collection('service_categories').orderBy('name').snapshots(),
                             builder: (context, snapshot) {
                               List<String> categories = ['General'];
                               if (snapshot.hasData) {
@@ -1049,6 +1425,20 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           )
                         )
                       ]
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: ratePerKmController,
+                      decoration: const InputDecoration(labelText: 'Rate per Km (₹/km)', border: OutlineInputBorder(), helperText: 'Set 0 for fixed price services'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: preBookingAmountController,
+                      decoration: const InputDecoration(labelText: 'Pre-booking Amount (₹)', border: OutlineInputBorder(), helperText: 'Amount to pay in advance (set 0 if not required)'),
+                      keyboardType: TextInputType.number,
+                      validator: (v) => v?.isEmpty == true ? 'Required' : null,
                     ),
                     if (basePriceController.text.isNotEmpty)
                       Padding(
@@ -1095,17 +1485,29 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                   
                   if (imageUrls.isEmpty) throw Exception('Upload failed');
                   
+                  // Fetch updated user details from Firestore to get Business Name
+                  final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+                  final userData = userDoc.data() ?? {};
+                  final providerName = userData['name'] ?? user.displayName ?? 'Unknown';
+                  final providerBusinessName = userData['businessName'] ?? providerName;
+                  final providerImage = userData['photoURL'] ?? user.photoURL;
+
                   final inputPrice = double.parse(basePriceController.text); // Listing Price
                   final earnings = inputPrice / (1 + platformFeePercentage / 100); // Base Price
 
                   await FirebaseFirestore.instance.collection('services').doc(serviceId).set({
                     'id': serviceId,
                     'providerId': user.uid,
+                    'providerName': providerName,
+                    'providerBusinessName': providerBusinessName,
+                    'providerImage': providerImage,
                     'name': nameController.text.trim(),
                     'description': descriptionController.text.trim(),
                     'basePrice': earnings,
                     'platformFeePercentage': platformFeePercentage,
-                    'price': inputPrice, 
+                    'price': inputPrice,
+                    'ratePerKm': double.tryParse(ratePerKmController.text) ?? 0,
+                    'preBookingAmount': double.tryParse(preBookingAmountController.text) ?? 0,
                     'category': selectedCategory,
                     'imageUrl': imageUrls.first,
                     'imageUrls': imageUrls,
@@ -1124,7 +1526,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     );
                   }
                 } catch (e) {
-                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  setState(() => errorMessage = e.toString());
                 } finally {
                   if (mounted) setState(() => isLoading = false);
                 }
@@ -1136,7 +1538,8 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
           ]
         );
       }
-      ),
+      );
+    }
     );
   }
 
@@ -1194,6 +1597,14 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     child: StreamBuilder<QuerySnapshot>(
                       stream: _allBookingsStream,
                       builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: SelectableText(
+                              'Error: ${snapshot.error}',
+                              style: const TextStyle(color: Colors.red),
+                            ),
+                          );
+                        }
                         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
                         
                         var bookings = snapshot.data?.docs ?? [];
@@ -1437,10 +1848,19 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               ],
             ),
           ),
-          const Positioned(
-            top: 12,
-            right: 12,
-            child: Icon(Icons.verified, color: Colors.white, size: 24),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit, color: Colors.white),
+                  tooltip: 'Edit Profile',
+                  onPressed: () => _showEditProfileDialog(context, user),
+                ),
+                const Icon(Icons.verified, color: Colors.white, size: 24),
+              ],
+            ),
           ),
         ],
       ),
@@ -1603,6 +2023,16 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
      return StreamBuilder<QuerySnapshot>(
         stream: _recentActivityStream,
         builder: (context, snapshot) {
+           if (snapshot.hasError) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.red[50],
+                child: SelectableText(
+                  'Error: ${snapshot.error}',
+                  style: const TextStyle(color: Colors.red),
+                ),
+              );
+            }
            if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
               return Container(
@@ -1674,5 +2104,194 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
            );
         },
      );
+  }
+  Future<void> _showEditRequestDialog(BuildContext context, String docId, Map<String, dynamic> data) async {
+    final nameCtrl = TextEditingController(text: data['fullName']);
+    final phoneCtrl = TextEditingController(text: data['phoneNumber']);
+    final experienceCtrl = TextEditingController(text: data['experience']);
+    final minChargeCtrl = TextEditingController(text: (data['minCharge'] ?? 0).toString());
+    
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Details'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                   TextFormField(
+                     controller: nameCtrl,
+                     decoration: const InputDecoration(labelText: 'Full Name'),
+                     validator: (v) => v!.isEmpty ? 'Enter Name' : null,
+                   ),
+                   const SizedBox(height: 12),
+                   TextFormField(
+                     controller: phoneCtrl,
+                     decoration: const InputDecoration(labelText: 'Phone Number', prefixText: '+91 '),
+                     keyboardType: TextInputType.phone,
+                     maxLength: 10,
+                     validator: (v) => v!.length != 10 ? 'Enter valid 10-digit phone' : null,
+                   ),
+                   const SizedBox(height: 12),
+                   TextFormField(
+                     controller: experienceCtrl,
+                     decoration: const InputDecoration(labelText: 'Experience (e.g. 2 Years)'),
+                   ),
+
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (!formKey.currentState!.validate()) return;
+                setState(() => isLoading = true);
+                try {
+                  final updates = {
+                    'fullName': nameCtrl.text.trim(),
+                    'phoneNumber': phoneCtrl.text.trim(),
+                    'experience': experienceCtrl.text.trim(),
+                    'minCharge': double.tryParse(minChargeCtrl.text.trim()) ?? 0,
+                  };
+
+                  // Update Partner Request
+                  await FirebaseFirestore.instance.collection('partner_requests').doc(docId).update(updates);
+
+                  // Also try to update User Profile if it matches current user
+                  final user = Provider.of<AuthProvider>(context, listen: false).currentUser;
+                  if (user != null && data['email'] == user.email) {
+                      await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+                        'name': nameCtrl.text.trim(),
+                        'phoneNumber': phoneCtrl.text.trim(),
+                        'experience': experienceCtrl.text.trim(),
+                        'minCharge': updates['minCharge'],
+                      });
+                  }
+
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Updated successfully!')));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                } finally {
+                  if (mounted) setState(() => isLoading = false);
+                }
+              }, 
+              child: isLoading ? const CircularProgressIndicator() : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  Future<void> _showEditProfileDialog(BuildContext context, dynamic userModel) async {
+    // 1. Fetch latest data from Firestore to get extended fields (experience, minCharge)
+    Map<String, dynamic> userData = {};
+    try {
+      final doc = await FirebaseFirestore.instance.collection('users').doc(userModel.uid).get();
+      if (doc.exists) {
+        userData = doc.data() as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('Error fetching user profile: $e');
+    }
+
+    final nameCtrl = TextEditingController(text: userData['name'] ?? userModel.name);
+    final phoneCtrl = TextEditingController(text: userData['phoneNumber'] ?? userModel.phoneNumber ?? '');
+    final experienceCtrl = TextEditingController(text: userData['experience'] ?? '');
+    final minChargeCtrl = TextEditingController(text: (userData['minCharge'] ?? 0).toString());
+    
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    if (!context.mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Profile'),
+          content: Form(
+            key: formKey,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                   TextFormField(
+                     controller: nameCtrl,
+                     decoration: const InputDecoration(labelText: 'Display Name / Business Name'),
+                     validator: (v) => v!.isEmpty ? 'Enter Name' : null,
+                   ),
+                   const SizedBox(height: 12),
+                   TextFormField(
+                     controller: phoneCtrl,
+                     decoration: const InputDecoration(labelText: 'Phone Number', prefixText: '+91 '),
+                     keyboardType: TextInputType.phone,
+                     maxLength: 10,
+                     validator: (v) => v!.length != 10 ? 'Enter valid 10-digit phone' : null,
+                   ),
+                   const SizedBox(height: 12),
+                   TextFormField(
+                     controller: experienceCtrl,
+                     decoration: const InputDecoration(labelText: 'Experience (e.g. 5 Years)'),
+                   ),
+
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (!formKey.currentState!.validate()) return;
+                setState(() => isLoading = true);
+                try {
+                  final updates = {
+                    'name': nameCtrl.text.trim(),
+                    'phoneNumber': phoneCtrl.text.trim(),
+                    'experience': experienceCtrl.text.trim(),
+                    'minCharge': double.tryParse(minChargeCtrl.text.trim()) ?? 0,
+                  };
+
+                  await FirebaseFirestore.instance.collection('users').doc(userModel.uid).update(updates);
+                  
+                   if (context.mounted) {
+                      try {
+                        await Provider.of<AuthProvider>(context, listen: false).refreshUser();
+                      } catch (e) {
+                        // ignore if method doesn't exist
+                      }
+                   }
+
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated!')));
+                  }
+                } catch (e) {
+                  if (mounted) {
+                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                  }
+                } finally {
+                  if (mounted) setState(() => isLoading = false);
+                }
+              }, 
+              child: isLoading ? const CircularProgressIndicator() : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

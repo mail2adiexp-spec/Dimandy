@@ -62,8 +62,10 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
     final descCtrl = TextEditingController();
-    final basePriceCtrl = TextEditingController();
+    final basePriceCtrl = TextEditingController(); // Minimum Booking Amount
     final maxPriceCtrl = TextEditingController(); // For range pricing
+    final ratePerKmCtrl = TextEditingController(); // For per-km pricing
+    final preBookAmountCtrl = TextEditingController(); // Pre-booking/advance amount
     final serviceAreaCtrl = TextEditingController();
     
     String selectedCategory = 'Cleaning';
@@ -225,9 +227,10 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                         TextFormField(
                           controller: basePriceCtrl,
                           decoration: const InputDecoration(
-                            labelText: 'Base Price *',
+                            labelText: 'Minimum Booking Amount *',
                             border: OutlineInputBorder(),
                             prefixText: '₹',
+                            helperText: 'Minimum charge for this service',
                           ),
                           keyboardType: TextInputType.number,
                           validator: (v) {
@@ -269,6 +272,32 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                         labelText: 'Service Area / Pincode',
                         border: OutlineInputBorder(),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Rate Per KM (for vehicle/transport services)
+                    TextFormField(
+                      controller: ratePerKmCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Rate Per KM (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixText: '₹',
+                        helperText: 'For vehicle/transport services only',
+                      ),
+                      keyboardType: TextInputType.number,
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Pre-booking Amount
+                    TextFormField(
+                      controller: preBookAmountCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Pre-booking Amount (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixText: '₹',
+                        helperText: 'Advance payment to confirm booking',
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 16),
                     
@@ -342,7 +371,9 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                       'description': descCtrl.text,
                                       'category': selectedCategory,
                                       'pricingModel': pricingModel,
-                                      'basePrice': double.parse(basePriceCtrl.text),
+                                      'basePrice': double.parse(basePriceCtrl.text), // This IS the minimum booking amount
+                                      'ratePerKm': ratePerKmCtrl.text.isEmpty ? 0.0 : double.parse(ratePerKmCtrl.text),
+                                      'preBookingAmount': preBookAmountCtrl.text.isEmpty ? 0.0 : double.parse(preBookAmountCtrl.text),
                                       'serviceArea': serviceAreaCtrl.text,
                                       'isAvailable': isAvailable,
                                       'providerId': 'admin', // Or current user ID if applicable
@@ -416,6 +447,12 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
     final basePriceCtrl = TextEditingController(text: serviceData['basePrice'].toString());
     final maxPriceCtrl = TextEditingController(
       text: serviceData['maxPrice']?.toString() ?? '',
+    );
+    final ratePerKmCtrl = TextEditingController(
+      text: serviceData['ratePerKm']?.toString() ?? '',
+    );
+    final preBookAmountCtrl = TextEditingController(
+      text: serviceData['preBookingAmount']?.toString() ?? '',
     );
     
     String selectedCategory = serviceData['category'] ?? 'Cleaning';
@@ -534,9 +571,10 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                         TextFormField(
                           controller: basePriceCtrl,
                           decoration: const InputDecoration(
-                            labelText: 'Base Price *',
+                            labelText: 'Minimum Booking Amount *',
                             border: OutlineInputBorder(),
                             prefixText: '₹',
+                            helperText: 'Minimum charge for this service',
                           ),
                           keyboardType: TextInputType.number,
                           validator: (v) {
@@ -559,6 +597,19 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                           ),
                         ],
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Rate Per KM (for vehicle/transport services)
+                    TextFormField(
+                      controller: ratePerKmCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Rate Per KM (Optional)',
+                        border: OutlineInputBorder(),
+                        prefixText: '₹',
+                        helperText: 'For vehicle/transport services only',
+                      ),
+                      keyboardType: TextInputType.number,
                     ),
                     const SizedBox(height: 16),
                     
@@ -591,12 +642,16 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                     final updateData = {
                                       'name': nameCtrl.text,
                                       'description': descCtrl.text,
-                                      'basePrice': double.parse(basePriceCtrl.text),
+                                      'basePrice': double.parse(basePriceCtrl.text), // This IS the minimum booking amount
+                                      'ratePerKm': ratePerKmCtrl.text.isEmpty ? 0.0 : double.parse(ratePerKmCtrl.text),
+                                      'preBookingAmount': preBookAmountCtrl.text.isEmpty ? 0.0 : double.parse(preBookAmountCtrl.text),
                                       'category': selectedCategory,
                                       'pricingModel': pricingModel,
                                       'isAvailable': isAvailable,
                                       'updatedAt': FieldValue.serverTimestamp(),
                                     };
+                                    
+                                    print('DEBUG UPDATE: Saving service with ratePerKm=${updateData['ratePerKm']}');
                                     
                                     if (pricingModel == 'range' && maxPriceCtrl.text.isNotEmpty) {
                                       updateData['maxPrice'] = double.parse(maxPriceCtrl.text);

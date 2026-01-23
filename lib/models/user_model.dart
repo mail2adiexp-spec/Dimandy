@@ -5,6 +5,7 @@ class User {
   final String? phoneNumber;
   final String? photoURL;
   final String role; // 'customer', 'seller', 'admin'
+  final List<String>? servicePincodes; // Added for pincode-based routing
   final DateTime createdAt;
 
   User({
@@ -14,6 +15,7 @@ class User {
     this.phoneNumber,
     this.photoURL,
     this.role = 'customer',
+    this.servicePincodes,
     required this.createdAt,
   });
 
@@ -25,6 +27,7 @@ class User {
       'phoneNumber': phoneNumber,
       'photoURL': photoURL,
       'role': role,
+      'servicePincodes': servicePincodes,
       'createdAt': createdAt.toIso8601String(),
     };
   }
@@ -37,6 +40,7 @@ class User {
       phoneNumber: map['phoneNumber'],
       photoURL: map['photoURL'],
       role: map['role'] ?? 'customer',
+      servicePincodes: (map['servicePincodes'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
       createdAt: map['createdAt'] != null
           ? DateTime.parse(map['createdAt'])
           : DateTime.now(),
@@ -50,6 +54,7 @@ class User {
     String? phoneNumber,
     String? photoURL,
     String? role,
+    List<String>? servicePincodes,
     DateTime? createdAt,
   }) {
     return User(
@@ -59,6 +64,7 @@ class User {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       photoURL: photoURL ?? this.photoURL,
       role: role ?? this.role,
+      servicePincodes: servicePincodes ?? this.servicePincodes,
       createdAt: createdAt ?? this.createdAt,
     );
   }

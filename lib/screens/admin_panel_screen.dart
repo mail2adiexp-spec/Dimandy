@@ -9,8 +9,10 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:printing/printing.dart';
+// import 'package:printing/printing.dart'; // Moved to admin_analytics_screen
 import 'package:path_provider/path_provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 
 import '../models/product_model.dart';
 import '../models/category_model.dart';
@@ -40,6 +42,9 @@ import '../widgets/service_provider_details_widget.dart';
 import '../widgets/shared_users_tab.dart';
 import '../widgets/shared_services_tab.dart';
 import 'admin_settings_screen.dart';
+// import 'admin_analytics_screen.dart';
+// import 'admin_reports_screen.dart';
+import '../widgets/manage_stores_tab.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   static const routeName = '/admin-panel';
@@ -77,6 +82,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   late Stream<QuerySnapshot> _partnerRequestsStream;
   late Stream<QuerySnapshot> _serviceProvidersStream;
   late Stream<QuerySnapshot> _sellersStream;
+  late Stream<QuerySnapshot> _deliveryPartnersStream;
   late Stream<QuerySnapshot> _ordersStream;
   late Stream<QuerySnapshot> _usersStream;
   late Stream<QuerySnapshot> _cancelledOrdersStream;
@@ -116,6 +122,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _sellersStream = FirebaseFirestore.instance
         .collection('users')
         .where('role', isEqualTo: 'seller')
+        .snapshots();
+
+    _deliveryPartnersStream = FirebaseFirestore.instance
+        .collection('delivery_partners')
         .snapshots();
         
     _ordersStream = FirebaseFirestore.instance
@@ -157,12 +167,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     'Gifts',              // 5
     'Orders',             // 6
     'Sellers',            // 7
+    'Stores',             // NEW
     'Products',           // 8
     'Services',           // 8
-    'Analytics',          // 9
-    'Categories',         // 10
-    'Core Staff',         // 10
-    'Permissions',        // 11
+    'Categories',         // 11
+    'Core Staff',         // 12
+    'Permissions',        // 13
     'Payout Requests',    // 15
     'Featured Sections',  // 17
     'Delivery Partners',  // 17
@@ -174,24 +184,24 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   final Map<int, int> _sortedToOriginalIndex = {
     0: 0,  // Dashboard
-    1: 17, // Settings
+    1: 18, // Settings (was 17, now 18 in stack)
     2: 6,  // Users
     3: 7,  // Gifts
     4: 8,  // Orders
     5: 11, // Sellers
-    6: 1,  // Products
-    7: 3,  // Services
-    8: 15, // Analytics
-    9: 2,  // Categories
-    10: 9,  // Core Staff
-    11: 10, // Permissions
-    12: 13, // Payout Requests
-    13: 4,  // Featured Sections
-    14: 5,  // Delivery Partners
-    15: 14, // Service Categories
-    16: 12, // Service Providers
-    17: 16, // Partner Requests
-    18: 18, // Refund Requests
+    6: 20, // Stores
+    7: 1,  // Products
+    8: 3,  // Services
+    9: 2, // Categories (was 11)
+    10: 9, // Core Staff (was 12)
+    11: 10, // Permissions (was 13)
+    12: 13, // Payout Requests (was 14)
+    13: 4,  // Featured Sections (was 15)
+    14: 5,  // Delivery Partners (was 16)
+    15: 14, // Service Categories (was 17)
+    16: 12, // Service Providers (was 18)
+    17: 17, // Partner Requests (was 19)
+    18: 19, // Refund Requests (was 20)
   };
 
   final List<IconData> _menuIcons = [
@@ -201,9 +211,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     Icons.card_giftcard,       // Gifts
     Icons.receipt_long,        // Orders
     Icons.store,               // Sellers
+    Icons.store_mall_directory,// Stores
     Icons.inventory_2,         // Products
     Icons.home_repair_service, // Services
-    Icons.analytics,           // Analytics
     Icons.category,            // Categories
     Icons.group,               // Core Staff
     Icons.security,            // Permissions
@@ -353,6 +363,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       // Right Content Area
                       Expanded(
                         child: IndexedStack(
+                          sizing: StackFit.expand,
                           index: _sortedToOriginalIndex[_selectedIndex] ?? 0,
                           children: [
                             _buildDashboardTab(), // 0
@@ -370,10 +381,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildRoleBasedUsersTab('service_provider'), // 12
                             _buildPayoutRequestsTab(), // 13
                             _buildServiceCategoriesTab(isAdmin: isAdmin), // 14
-                            _buildAnalyticsTab(), // 15
+                            const SizedBox(), // 15 (was Analytics)
+                            const SizedBox(), // 16 (was Reports)
                             _buildPartnerRequestsTab(), // 16
                             const AdminSettingsScreen(), // 17
                             _buildRefundRequestsTab(), // 18
+                            const ManageStoresTab(), // 19
                           ],
                         ),
                       ),
@@ -588,8 +601,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ),
               ),
             ),
-        ],
-      ),
+          ],
+        ),
     );
   }
 
@@ -604,7 +617,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     return RoleManagementTab(
       key: const ValueKey('partner_requests'),
       collection: 'partner_requests',
-      onEdit: (id, name, email, phone, role, pincode) {
+      onEdit: (id, data) {
         // This is not expected to be called for partner requests.
       },
       onDelete: (id, email) async {
@@ -748,6 +761,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 stream: _sellersStream,
                 icon: Icons.store,
                 color: Colors.green,
+              ),
+              _buildDashboardCard(
+                title: 'Total Delivery Partner',
+                stream: _deliveryPartnersStream,
+                icon: Icons.delivery_dining,
+                color: Colors.teal,
               ),
               _buildDashboardCard(
                 title: 'Total Orders',
@@ -3753,7 +3772,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('users')
-          .where('role', isEqualTo: 'core_staff')
+          .where('role', whereIn: ['core_staff', 'store_manager'])
           .snapshots(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
@@ -3836,6 +3855,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 Text('Position: $position'),
                                 Text('Email: $email'),
                                 Text('Phone: $phone'),
+                                if (data['role'] == 'store_manager')
+                                  Container(
+                                    margin: const EdgeInsets.only(top: 4),
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                                    ),
+                                    child: const Text(
+                                      'Store Manager',
+                                      style: TextStyle(fontSize: 10, color: Colors.blue, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
                               ],
                             ),
                             trailing: PopupMenuButton<String>(
@@ -3845,11 +3878,35 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                     staffId: doc.id,
                                     staffData: data,
                                   );
+                                } else if (value == 'permissions') {
+                                  // Re-use logic for permissions dialog
+                                  // We need to set the _selectedPermissionRole logically or just pass it
+                                  // Since _showPermissionDialog uses _selectedPermissionRole to determine layout,
+                                  // we might need to adjust it temporarily or make the dialog smarter.
+                                  // For now, let's assume core_staff role layout is fine for them.
+                                  setState(() {
+                                     _selectedPermissionRole = 'core_staff';
+                                  });
+                                  
+                                  // Note: data['permissions'] might be null
+                                  final permissions = data['permissions'] as Map<String, dynamic>? ?? {};
+                                  _showPermissionDialog(doc.id, data, permissions);
+                                  
                                 } else if (value == 'delete') {
                                   _deleteCoreStaff(doc.id, email);
                                 }
                               },
                               itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                  value: 'permissions',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.security, color: Colors.green),
+                                      SizedBox(width: 8),
+                                      Text('Permissions'),
+                                    ],
+                                  ),
+                                ),
                                 const PopupMenuItem(
                                   value: 'edit',
                                   child: Row(
@@ -3898,6 +3955,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     Uint8List? selectedImage;
     String? currentImageUrl = staffData?['photoURL'];
     bool isLoading = false;
+    bool isPasswordVisible = false;
 
     // Image Picker Logic
     final ImagePicker picker = ImagePicker();
@@ -3983,8 +4041,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   if (staffId == null) ...[
                     TextField(
                       controller: passwordCtrl,
-                      decoration: const InputDecoration(labelText: 'Password *'),
-                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Password *',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              isPasswordVisible = !isPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                      obscureText: !isPasswordVisible,
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -4193,9 +4263,56 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       } catch (e) {
         if (mounted) {
           Navigator.of(context).pop(); // Dismiss loading
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error deleting account: $e'), backgroundColor: Colors.red),
+          
+          // Fallback: Ask to force delete from Firestore if Cloud Function fails
+          final forceDelete = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Cloud Function Failed'),
+              content: Text('Could not delete account via secure Cloud Function: $e\n\nDo you want to force delete this user from the database? (Note: This might not delete their login credentials immediately, but will remove access)'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text('Force Delete'),
+                ),
+              ],
+            ),
           );
+
+          if (forceDelete == true) {
+             try {
+                // Show loading again
+                if (mounted) {
+                   showDialog(
+                    context: context,
+                    barrierDismissible: false,
+                    builder: (ctx) => const Center(child: CircularProgressIndicator()),
+                  );
+                }
+                
+                // Direct Firestore delete
+                await FirebaseFirestore.instance.collection('users').doc(staffId).delete();
+                
+                if (mounted) {
+                  Navigator.of(context).pop(); // Dismiss loading
+                   ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Staff member removed from database successfully!')),
+                  );
+                }
+             } catch (deleteError) {
+                if (mounted) {
+                   Navigator.of(context).pop(); // Dismiss loading
+                   ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Force delete failed: $deleteError'), backgroundColor: Colors.red),
+                  );
+                }
+             }
+          }
         }
       }
     }
@@ -4725,80 +4842,181 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
 
-  void _editUser(
-    String userId,
-    String name,
-    String email,
-    String phone,
-    String role,
-    String? servicePincode,
-  ) {
-    final nameController = TextEditingController(text: name);
-    final phoneController = TextEditingController(text: phone);
-    final pincodeController = TextEditingController(text: servicePincode ?? '');
+  void _editUser(String userId, Map<String, dynamic> userData) {
+    final role = userData['role'] ?? 'user';
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController(text: userData['name'] ?? '');
+    final phoneCtrl = TextEditingController(text: userData['phone'] ?? '');
+    
+    // Delivery Partner Fields
+    final pincodeCtrl = TextEditingController(text: userData['service_pincode'] ?? '');
+    
+    // Service Provider Fields
+    final experienceCtrl = TextEditingController(text: userData['experience']?.toString() ?? '');
+    final descriptionCtrl = TextEditingController(text: userData['description'] ?? '');
+    
+    String? selectedCategory = userData['category'];
+    bool isVerified = userData['isVerified'] ?? false;
+    
+    bool isLoading = false;
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit User Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              TextField(
-                controller: phoneController,
-                decoration: const InputDecoration(labelText: 'Phone'),
-              ),
-              if (role == 'delivery_partner')
-                TextField(
-                  controller: pincodeController,
-                  decoration: const InputDecoration(labelText: 'Service Pincode'),
-                ),
-            ],
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Edit ${role == 'service_provider' ? 'Service Provider' : role == 'delivery_partner' ? 'Delivery Partner' : 'User'}'),
+          content: SizedBox(
+             width: 500,
+             child: Form(
+               key: formKey,
+               child: SingleChildScrollView(
+                 child: Column(
+                   mainAxisSize: MainAxisSize.min,
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+                      // Common Details
+                      const Text('Basic Info', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      TextFormField(
+                        controller: nameCtrl,
+                        decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder()),
+                        validator: (v) => v!.isEmpty ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: phoneCtrl,
+                        decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
+                        validator: (v) => v!.isEmpty ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // -- DELIVERY PARTNER SPECIFIC --
+                      if (role == 'delivery_partner') ...[
+                        const Text('Coverage', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        TextFormField(
+                          controller: pincodeCtrl,
+                          decoration: const InputDecoration(labelText: 'Service Pincode', border: OutlineInputBorder()),
+                          validator: (v) => v!.isEmpty ? 'Required' : null,
+                        ),
+                      ],
+                      
+                      // -- SERVICE PROVIDER SPECIFIC --
+                      if (role == 'service_provider') ...[
+                        const Text('Service Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        
+                        // Category Dropdown
+                        Consumer<ServiceCategoryProvider>(
+                          builder: (context, provider, _) { 
+                             final categories = provider.serviceCategories.map((c) => c.name).toList();
+                             // Fallback if empty or not loaded
+                             if (categories.isEmpty) categories.addAll(['Plumbing', 'Electrical', 'Cleaning', 'Carpenter']);
+                             if (selectedCategory != null && !categories.contains(selectedCategory)) {
+                               categories.add(selectedCategory!);
+                             }
+                             
+                             return DropdownButtonFormField<String>(
+                               value: selectedCategory,
+                               decoration: const InputDecoration(labelText: 'Service Category', border: OutlineInputBorder()),
+                               items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                               onChanged: (v) => setState(() => selectedCategory = v),
+                             );
+                          }
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Pincode
+                        TextFormField(
+                          controller: pincodeCtrl,
+                          decoration: const InputDecoration(labelText: 'Service Pincode', border: OutlineInputBorder()),
+                          validator: (v) => v!.isEmpty ? 'Required' : null,
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Experience
+                        TextFormField(
+                          controller: experienceCtrl,
+                          decoration: const InputDecoration(labelText: 'Experience (Years)', border: OutlineInputBorder()),
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Description
+                        TextFormField(
+                          controller: descriptionCtrl,
+                          decoration: const InputDecoration(labelText: 'About Service', border: OutlineInputBorder()),
+                          maxLines: 3,
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        // Verification Status
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Verified Provider'),
+                          value: isVerified,
+                          onChanged: (v) => setState(() => isVerified = v),
+                          activeColor: Colors.green,
+                        ),
+                      ],
+                   ],
+                 ),
+               ),
+             ),
           ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (formKey.currentState!.validate()) {
+                  setState(() => isLoading = true);
+                  
+                  try {
+                    Map<String, dynamic> updates = {
+                      'name': nameCtrl.text.trim(),
+                      'phone': phoneCtrl.text.trim(),
+                    };
+                    
+                    if (role == 'delivery_partner') {
+                       updates['service_pincode'] = pincodeCtrl.text.trim();
+                    } else if (role == 'service_provider') {
+                       updates['service_pincode'] = pincodeCtrl.text.trim();
+                       updates['category'] = selectedCategory;
+                       updates['experience'] = double.tryParse(experienceCtrl.text.trim()) ?? 0;
+                       updates['description'] = descriptionCtrl.text.trim();
+                       updates['isVerified'] = isVerified;
+                    }
+
+                    await FirebaseFirestore.instance
+                        .collection('users')
+                        .doc(userId)
+                        .update(updates);
+
+                    if (mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Details updated successfully')),
+                      );
+                    }
+                  } catch (e) {
+                    setState(() => isLoading = false);
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                }
+              },
+              child: isLoading 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                  : const Text('Save Changes'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                final updates = {
-                  'name': nameController.text.trim(),
-                  'phone': phoneController.text.trim(),
-                };
-                if (role == 'delivery_partner') {
-                  updates['service_pincode'] = pincodeController.text.trim();
-                }
-
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(userId)
-                    .update(updates);
-
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User updated successfully')),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
@@ -6775,469 +6993,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   // ==================== ANALYTICS TAB ====================
   
+  // ==================== ANALYTICS TAB ====================
+  
+  // Analytics Tab Removed
   Widget _buildAnalyticsTab() {
-    final analyticsService = AnalyticsService();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-          child: MediaQuery.of(context).size.width < 600
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Analytics & Reports',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton.icon(
-                          icon: const Icon(Icons.download, color: Colors.green),
-                          label: const Text('Download Report'),
-                          onPressed: () => _showDownloadOptionsDialog(),
-                        ),
-                        const SizedBox(width: 8),
-                        RotationTransition(
-                          turns: _refreshController,
-                          child: IconButton(
-                            icon: const Icon(Icons.refresh, color: Colors.blue),
-                            onPressed: () async {
-                              _refreshController.repeat();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Refreshing data...'), duration: Duration(seconds: 1)),
-                              );
-                              setState(() {});
-                              await Future.delayed(const Duration(seconds: 1));
-                              if (mounted) {
-                                _refreshController.stop();
-                                _refreshController.reset();
-                              }
-                            },
-                            tooltip: 'Refresh Data',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                )
-              : Row(
-                  children: [
-                    Text(
-                      'Analytics & Reports',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Theme.of(context).colorScheme.onSurface,
-                          ),
-                    ),
-                    const Spacer(),
-                    IconButton(
-                      icon: const Icon(Icons.download, color: Colors.green),
-                      onPressed: () => _showDownloadOptionsDialog(),
-                      tooltip: 'Download Report',
-                    ),
-                    const SizedBox(width: 8),
-                    RotationTransition(
-                      turns: _refreshController,
-                      child: IconButton(
-                        icon: const Icon(Icons.refresh, color: Colors.blue),
-                        onPressed: () async {
-                          _refreshController.repeat();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Refreshing data...'), duration: Duration(seconds: 1)),
-                          );
-                          setState(() {});
-                          await Future.delayed(const Duration(seconds: 1));
-                          if (mounted) {
-                            _refreshController.stop();
-                            _refreshController.reset();
-                          }
-                        },
-                        tooltip: 'Refresh Data',
-                      ),
-                    ),
-                  ],
-                ),
-        ),
-
-        // Overview Metrics Cards
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-            child: GridView.count(
-
-              crossAxisCount: MediaQuery.of(context).size.width < 600 ? 2 : 4,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
-              childAspectRatio: MediaQuery.of(context).size.width < 600 ? 1.0 : 1.5,
-              children: [
-                // Total Revenue Card
-                FutureBuilder<double>(
-                  future: analyticsService.getTotalRevenue(),
-                  builder: (context, snapshot) {
-                    return _buildMetricCard(
-                      title: 'Total Revenue',
-                      value: snapshot.hasData
-                          ? NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(snapshot.data!)
-                          : 'Loading...',
-                      icon: Icons.currency_rupee,
-                      color: Colors.green,
-                      isLoading: !snapshot.hasData,
-                    );
-                  },
-                ),
-
-                // Total Orders Card
-                FutureBuilder<int>(
-                  future: analyticsService.getTotalOrders(),
-                  builder: (context, snapshot) {
-                    return _buildMetricCard(
-                      title: 'Total Orders',
-                      value: snapshot.hasData ? '${snapshot.data}' : 'Loading...',
-                      icon: Icons.shopping_cart,
-                      color: Colors.blue,
-                      isLoading: !snapshot.hasData,
-                    );
-                  },
-                ),
-
-                // Active Users Card
-                FutureBuilder<int>(
-                  future: analyticsService.getActiveUsers(),
-                  builder: (context, snapshot) {
-                    return _buildMetricCard(
-                      title: 'Active Users',
-                      value: snapshot.hasData ? '${snapshot.data}' : 'Loading...',
-                      icon: Icons.people,
-                      color: Colors.orange,
-                      isLoading: !snapshot.hasData,
-                    );
-                  },
-                ),
-
-                // Products Sold Card
-                FutureBuilder<int>(
-                  future: analyticsService.getTotalProductsSold(),
-                  builder: (context, snapshot) {
-                    return _buildMetricCard(
-                      title: 'Products Sold',
-                      value: snapshot.hasData ? '${snapshot.data}' : 'Loading...',
-                      icon: Icons.inventory,
-                      color: Colors.purple,
-                      isLoading: !snapshot.hasData,
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+    return const Center(child: Text('Analytics Disabled'));
   }
 
-  void _showDownloadOptionsDialog() {
-    String selectedPeriod = 'All Time'; // Last 30 Days, Last 90 Days, Last Year, All Time
-    String selectedFormat = 'CSV'; // CSV or PDF
-    List<String> selectedMetrics = [
-      'Total Revenue',
-      'Total Orders',
-      'Products Sold',
-      'Active Users'
-    ];
-    final availableMetrics = [
-      'Total Revenue',
-      'Total Orders',
-      'Products Sold',
-      'Active Users'
-    ];
 
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Download Report Options'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Select Time Period:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedPeriod,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'Last 30 Days', child: Text('Last 30 Days')),
-                  DropdownMenuItem(value: 'Last 90 Days', child: Text('Last 90 Days')),
-                  DropdownMenuItem(value: 'Last Year', child: Text('Last Year')),
-                  DropdownMenuItem(value: 'All Time', child: Text('All Time')),
-                ],
-                onChanged: (val) => setState(() => selectedPeriod = val!),
-              ),
-              const SizedBox(height: 16),
-              const Text('Select Format:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: selectedFormat,
-                decoration: const InputDecoration(border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'CSV', child: Text('CSV')),
-                  DropdownMenuItem(value: 'PDF', child: Text('PDF')),
-                ],
-                onChanged: (val) => setState(() => selectedFormat = val!),
-              ),
-              const SizedBox(height: 16),
-              const Text('Select Metrics:', style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
-              ...availableMetrics.map((metric) {
-                return CheckboxListTile(
-                  title: Text(metric),
-                  value: selectedMetrics.contains(metric),
-                  onChanged: (bool? value) {
-                    setState(() {
-                      if (value == true) {
-                        selectedMetrics.add(metric);
-                      } else {
-                        selectedMetrics.remove(metric);
-                      }
-                    });
-                  },
-                  controlAffinity: ListTileControlAffinity.leading,
-                  contentPadding: EdgeInsets.zero,
-                  dense: true,
-                );
-              }),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await _generateAndDownloadReport(selectedPeriod, selectedMetrics, selectedFormat);
-              },
-              child: const Text('Download'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
-  Future<void> _generateAndDownloadReport(String period, List<String> metrics, String format) async {
-    try {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Generating report...')),
-        );
-      }
-
-      DateTime? start;
-      DateTime? end = DateTime.now();
-
-      if (period == 'Last 30 Days') {
-        start = end.subtract(const Duration(days: 30));
-      } else if (period == 'Last 90 Days') {
-        start = end.subtract(const Duration(days: 90));
-      } else if (period == 'Last Year') {
-        start = end.subtract(const Duration(days: 365));
-      } else {
-        // All Time
-        start = null;
-        end = null;
-      }
-
-      final analyticsService = AnalyticsService();
-      
-      if (format == 'PDF') {
-        // Generate PDF
-        final pdfBytes = await analyticsService.generatePdfReport(
-          start: start,
-          end: end,
-          metrics: metrics,
-        );
-        
-        if (kIsWeb) {
-          // Web: Download PDF using blob
-          // Web: Download PDF using helper
-          downloadFileWeb(pdfBytes, 'analytics_report_${DateTime.now().millisecondsSinceEpoch}.pdf', 'application/pdf');
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('PDF report downloaded successfully!'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-        } else {
-          // Desktop/Mobile: Save PDF to file system
-          Directory? directory;
-          if (Platform.isWindows) {
-            directory = await getDownloadsDirectory();
-          } else {
-            directory = await getApplicationDocumentsDirectory();
-          }
-
-          if (directory != null) {
-            final path = '${directory.path}/analytics_report_${DateTime.now().millisecondsSinceEpoch}.pdf';
-            final file = File(path);
-            await file.writeAsBytes(pdfBytes);
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('PDF report saved to: $path'),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-          }
-        }
-      } else {
-        // Generate CSV
-        final csvData = await analyticsService.downloadAnalyticsReport(
-          start: start,
-          end: end,
-          metrics: metrics,
-        );
-        
-        if (kIsWeb) {
-          // Web: Download CSV using blob
-          // Web: Download CSV using helper
-          final bytes = Uint8List.fromList(csvData.codeUnits);
-          downloadFileWeb(bytes, 'analytics_report_${DateTime.now().millisecondsSinceEpoch}.csv', 'text/csv');
-
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('CSV report downloaded successfully!'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-        } else {
-          // Desktop/Mobile: Save CSV to file system
-          Directory? directory;
-          if (Platform.isWindows) {
-            directory = await getDownloadsDirectory();
-          } else {
-            directory = await getApplicationDocumentsDirectory();
-          }
-
-          if (directory != null) {
-            final path = '${directory.path}/analytics_report_${DateTime.now().millisecondsSinceEpoch}.csv';
-            final file = File(path);
-            await file.writeAsString(csvData);
-
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('CSV report saved to: $path'),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 5),
-                ),
-              );
-            }
-          }
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error saving report: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Widget _buildMetricCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-    bool isLoading = false,
-  }) {
-    return Card(
-      elevation: 2,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const Spacer(),
-                if (isLoading)
-                  SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
 
 

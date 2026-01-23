@@ -186,9 +186,11 @@ class _SellerAnalyticsScreenState extends State<SellerAnalyticsScreen> {
           if (isRevenueOrder) {
              orderSellerRevenue += total;
              // Update Product Performance
-             String prodId = item['productId'] ?? item['name']; // Fallback
+             String prodId = (item['productId'] as String?) ?? (item['name'] as String?) ?? 'unknown_id';
+             String prodName = (item['name'] as String?) ?? 'Unknown Product';
+             
              if (!_productPerformance.containsKey(prodId)) {
-               _productPerformance[prodId] = {'name': item['name'], 'qty': 0, 'revenue': 0.0};
+               _productPerformance[prodId] = {'name': prodName, 'qty': 0, 'revenue': 0.0};
              }
              _productPerformance[prodId]!['qty'] += qty;
              _productPerformance[prodId]!['revenue'] += total;

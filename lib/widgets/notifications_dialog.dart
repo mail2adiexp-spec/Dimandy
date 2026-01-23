@@ -2,10 +2,40 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-class NotificationsDialog extends StatelessWidget {
+class NotificationsDialog extends StatefulWidget {
   final String userId;
 
   const NotificationsDialog({super.key, required this.userId});
+
+  @override
+  State<NotificationsDialog> createState() => _NotificationsDialogState();
+}
+
+class _NotificationsDialogState extends State<NotificationsDialog> {
+  @override
+  void initState() {
+    super.initState();
+    // Automatically mark all notifications as read when dialog opens
+    _markAllAsRead();
+  }
+
+  Future<void> _markAllAsRead() async {
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+      final snapshot = await FirebaseFirestore.instance
+          .collection('notifications')
+          .where('toUserId', isEqualTo: widget.userId)
+          .where('isRead', isEqualTo: false)
+          .get();
+      
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+    } catch (e) {
+      debugPrint('Error marking notifications as read: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -25,26 +55,11 @@ class NotificationsDialog extends StatelessWidget {
                   'Notifications',
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
-                TextButton(
-                  onPressed: () async {
-                    // Mark all as read
-                    final batch = FirebaseFirestore.instance.batch();
-                    final snapshot = await FirebaseFirestore.instance
-                        .collection('notifications')
-                        .where('toUserId', isEqualTo: userId)
-                        .where('isRead', isEqualTo: false)
-                        .get();
-                    
-                    for (var doc in snapshot.docs) {
-                      batch.update(doc.reference, {'isRead': true});
-                    }
-                    await batch.commit();
-                  },
-                  child: const Text('Mark all as read'),
-                ),
                 IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
                 ),
               ],
             ),
@@ -53,7 +68,7 @@ class NotificationsDialog extends StatelessWidget {
               child: StreamBuilder<QuerySnapshot>(
                 stream: FirebaseFirestore.instance
                     .collection('notifications')
-                    .where('toUserId', isEqualTo: userId)
+                    .where('toUserId', isEqualTo: widget.userId)
                     .orderBy('createdAt', descending: true)
                     .snapshots(),
                 builder: (context, snapshot) {

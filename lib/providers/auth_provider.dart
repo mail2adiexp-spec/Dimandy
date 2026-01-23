@@ -25,6 +25,7 @@ class AppUser {
   final String? phoneNumber;
   final String? photoURL;
   final String? role;
+  final String? storeId;
   final Map<String, dynamic> permissions;
 
   AppUser({
@@ -34,6 +35,7 @@ class AppUser {
     this.phoneNumber,
     this.photoURL,
     this.role,
+    this.storeId,
     this.permissions = const {},
   });
 
@@ -101,13 +103,14 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser!.role == UserRole.customerCare;
   }
 
-  void _onAuthStateChanged(User? firebaseUser) async {
+  Future<void> _onAuthStateChanged(User? firebaseUser) async {
     if (firebaseUser != null) {
       print('🔄 Auth state changed for user: ${firebaseUser.uid}');
       print('📸 PhotoURL: ${firebaseUser.photoURL}');
 
       // Fetch user role from Firestore
       String userRole = 'user';
+      String? storeId;
       Map<String, dynamic> permissions = {};
 
       String? firestorePhone;
@@ -119,6 +122,7 @@ class AuthProvider extends ChangeNotifier {
         if (userDoc.exists) {
           final data = userDoc.data() ?? {};
           userRole = data['role'] ?? 'user';
+          storeId = data['storeId'] as String?;
           permissions = data['permissions'] as Map<String, dynamic>? ?? {};
           firestorePhone = data['phoneNumber'] as String? ?? data['phone'] as String?;
           
@@ -142,6 +146,7 @@ class AuthProvider extends ChangeNotifier {
         phoneNumber: firestorePhone ?? firebaseUser.phoneNumber,
         photoURL: firebaseUser.photoURL,
         role: userRole,
+        storeId: storeId,
         permissions: permissions,
       );
 
@@ -174,9 +179,9 @@ class AuthProvider extends ChangeNotifier {
 
         // 3) Check allowed email list (fallback)
         final allowedEmails = [
-          'admin@bongbazar.com',
+          'mail2adiexp@gmail.com', // Master Admin
           'sounak@bongbazar.com',
-          'mail2adiexp@gmail.com',
+          'admin@bongbazar.com',
         ];
         bool isAllowedEmail = allowedEmails.contains(firebaseUser.email);
 
@@ -348,10 +353,38 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = _auth.currentUser;
       if (user == null) throw Exception('No user signed in');
+
+      final trimmedPhone = phoneNumber.trim();
+
+      // Check if phone number is already in use by another account
+      QuerySnapshot existingDocs;
+      try {
+        existingDocs = await FirebaseFirestore.instance
+            .collection('users')
+            .where('phoneNumber', isEqualTo: trimmedPhone)
+            .get();
+      } catch (e) {
+        print('Error checking phone uniqueness: $e');
+        throw Exception('System Error: Could not verify phone number uniqueness. Details: $e');
+      }
+
+      if (existingDocs.docs.isNotEmpty) {
+        // If found document is NOT the current user, block it
+        for (final doc in existingDocs.docs) {
+          if (doc.id != user.uid) {
+            throw Exception('This phone number is already associated with another account.');
+          }
+        }
+      }
+
       // Update phone number in Firestore only
-      await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
-        {'phoneNumber': phoneNumber.trim()},
+      await FirebaseFirestore.instance.collection('users').doc(user.uid).set(
+        {'phoneNumber': trimmedPhone},
+        SetOptions(merge: true),
       );
+
+      // Refresh the user data to reflect changes in UI
+      _onAuthStateChanged(_auth.currentUser);
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
@@ -456,5 +489,13 @@ class AuthProvider extends ChangeNotifier {
       print('❌ Upload error: $e');
       throw Exception('Image upload failed: $e');
     }
+  }
+  Future<void> refreshUser() async {
+     final user = _auth.currentUser;
+     if (user != null) {
+       print('🔄 Manually refreshing user profile...');
+       // Re-run the logic to fetch firestore data
+       await _onAuthStateChanged(user);
+     }
   }
 }

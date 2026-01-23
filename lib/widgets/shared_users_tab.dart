@@ -17,6 +17,7 @@ class SharedUsersTab extends StatefulWidget {
 
 class _SharedUsersTabState extends State<SharedUsersTab> {
   String _userFilter = 'All';
+  String _searchQuery = '';
 
   late Stream<QuerySnapshot> _stream;
 
@@ -62,6 +63,25 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
             ),
           ),
         ),
+        // Search Bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search by Mobile Number, Name or Email',
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQuery = value.toLowerCase();
+              });
+            },
+          ),
+        ),
         const Divider(height: 1),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
@@ -76,6 +96,19 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
               }
 
               var users = snapshot.data?.docs ?? [];
+              
+              // Filter by Search Query
+              if (_searchQuery.isNotEmpty) {
+                users = users.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  final name = (data['name'] ?? '').toString().toLowerCase();
+                  final email = (data['email'] ?? '').toString().toLowerCase();
+                  final phone = (data['phone'] ?? '').toString().toLowerCase();
+                  return name.contains(_searchQuery) || 
+                         email.contains(_searchQuery) || 
+                         phone.contains(_searchQuery);
+                }).toList();
+              }
               
               // Client-side filtering and sorting based on _userFilter
               if (_userFilter == 'Most Active') {
@@ -154,7 +187,11 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                   final email = userData['email'] ?? 'N/A';
                   final phone = userData['phone'] ?? 'N/A';
                   final role = userData['role'] ?? 'user';
+                  final address = userData['address'] as String?;
+                  final deliveryAddress = userData['deliveryAddress'] ?? userData['shippingAddress']; // Flexible key
                   final servicePincode = userData['service_pincode'] as String?;
+                  final List<String> servicePincodes = (userData['servicePincodes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+                  
                   final createdAt = userData['createdAt'] != null
                       ? (userData['createdAt'] as Timestamp).toDate()
                       : null;
@@ -212,6 +249,8 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                               _buildInfoRow('Role', role),
                               if (servicePincode != null)
                                 _buildInfoRow('Service Pincode', servicePincode),
+                              if (servicePincodes.isNotEmpty)
+                                _buildInfoRow('Service Areas (Pincodes)', servicePincodes.join(', ')),
                               if (createdAt != null)
                                 _buildInfoRow('Joined', DateFormat('dd MMM yyyy, hh:mm a').format(createdAt)),
                               const SizedBox(height: 16),
@@ -228,7 +267,10 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                                         email,
                                         phone,
                                         role,
+                                        address,
+                                        deliveryAddress,
                                         servicePincode,
+                                        servicePincodes,
                                       ),
                                       icon: const Icon(Icons.edit),
                                       label: const Text('Edit'),
@@ -303,74 +345,189 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
     String email,
     String phone,
     String role,
+    String? address,
+    dynamic deliveryAddress, // String or Map
     String? servicePincode,
+    List<String>? currentServicePincodes,
   ) {
     final nameController = TextEditingController(text: name);
+    final emailController = TextEditingController(text: email);
     final phoneController = TextEditingController(text: phone);
+    final addressController = TextEditingController(text: address ?? '');
+    
+    // Handle Delivery Address
+    String initialDeliveryAddress = '';
+    if (deliveryAddress is String) {
+      initialDeliveryAddress = deliveryAddress;
+    } else if (deliveryAddress is Map) {
+      // If it's a map, try to format it nicely stringified, or just pick addressLine1
+      // For simplicity let's just JSON encode or pick a specific field if we knew schema
+      // Common schema: {addressLine1, city, state, pincode}
+      final l1 = deliveryAddress['addressLine1'] ?? '';
+      final city = deliveryAddress['city'] ?? '';
+      final state = deliveryAddress['state'] ?? '';
+      final pin = deliveryAddress['pincode'] ?? '';
+      initialDeliveryAddress = '$l1, $city, $state - $pin';
+    }
+    final deliveryAddressController = TextEditingController(text: initialDeliveryAddress);
+
     final pincodeController = TextEditingController(text: servicePincode ?? '');
+    final servicePincodesController = TextEditingController(text: currentServicePincodes?.join(', ') ?? '');
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit User Details'),
-        content: SingleChildScrollView(
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 500, // Fixed width for "Square Box" feel on larger screens
+          padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(labelText: 'Name'),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Edit User Details',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
               ),
-              TextField(
-                controller: phoneController,
-                decoration: const InputDecoration(labelText: 'Phone'),
-              ),
-              if (role == 'delivery_partner')
-                TextField(
-                  controller: pincodeController,
-                  decoration: const InputDecoration(labelText: 'Service Pincode'),
+              const Divider(),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      TextField(
+                        controller: nameController,
+                        decoration: const InputDecoration(
+                          labelText: 'Name',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.person),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.email),
+                        ),
+                      ),
+                       const SizedBox(height: 16),
+                      TextField(
+                        controller: phoneController,
+                        decoration: const InputDecoration(
+                          labelText: 'Mobile Number',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.phone),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: addressController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Profile Address',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.home),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: deliveryAddressController,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Delivery Address (Primary)',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.local_shipping),
+                          helperText: 'Note: Updating this might affect simple string addresses only.',
+                        ),
+                      ),
+                      if (role == 'delivery_partner') ...[
+                        const SizedBox(height: 16),
+                        TextField(
+                          controller: pincodeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Service Pincode',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.map),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final Map<String, dynamic> updates = {
+                        'name': nameController.text.trim(),
+                        'email': emailController.text.trim(),
+                        'phone': phoneController.text.trim(),
+                        'address': addressController.text.trim(),
+                        // For delivery address, if it was a string we update it as string.
+                        // If it was a map, we might be breaking structure if we save as string.
+                        // To be safe, let's save to a generic 'deliveryAddress' field as string if it wasn't a map,
+                        // or if user edited it we might just save it as text note for now.
+                        // Better approach: Update 'address' (profile) and 'phone'. 
+                        // For delivery address, let's update 'shippingAddress' if it exists as string, else create.
+                        'shippingAddress': deliveryAddressController.text.trim(), 
+                      };
+                      if (role == 'delivery_partner') {
+                        updates['service_pincode'] = pincodeController.text.trim();
+                      }
+                      if (role == 'seller') {
+                         final raw = servicePincodesController.text.trim();
+                         if (raw.isNotEmpty) {
+                           updates['servicePincodes'] = raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+                         } else {
+                           updates['servicePincodes'] = [];
+                         }
+                      }
+
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(userId)
+                          .update(updates);
+
+                      if (mounted) {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('User details updated successfully')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.save),
+                  label: const Text('Save Changes'),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                final updates = {
-                  'name': nameController.text.trim(),
-                  'phone': phoneController.text.trim(),
-                };
-                if (role == 'delivery_partner') {
-                  updates['service_pincode'] = pincodeController.text.trim();
-                }
-
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(userId)
-                    .update(updates);
-
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('User updated successfully')),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: $e')),
-                  );
-                }
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }

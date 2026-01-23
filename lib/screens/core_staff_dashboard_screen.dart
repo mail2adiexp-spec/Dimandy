@@ -43,48 +43,118 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
   Future<void> _fetchDashboardMetrics() async {
     print('Fetching dashboard metrics...');
     setState(() => _lastError = null); // Clear previous error
-    try {
-       // Using get() instead of count() to avoid potential index/aggregation issues for now
-       // and to easier verify permissions.
-       final productsSnap = await FirebaseFirestore.instance.collection('products').get();
-       final ordersSnap = await FirebaseFirestore.instance.collection('orders').get();
-       final usersSnap = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'user').get();
-       
-       print('Products: ${productsSnap.size}, Orders: ${ordersSnap.size}, Users: ${usersSnap.size}');
 
-       if (mounted) {
-         setState(() {
-           _metrics['products'] = productsSnap.size.toString();
-           _metrics['orders'] = ordersSnap.size.toString();
-           _metrics['users'] = usersSnap.size.toString();
-           _metrics['revenue'] = '₹0'; // Placeholder
-           _lastError = null;
-           
-           // CRITICAL FIX: Rebuild the Dashboard tab widget to reflect new values
-           if (_tabViews.isNotEmpty) {
-             _tabViews[0] = KeyedSubtree(
-                key: ValueKey('dashboard_${_metrics.toString()}'),
-                child: _buildDashboardHome(),
-             );
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final storeId = authProvider.currentUser?.storeId;
+
+      int productCount = 0;
+      int orderCount = 0;
+      int userCount = 0;
+
+      if (storeId != null && storeId.isNotEmpty) {
+        print('🔒 Fetching store-specific metrics for store: $storeId');
+        
+        // 1. Fetch Store Pincodes for Order filtering
+        List<String> pincodes = [];
+        try {
+          final storeDoc = await FirebaseFirestore.instance.collection('stores').doc(storeId).get();
+          if (storeDoc.exists) {
+            pincodes = List<String>.from(storeDoc.data()?['pincodes'] ?? []);
+          }
+        } catch (e) {
+          print('Error fetching store details: $e');
+        }
+
+        // 2. Filter Products
+        final productsSnap = await FirebaseFirestore.instance
+            .collection('products')
+            .where('storeIds', arrayContains: storeId)
+            .count()
+            .get();
+        productCount = productsSnap.count ?? 0;
+
+        // 3. Filter Orders (by pincode)
+        // Firestore 'whereIn' limit is 10. If more, we might need multiple queries or partial data.
+        if (pincodes.isNotEmpty) {
+           if (pincodes.length <= 10) {
+             final ordersSnap = await FirebaseFirestore.instance
+                 .collection('orders')
+                 .where('deliveryPincode', whereIn: pincodes)
+                 .count()
+                 .get();
+             orderCount = ordersSnap.count ?? 0;
+           } else {
+             // Handling > 10 pincodes: split into chunks
+             int totalOrders = 0;
+             for (var i = 0; i < pincodes.length; i += 10) {
+                final end = (i + 10 < pincodes.length) ? i + 10 : pincodes.length;
+                final chunk = pincodes.sublist(i, end);
+                final chunkSnap = await FirebaseFirestore.instance
+                    .collection('orders')
+                    .where('deliveryPincode', whereIn: chunk)
+                    .count()
+                    .get();
+                totalOrders += (chunkSnap.count ?? 0);
+             }
+             orderCount = totalOrders;
+           }
+        } else {
+          // If store has no pincodes, it theoretically has no orders?
+          orderCount = 0;
+        }
+
+        // 4. Users - N/A for specific store views usually, or just leave as is?
+        // Setting to 0/Hyphen to avoid confusion, or count all if permission allows?
+        // Assuming 'store staff' shouldn't see global user count.
+        userCount = 0; 
+
+      } else {
+        print('🌍 Fetching global metrics');
+        final productsSnap = await FirebaseFirestore.instance.collection('products').count().get();
+        final ordersSnap = await FirebaseFirestore.instance.collection('orders').count().get();
+        final usersSnap = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'user').count().get();
+        
+        productCount = productsSnap.count ?? 0;
+        orderCount = ordersSnap.count ?? 0;
+        userCount = usersSnap.count ?? 0;
+      }
+
+      print('Products: $productCount, Orders: $orderCount, Users: $userCount');
+
+      if (mounted) {
+        setState(() {
+          _metrics['products'] = productCount.toString();
+          _metrics['orders'] = orderCount.toString();
+          _metrics['users'] = storeId != null ? 'N/A' : userCount.toString();
+          _metrics['revenue'] = '₹0'; // Placeholder
+          _lastError = null;
+          
+          // CRITICAL FIX: Rebuild the Dashboard tab widget to reflect new values
+          if (_tabViews.isNotEmpty) {
+            _tabViews[0] = KeyedSubtree(
+              key: ValueKey('dashboard_${_metrics.toString()}'),
+              child: _buildDashboardHome(),
+            );
              // Create new list reference so TabBarView detects change
              _tabViews = List.from(_tabViews);
-           }
-         });
-       }
+          }
+        });
+      }
     } catch (e) {
-       debugPrint('Error fetching metrics: $e');
-       if (mounted) {
-         setState(() {
-           _lastError = e.toString();
-           // Update view to show error
-           if (_tabViews.isNotEmpty) {
-             _tabViews[0] = _buildDashboardHome();
-           }
-         });
-         ScaffoldMessenger.of(context).showSnackBar(
-           SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: Colors.red),
-         );
-       }
+      debugPrint('Error fetching metrics: $e');
+      if (mounted) {
+        setState(() {
+          _lastError = e.toString();
+          // Update view to show error
+          if (_tabViews.isNotEmpty) {
+            _tabViews[0] = _buildDashboardHome();
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading dashboard: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -436,7 +506,7 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
       collection: 'partner_requests',
       // role is n/a for requests collection usually, or we filter by something else
       // In Admin Panel it is used without role filter for this collection
-      onEdit: (id, name, email, phone, role, pincode) {}, // Requests usually not editable like users
+      onEdit: (id, data) {}, // Requests usually not editable like users
       onDelete: (id, email) { _deleteRequest(id); },
       onRequestAction: _updateRequestStatus,
     );
@@ -475,9 +545,14 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
      }
   }
 
-  void _editUser(String userId, String name, String email, String phone, String role, String? servicePincode) {
+  void _editUser(String userId, Map<String, dynamic> data) {
       // Use SharedUsersTab style dialog or similar. 
       // For brevity, implementing simple edit dialog
+      final name = data['name'] ?? '';
+      final phone = data['phone'] ?? '';
+      final role = data['role'] ?? '';
+      final servicePincode = data['service_pincode'];
+
       final nameCtrl = TextEditingController(text: name);
       final phoneCtrl = TextEditingController(text: phone);
       final pincodeCtrl = TextEditingController(text: servicePincode ?? '');

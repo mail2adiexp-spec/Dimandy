@@ -10,15 +10,21 @@ class BookServiceScreen extends StatefulWidget {
 
   final String serviceName;
   final String providerName;
+  final String providerId;
   final String? providerImage;
-  final double minCharge; // Minimum booking amount
+  final double ratePerKm; // Rate per kilometer
+  final double minBookingAmount; // Minimum booking amount
+  final double preBookingAmount; // Pre-booking/advance amount
 
   const BookServiceScreen({
     super.key,
     required this.serviceName,
     required this.providerName,
+    required this.providerId,
     this.providerImage,
-    required this.minCharge,
+    this.ratePerKm = 0.0,
+    this.minBookingAmount = 0.0,
+    this.preBookingAmount = 0.0,
   });
 
   @override
@@ -32,6 +38,29 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   final _notesController = TextEditingController();
   final _pickupLocationController = TextEditingController();
   final _dropLocationController = TextEditingController();
+  final _distanceController = TextEditingController();
+  
+  // Payment method selection
+  String _paymentMethod = 'prebooking'; // 'prebooking' or 'full'
+  
+  @override
+  void initState() {
+    super.initState();
+    print('DEBUG BOOKING SCREEN: ratePerKm=${widget.ratePerKm}, minBookingAmount=${widget.minBookingAmount}, preBookingAmount=${widget.preBookingAmount}');
+  }
+  
+  double get _calculatedTotal {
+    // For vehicle services: Rate × Distance, with minimum check
+    print('DEBUG CALC: ratePerKm=${widget.ratePerKm}, distance=${_distanceController.text}, minBookingAmount=${widget.minBookingAmount}');
+    final dist = double.tryParse(_distanceController.text) ?? 0;
+    final calculated = widget.ratePerKm * dist;
+    // Apply minimum if set, otherwise use calculated amount
+    final total = widget.minBookingAmount > 0 
+        ? (calculated > widget.minBookingAmount ? calculated : widget.minBookingAmount)
+        : calculated;
+    print('DEBUG CALC: total = $total (max of $calculated or minimum ${widget.minBookingAmount})');
+    return total;
+  }
 
   bool get _isVehicleService {
     final serviceLower = widget.serviceName.toLowerCase();
@@ -41,6 +70,7 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
         serviceLower.contains('taxi') ||
         serviceLower.contains('cab') ||
         serviceLower.contains('vehicle') ||
+        serviceLower.contains('vehical') || // Handle common typo
         serviceLower.contains('transport');
   }
 
@@ -50,6 +80,7 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
     _notesController.dispose();
     _pickupLocationController.dispose();
     _dropLocationController.dispose();
+    _distanceController.dispose();
     super.dispose();
   }
 
@@ -153,6 +184,14 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
         );
         return;
       }
+      
+      if (_distanceController.text.trim().isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Please enter approximate distance'), 
+          backgroundColor: Colors.red,
+        ));
+        return;
+      }
     } else {
       // Regular service validation
       if (_addressController.text.trim().isEmpty) {
@@ -166,26 +205,58 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
       }
     }
 
-    // Add minimum booking amount to cart (minimum ₹50)
-    final finalCharge = widget.minCharge >= 50 ? widget.minCharge : 50.0;
+    // Add calculated amount to cart based on payment method
+    final finalCharge = _calculatedTotal >= 50 ? _calculatedTotal : 50.0;
+    
+    // Determine the amount to charge now based on payment method
+    final amountToCharge = _paymentMethod == 'prebooking' && widget.preBookingAmount > 0
+        ? widget.preBookingAmount
+        : finalCharge;
+    
     final product = Product(
       id: 'svc_${widget.serviceName.replaceAll(' ', '_').toLowerCase()}_${widget.providerName.replaceAll(' ', '_').toLowerCase()}',
       name: '${widget.serviceName} Booking - ${widget.providerName}',
-      description: 'Service booking (minimum ₹50)',
-      price: finalCharge,
+      description: 'Service booking (Dist: ${_distanceController.text}km)',
+      price: amountToCharge,
       imageUrl:
           widget.providerImage ??
           'https://via.placeholder.com/120x120.png?text=Service',
       category: 'Services',
       unit: 'service',
-      sellerId: '',
+      sellerId: widget.providerId,
     );
-    context.read<CartProvider>().addProduct(product);
+
+    // Collect booking metadata
+    final metadata = {
+      'bookingDate': _selectedDate!.toIso8601String(),
+      'bookingTime': '${_selectedTime!.hour}:${_selectedTime!.minute}',
+      'formattedDate': _formatDate(_selectedDate!),
+      'formattedTime': _formatTime(_selectedTime!),
+      'notes': _notesController.text.trim(),
+      'address': _isVehicleService 
+          ? 'Pickup: ${_pickupLocationController.text}, Drop: ${_dropLocationController.text}' 
+          : _addressController.text.trim(),
+      'serviceType': _isVehicleService ? 'transport' : 'general',
+      'pickupLocation': _isVehicleService ? _pickupLocationController.text.trim() : null,
+      'dropLocation': _isVehicleService ? _dropLocationController.text.trim() : null,
+      'distanceKm': _isVehicleService ? _distanceController.text.trim() : null,
+      'ratePerKm': widget.ratePerKm,
+      'paymentMethod': _paymentMethod,
+      'preBookingAmount': widget.preBookingAmount,
+      'totalAmount': finalCharge,
+      'remainingAmount': _paymentMethod == 'prebooking' 
+          ? finalCharge - widget.preBookingAmount 
+          : 0.0,
+    };
+
+    context.read<CartProvider>().addProduct(product, metadata: metadata);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Added to cart: Minimum booking ₹${finalCharge.toStringAsFixed(0)}',
+          _paymentMethod == 'prebooking'
+              ? 'Added to cart: Pre-booking ₹${amountToCharge.toStringAsFixed(0)} (Remaining: ₹${(finalCharge - amountToCharge).toStringAsFixed(0)} - Pay on Trip)'
+              : 'Added to cart: Full amount ₹${finalCharge.toStringAsFixed(0)}',
         ),
       ),
     );
@@ -196,6 +267,7 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
 
   @override
   Widget build(BuildContext context) {
+    print('DEBUG: BookServiceScreen build. Service: ${widget.serviceName}, RatePerKm: ${widget.ratePerKm}'); // DEBUG PRINT
     return Scaffold(
       appBar: AppBar(title: const Text('Book Service'), elevation: 2),
       body: SingleChildScrollView(
@@ -381,6 +453,36 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
                   filled: true,
                 ),
               ),
+              const SizedBox(height: 16),
+              
+              // Distance field - always required for vehicle services
+              Text(
+                'Approximate Distance (km) *',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _distanceController,
+                keyboardType: TextInputType.number,
+                decoration: InputDecoration(
+                  hintText: 'e.g. 5.5',
+                  suffixText: 'km',
+                  helperText: _distanceController.text.trim().isEmpty
+                      ? 'Rate: ₹${widget.ratePerKm}/km${widget.minBookingAmount > 0 ? ", Min: ₹${widget.minBookingAmount.toStringAsFixed(0)}" : ""}'
+                      : () {
+                          final dist = double.tryParse(_distanceController.text) ?? 0;
+                          final calculated = widget.ratePerKm * dist;
+                          final isMinApplied = widget.minBookingAmount > 0 && calculated < widget.minBookingAmount;
+                          return 'Amount: ₹${_calculatedTotal.toStringAsFixed(0)}${isMinApplied ? " (Minimum applied)" : ""}${widget.preBookingAmount > 0 ? " | Pre-booking: ₹${widget.preBookingAmount.toStringAsFixed(0)}" : ""}';
+                        }(),
+                  helperStyle: _distanceController.text.trim().isNotEmpty
+                      ? const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)
+                      : null,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  filled: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
             ] else ...[
               // Service Address for non-vehicle services
               Text(
@@ -425,7 +527,63 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
                 filled: true,
               ),
             ),
-            const SizedBox(height: 32),
+            const SizedBox(height: 24),
+
+            // Payment Method Selection (only for vehicle services with pre-booking)
+            if (_isVehicleService && widget.preBookingAmount > 0) ...[
+              Text(
+                'Payment Method',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey[300]!),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      title: const Text(
+                        'Pre-booking Amount Only',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        'Pay ₹${widget.preBookingAmount.toStringAsFixed(0)} now\nRemaining amount: Pay on Trip Completion',
+                        style: const TextStyle(fontSize: 12, color: Colors.green),
+                      ),
+                      value: 'prebooking',
+                      groupValue: _paymentMethod,
+                      activeColor: Colors.green,
+                      onChanged: (value) {
+                        setState(() {
+                          _paymentMethod = value!;
+                        });
+                      },
+                    ),
+                    const Divider(height: 1),
+                    RadioListTile<String>(
+                      title: const Text(
+                        'Full Payment',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        'Pay full amount ₹${_calculatedTotal.toStringAsFixed(0)} now',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      value: 'full',
+                      groupValue: _paymentMethod,
+                      onChanged: (value) {
+                        setState(() {
+                          _paymentMethod = value!;
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
 
           ],
         ),

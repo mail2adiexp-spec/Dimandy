@@ -85,6 +85,7 @@ class _SignInFormState extends State<_SignInForm> {
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
+  bool _isPasswordVisible = false;
 
   @override
   void dispose() {
@@ -134,8 +135,20 @@ class _SignInFormState extends State<_SignInForm> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _passCtrl,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: !_isPasswordVisible,
                 validator: (v) => (v == null || v.isEmpty)
                     ? 'Please enter your password'
                     : null,
@@ -278,6 +291,8 @@ class _SignUpFormState extends State<_SignUpForm> {
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   bool _loading = false;
+  bool _isPasswordVisible = false;
+  bool _isConfirmPasswordVisible = false;
 
   @override
   void dispose() {
@@ -337,17 +352,41 @@ class _SignUpFormState extends State<_SignUpForm> {
               const SizedBox(height: 12),
               TextFormField(
                 controller: _passCtrl,
-                decoration: const InputDecoration(labelText: 'Password'),
-                obscureText: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isPasswordVisible = !_isPasswordVisible;
+                      });
+                    },
+                  ),
+                ),
+                obscureText: !_isPasswordVisible,
                 validator: PasswordValidator.validate,
               ),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _confirmCtrl,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Confirm Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _isConfirmPasswordVisible
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                      });
+                    },
+                  ),
                 ),
-                obscureText: true,
+                obscureText: !_isConfirmPasswordVisible,
                 validator: (v) =>
                     (v != _passCtrl.text) ? 'Passwords do not match' : null,
               ),

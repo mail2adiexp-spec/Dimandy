@@ -367,6 +367,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           quantity: cartItem.quantity,
           price: cartItem.product.price,
           imageUrl: cartItem.product.imageUrl,
+          metadata: cartItem.metadata,
         );
       }).toList();
 

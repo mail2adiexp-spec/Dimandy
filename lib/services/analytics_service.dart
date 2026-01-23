@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:intl/intl.dart';
 
 // Data Models for Analytics
 class DailySales {
@@ -39,6 +40,52 @@ class UserGrowth {
     required this.date,
     required this.newUsers,
     required this.totalUsers,
+  });
+}
+
+
+
+class PlatformMetrics {
+  final int totalSellers;
+  final int activeSellers;
+  final int totalUsers;
+  final int activeUsers;
+  final int totalProviders;
+  final int activeProviders;
+  final int totalDrivers;
+  final int activeDrivers;
+  final double totalPlatformFees;
+  final double sellerPlatformFees;
+  final double servicePlatformFees;
+
+  PlatformMetrics({
+    required this.totalSellers,
+    required this.activeSellers,
+    required this.totalUsers,
+    required this.activeUsers,
+    required this.totalProviders,
+    required this.activeProviders,
+    required this.totalDrivers,
+    required this.activeDrivers,
+    required this.totalPlatformFees,
+    required this.sellerPlatformFees,
+    required this.servicePlatformFees,
+  });
+}
+
+class EntityPerformance {
+  final String id;
+  final String name;
+  final int count; // Orders/Deliveries/Jobs
+  final double revenue; // Revenue/Earnings
+  final int items; // Items sold (optional)
+
+  EntityPerformance({
+    required this.id,
+    required this.name,
+    required this.count,
+    required this.revenue,
+    required this.items,
   });
 }
 
@@ -399,6 +446,270 @@ class AnalyticsService {
       return {};
     }
   }
+
+  // ==================== COMPREHENSIVE METRICS ====================
+
+  Future<PlatformMetrics> getPlatformMetrics() async {
+    try {
+      // 1. Fetch Users Data
+      final usersSnapshot = await _firestore.collection('users').get();
+      
+      int totalSellers = 0;
+      int activeSellers = 0;
+      int totalUsers = 0;
+      int activeUsers = 0;
+      int totalProviders = 0;
+      int activeProviders = 0;
+      int totalDrivers = 0;
+      int activeDrivers = 0;
+
+      for (var doc in usersSnapshot.docs) {
+        final data = doc.data();
+        final role = data['role'] as String? ?? 'user';
+        final status = data['status'] as String? ?? 'approved'; // Default to approved for legacy data
+        final isActive = status == 'approved';
+
+        if (role == 'seller') {
+          totalSellers++;
+          if (isActive) activeSellers++;
+        } else if (role == 'user') {
+          totalUsers++;
+          if (isActive) activeUsers++;
+        } else if (role == 'service_provider') {
+          totalProviders++;
+          if (isActive) activeProviders++;
+        } else if (role == 'delivery_partner') {
+          totalDrivers++;
+          if (isActive) activeDrivers++;
+        }
+      }
+
+      // 2. Calculate Platform Fees (Split by Seller and Service)
+      final ordersSnapshot = await _firestore
+          .collection('orders')
+          .where('status', isEqualTo: 'delivered')
+          .get();
+
+      double totalFees = 0.0;
+      double sellerFees = 0.0;
+      double serviceFees = 0.0;
+
+      for (var doc in ordersSnapshot.docs) {
+        final data = doc.data();
+        // Check for items to calculate split revenue
+        // If items are available, iterate and split
+        // If not (legacy), rely on totalAmount and assume it's a product order (seller)
+        
+        List<dynamic> items = [];
+        if (data.containsKey('items')) {
+            items = data['items'] as List<dynamic>;
+        }
+
+        if (items.isNotEmpty) {
+            double orderSellerRevenue = 0.0;
+            double orderServiceRevenue = 0.0;
+
+            for (var item in items) {
+                final category = item['category'] as String? ?? 'Products';
+                final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                
+                if (category == 'Services' || category == 'Service') {
+                     orderServiceRevenue += (price * qty);
+                } else {
+                     orderSellerRevenue += (price * qty);
+                }
+            }
+            
+            // Apply 10% fee
+            sellerFees += (orderSellerRevenue * 0.10);
+            serviceFees += (orderServiceRevenue * 0.10);
+
+        } else {
+             // Fallback for legacy orders without items map in top level or if empty
+             // Assume product order
+             final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+             final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+             double goodsValue = totalAmount - deliveryFee;
+             if (goodsValue < 0) goodsValue = 0;
+             sellerFees += (goodsValue * 0.10);
+        }
+      }
+      
+      totalFees = sellerFees + serviceFees;
+
+      return PlatformMetrics(
+        totalSellers: totalSellers,
+        activeSellers: activeSellers,
+        totalUsers: totalUsers,
+        activeUsers: activeUsers,
+        totalProviders: totalProviders,
+        activeProviders: activeProviders,
+        totalDrivers: totalDrivers,
+        activeDrivers: activeDrivers,
+        totalPlatformFees: totalFees,
+        sellerPlatformFees: sellerFees,
+        servicePlatformFees: serviceFees,
+      );
+
+    } catch (e) {
+      print('Error getting platform metrics: $e');
+      return PlatformMetrics(
+        totalSellers: 0, activeSellers: 0,
+        totalUsers: 0, activeUsers: 0,
+        totalProviders: 0, activeProviders: 0,
+        totalDrivers: 0, activeDrivers: 0,
+        totalPlatformFees: 0.0,
+        sellerPlatformFees: 0.0,
+        servicePlatformFees: 0.0,
+      );
+    }
+  }
+
+  // ==================== GRANULAR REPORTS ====================
+
+  /// Get performance metrics for all Sellers
+  Future<List<EntityPerformance>> getSellersPerformance({DateTime? start, DateTime? end}) async {
+    return _getEntityPerformance(
+      start: start,
+      end: end,
+      role: 'seller',
+      itemType: 'product',
+    );
+  }
+
+  /// Get performance metrics for all Service Providers
+  Future<List<EntityPerformance>> getServiceProvidersPerformance({DateTime? start, DateTime? end}) async {
+    return _getEntityPerformance(
+      start: start,
+      end: end,
+      role: 'service_provider',
+      itemType: 'service',
+    );
+  }
+
+  /// Helper to aggregate performance based on role and item type
+  Future<List<EntityPerformance>> _getEntityPerformance({
+    DateTime? start,
+    DateTime? end,
+    required String role,
+    required String itemType,
+  }) async {
+    try {
+      // 1. Fetch all users of this role to map IDs to Names
+      final usersSnapshot = await _firestore.collection('users').where('role', isEqualTo: role).get();
+      final Map<String, String> namesMap = {
+        for (var doc in usersSnapshot.docs) doc.id: (doc.data()['businessName'] ?? doc.data()['name'] ?? 'Unknown Users') as String
+      };
+
+      // 2. Fetch Orders
+      Query query = _firestore.collection('orders').where('status', isEqualTo: 'delivered');
+      if (start != null) query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start));
+      if (end != null) query = query.where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end));
+      
+      final ordersSnapshot = await query.get();
+
+      // 3. Aggregate
+      Map<String, EntityPerformance> performanceMap = {};
+
+      for (var doc in ordersSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final items = (data['items'] as List? ?? []);
+
+        for (var item in items) {
+          if (item['type'] == itemType) {
+            // explicit safely cast
+            final sellerId = item['sellerId'] as String? ?? '';
+            if (sellerId.isEmpty) continue; // Skip if no ID
+
+            final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+            final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+            final total = price * quantity;
+
+            if (performanceMap.containsKey(sellerId)) {
+              final existing = performanceMap[sellerId]!;
+              performanceMap[sellerId] = EntityPerformance(
+                id: sellerId,
+                name: existing.name,
+                count: existing.count + 1, // Count line items or orders? Let's count line items here for simplicity or track unique orders
+                revenue: existing.revenue + total,
+                items: existing.items + quantity,
+              );
+            } else {
+              performanceMap[sellerId] = EntityPerformance(
+                id: sellerId,
+                name: namesMap[sellerId] ?? 'Unknown / Deleted',
+                count: 1,
+                revenue: total,
+                items: quantity,
+              );
+            }
+          }
+        }
+      }
+
+      return performanceMap.values.toList()..sort((a, b) => b.revenue.compareTo(a.revenue));
+
+    } catch (e) {
+      print('Error getting $role performance: $e');
+      return [];
+    }
+  }
+
+  /// Get performance metrics for Delivery Partners
+  Future<List<EntityPerformance>> getDeliveryPartnersPerformance({DateTime? start, DateTime? end}) async {
+    try {
+      Query query = _firestore.collection('orders').where('status', isEqualTo: 'delivered');
+      if (start != null) query = query.where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start));
+      if (end != null) query = query.where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end));
+      
+      final ordersSnapshot = await query.get();
+
+      Map<String, EntityPerformance> performanceMap = {};
+
+      for (var doc in ordersSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final partnerId = data['deliveryPartnerId'] as String?;
+        final partnerName = data['deliveryPartnerName'] as String? ?? 'Unknown';
+        
+        if (partnerId == null) continue;
+
+        // For delivery partners, revenue usually means their earnings (deliveryFee), 
+        // OR the total value of goods delivered.
+        // Let's track BOTH delivery fee (earnings) and order value handled.
+        // For this standard report, 'revenue' will store Delivery Fees (earnings). 
+        // If we want order value, we could add another field. 
+        // Let's stick to "Value for Business" which is Delivery Fee paid out.
+        
+        final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        
+        if (performanceMap.containsKey(partnerId)) {
+          final existing = performanceMap[partnerId]!;
+          performanceMap[partnerId] = EntityPerformance(
+            id: partnerId,
+            name: partnerName,
+            count: existing.count + 1, // Total deliveries
+            revenue: existing.revenue + deliveryFee,
+            items: 0, // Not relevant
+          );
+        } else {
+          performanceMap[partnerId] = EntityPerformance(
+            id: partnerId,
+            name: partnerName,
+            count: 1,
+            revenue: deliveryFee,
+            items: 0,
+          );
+        }
+      }
+
+       return performanceMap.values.toList()..sort((a, b) => b.count.compareTo(a.count)); // Sort by delivery count
+
+    } catch (e) {
+      print('Error getting delivery partner performance: $e');
+      return [];
+    }
+  }
   // ==================== EXPORT ====================
 
   /// Generate CSV report of key analytics
@@ -421,8 +732,22 @@ class AnalyticsService {
       }
       csv.writeln('');
 
-      // 1. Overview Metrics
-      csv.writeln('OVERVIEW METRICS');
+      // 1. Comprehensive Metrics (Live Status)
+      final platformMetrics = await getPlatformMetrics();
+      csv.writeln('COMPREHENSIVE METRICS (Live Status)');
+      csv.writeln('Metric,Total,Active');
+      csv.writeln('Sellers,${platformMetrics.totalSellers},${platformMetrics.activeSellers}');
+      csv.writeln('Users,${platformMetrics.totalUsers},${platformMetrics.activeUsers}');
+      csv.writeln('Service Providers,${platformMetrics.totalProviders},${platformMetrics.activeProviders}');
+      csv.writeln('Delivery Partners,${platformMetrics.totalDrivers},${platformMetrics.activeDrivers}');
+      csv.writeln('');
+      csv.writeln('Total Platform Fees (Est. 10%),Rs. ${platformMetrics.totalPlatformFees.toStringAsFixed(2)}');
+      csv.writeln(' - From Sellers,Rs. ${platformMetrics.sellerPlatformFees.toStringAsFixed(2)}');
+      csv.writeln(' - From Services,Rs. ${platformMetrics.servicePlatformFees.toStringAsFixed(2)}');
+      csv.writeln('');
+
+      // 2. Overview Metrics (Selected Period)
+      csv.writeln('OVERVIEW METRICS (Selected Period)');
       csv.writeln('Metric,Value');
       
       if (metrics.contains('Total Revenue')) {
@@ -436,8 +761,6 @@ class AnalyticsService {
       }
       
       if (metrics.contains('Active Users')) {
-        // Note: Active users usually means total registered users, date range might imply "New Users"
-        // For now, we'll just show total users if no date range, or new users if date range
         if (start != null && end != null) {
           final growth = await getUserGrowth(start, end);
           final newUsers = growth.fold<int>(0, (sum, item) => sum + item.newUsers);
@@ -516,6 +839,7 @@ class AnalyticsService {
     }
     
     final topProducts = await getTopProducts(5);
+    final platformMetrics = await getPlatformMetrics();
     
     // Generate PDF
     pdf.addPage(
@@ -524,100 +848,63 @@ class AnalyticsService {
           return pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              // Header
-              pw.Text(
-                'Analytics Report',
-                style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
-              ),
-              pw.SizedBox(height: 8),
-              pw.Text(
-                'Generated on: ${DateTime.now().toString().split('.')[0]}',
-                style: const pw.TextStyle(fontSize: 12),
-              ),
-              pw.Text(
-                start != null && end != null
-                    ? 'Period: ${start.toString().split(' ')[0]} to ${end.toString().split(' ')[0]}'
-                    : 'Period: All Time',
-                style: const pw.TextStyle(fontSize: 12),
-              ),
-              pw.SizedBox(height: 20),
-              
-              // Overview Metrics
-              pw.Text(
-                'Overview Metrics',
-                style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+              pw.Header(
+                level: 0,
+                child: pw.Text('Admin Analytics Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
               ),
               pw.SizedBox(height: 10),
-              pw.Table(
+              pw.Text('Generated: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
+               if (start != null && end != null)
+                pw.Text('Period: ${DateFormat('yyyy-MM-dd').format(start)} to ${DateFormat('yyyy-MM-dd').format(end)}')
+              else
+                pw.Text('Period: All Time'),
+              pw.SizedBox(height: 20),
+
+              // Comprehensive Metrics Table
+              pw.Text('COMPREHENSIVE OVERVIEW (Live Status)', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 5),
+              pw.Table.fromTextArray(
+                context: context,
                 border: pw.TableBorder.all(),
-                children: [
-                  pw.TableRow(
-                    decoration: const pw.BoxDecoration(color: PdfColors.grey300),
-                    children: [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('Metric', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      ),
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('Value', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  if (metrics.contains('Total Revenue'))
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('Total Revenue'),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('₹${revenue.toStringAsFixed(2)}'),
-                        ),
-                      ],
-                    ),
-                  if (metrics.contains('Total Orders'))
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('Total Orders'),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('$orders'),
-                        ),
-                      ],
-                    ),
-                  if (metrics.contains('Active Users'))
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text(start != null && end != null ? 'New Users (in period)' : 'Total Active Users'),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('$users'),
-                        ),
-                      ],
-                    ),
-                  if (metrics.contains('Products Sold'))
-                    pw.TableRow(
-                      children: [
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('Products Sold'),
-                        ),
-                        pw.Padding(
-                          padding: const pw.EdgeInsets.all(8),
-                          child: pw.Text('$productsSold'),
-                        ),
-                      ],
-                    ),
+                headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                headers: ['Entity', 'Total', 'Active'],
+                data: [
+                  ['Sellers', '${platformMetrics.totalSellers}', '${platformMetrics.activeSellers}'],
+                  ['Users', '${platformMetrics.totalUsers}', '${platformMetrics.activeUsers}'],
+                  ['Service Providers', '${platformMetrics.totalProviders}', '${platformMetrics.activeProviders}'],
+                  ['Delivery Partners', '${platformMetrics.totalDrivers}', '${platformMetrics.activeDrivers}'],
                 ],
               ),
+              pw.SizedBox(height: 5),
+              pw.Text('Total Platform Fees (Est. 10%): Rs. ${platformMetrics.totalPlatformFees.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 10, top: 4),
+                child: pw.Text('• From Sellers: Rs. ${platformMetrics.sellerPlatformFees.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+              ),
+              pw.Padding(
+                padding: const pw.EdgeInsets.only(left: 10, top: 2),
+                child: pw.Text('• From Services: Rs. ${platformMetrics.servicePlatformFees.toStringAsFixed(2)}', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+              ),
+              pw.Divider(),
+              pw.SizedBox(height: 10),
+
+              pw.Text('SELECTED PERIOD ANALYTICS', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 10),
+              pw.Wrap(
+                spacing: 20,
+                runSpacing: 20,
+                children: [
+                  if (metrics.contains('Total Revenue'))
+                    _buildPdfMetricCard('Total Revenue', 'Rs. ${revenue.toStringAsFixed(2)}'),
+                  if (metrics.contains('Total Orders'))
+                    _buildPdfMetricCard('Total Orders', orders.toString()),
+                  if (metrics.contains('Products Sold'))
+                    _buildPdfMetricCard('Products Sold', productsSold.toString()),
+                  if (metrics.contains('Active Users'))
+                     _buildPdfMetricCard('New Users', users.toString()),
+                ],
+              ),
+              
               pw.SizedBox(height: 20),
               
               // Top Products
@@ -673,6 +960,24 @@ class AnalyticsService {
     );
     
     return pdf.save();
+  }
+
+  /// Generate CSV report for generic entity performance
+  String generateEntityCsvReport(List<EntityPerformance> data, String title) {
+    final StringBuffer csv = StringBuffer();
+    csv.writeln('$title Report');
+    csv.writeln('Generated on: ${DateTime.now().toString()}');
+    csv.writeln('');
+    
+    // Adjust headers based on context if needed, but generic works
+    csv.writeln('Name,ID,Orders/Jobs/Deliveries,Revenue/Earnings,Items Sold');
+    
+    for (var item in data) {
+       // Escape commas in names
+       final name = item.name.contains(',') ? '"${item.name}"' : item.name;
+       csv.writeln('$name,${item.id},${item.count},${item.revenue.toStringAsFixed(2)},${item.items}');
+    }
+    return csv.toString();
   }
 
   /// Generate Seller specific PDF report from pre-calculated data
@@ -808,7 +1113,7 @@ class AnalyticsService {
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
-                        child: pw.Text('Qty Sold', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        child: pw.Text('Sales Count', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
                       ),
                       pw.Padding(
                         padding: const pw.EdgeInsets.all(8),
@@ -816,31 +1121,24 @@ class AnalyticsService {
                       ),
                     ],
                   ),
-                  if (topProducts.isEmpty)
-                    pw.TableRow(children: [
-                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('No sales data')),
-                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('-')),
-                      pw.Padding(padding: const pw.EdgeInsets.all(8), child: pw.Text('-')),
-                    ])
-                  else
-                    ...topProducts.map(
-                      (product) => pw.TableRow(
-                        children: [
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.all(8),
-                            child: pw.Text(product['name'] ?? 'Unknown'),
-                          ),
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.all(8),
-                            child: pw.Text('${product['qty']}'),
-                          ),
-                          pw.Padding(
-                            padding: const pw.EdgeInsets.all(8),
-                            child: pw.Text('₹${(product['revenue'] as double).toStringAsFixed(2)}'),
-                          ),
-                        ],
-                      ),
+                  ...topProducts.map(
+                    (product) => pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text(product['name'] ?? 'Unknown'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('${product['qty']}'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('₹${(product['revenue'] as double).toStringAsFixed(2)}'),
+                        ),
+                      ],
                     ),
+                  ),
                 ],
               ),
             ],
@@ -851,4 +1149,245 @@ class AnalyticsService {
     
     return pdf.save();
   }
+
+  /// Generate Inventory PDF Report
+  Future<Uint8List> generateInventoryPdfReport({
+    required String sellerName,
+    required DateTime? start,
+    required DateTime? end,
+    required int totalProducts,
+    required double inventoryValuation,
+    required double totalSalesValue,
+    required double totalProfit, // Added required parameter
+    required int pendingOrders,
+    List<Map<String, dynamic>> products = const [],
+  }) async {
+    final pdf = pw.Document();
+    
+    // Chunk products for pagination if needed, but for now we'll just add them to the page
+    // Note: pw.MultiPage or similar supports automatic pagination of tables
+    
+    pdf.addPage(
+      pw.MultiPage(
+        build: (pw.Context context) {
+          return [
+            pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                // Header
+                pw.Text(
+                  'Stock & Inventory Report',
+                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 4),
+                pw.Text(
+                  'Seller: $sellerName',
+                  style: const pw.TextStyle(fontSize: 16),
+                ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  'Generated on: ${DateTime.now().toString().split('.')[0]}',
+                  style: const pw.TextStyle(fontSize: 12),
+                ),
+                if (start != null && end != null)
+                  pw.Text(
+                    'Sales Period: ${start.toString().split(' ')[0]} to ${end.toString().split(' ')[0]}',
+                    style: const pw.TextStyle(fontSize: 12),
+                  ),
+                pw.SizedBox(height: 20),
+                
+                // Key Metrics Table
+                pw.Text(
+                  'Inventory Overview',
+                  style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                ),
+                pw.SizedBox(height: 10),
+                pw.Table(
+                  border: pw.TableBorder.all(),
+                  children: [
+                    pw.TableRow(
+                      decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Metric', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Value', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Total Products Listed'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('$totalProducts'),
+                        ),
+                      ],
+                    ),
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Inventory Valuation (Unsold Price)'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Rs.${inventoryValuation.toStringAsFixed(2)}'),
+                        ),
+                      ],
+                    ),
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Total Sales Value'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Rs.${totalSalesValue.toStringAsFixed(2)}'),
+                        ),
+                      ],
+                    ),
+                    pw.TableRow(
+                      decoration: const pw.BoxDecoration(color: PdfColors.grey200),
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Total Profit (Net)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Rs.${totalProfit.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+                        ),
+                      ],
+                    ),
+                    pw.TableRow(
+                      children: [
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Net Value (Inv - Sales)'),
+                        ),
+                        pw.Padding(
+                          padding: const pw.EdgeInsets.all(8),
+                          child: pw.Text('Rs.${(inventoryValuation - totalSalesValue).toStringAsFixed(2)}'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                pw.SizedBox(height: 20),
+                
+                // Detailed Product List
+                if (products.isNotEmpty) ...[
+                  pw.Text(
+                    'Product Inventory List',
+                    style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold),
+                  ),
+                  pw.SizedBox(height: 10),
+                  pw.Table(
+                    border: pw.TableBorder.all(),
+                    columnWidths: {
+                      0: const pw.FlexColumnWidth(3), // Name
+                      1: const pw.FlexColumnWidth(1), // Stock
+                      2: const pw.FlexColumnWidth(1.5), // Price
+                      3: const pw.FlexColumnWidth(1.5), // Total Value
+                    },
+                    children: [
+                      pw.TableRow(
+                        decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                        children: [
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text('Product Name', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text('Stock', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text('Price', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          ),
+                          pw.Padding(
+                            padding: const pw.EdgeInsets.all(8),
+                            child: pw.Text('Value', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                          ),
+                        ],
+                      ),
+                      ...products.map((p) {
+                         // Safe parsing within the map
+                         double price = 0.0;
+                         int stock = 0;
+                         
+                         if (p['price'] is num) price = (p['price'] as num).toDouble();
+                         else if (p['price'] is String) price = double.tryParse(p['price']) ?? 0.0;
+                         
+                         if (p['stock'] is num) stock = (p['stock'] as num).toInt();
+                         else if (p['stock'] is String) stock = int.tryParse(p['stock']) ?? 0;
+                         
+                         double totalVal = price * stock;
+                         
+                         return pw.TableRow(
+                          children: [
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text(p['name'] ?? 'Unknown'),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text('$stock'),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text('Rs.${price.toStringAsFixed(0)}'),
+                            ),
+                            pw.Padding(
+                              padding: const pw.EdgeInsets.all(8),
+                              child: pw.Text('Rs.${totalVal.toStringAsFixed(0)}'),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ],
+                  ),
+                  pw.SizedBox(height: 20),
+                ],
+
+                pw.Text(
+                  'Note: Inventory Valuation is based on current stock and listing price. Sales Value is based on the selected period (or all time if not specified).',
+                  style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+                ),
+              ],
+            ),
+          ];
+        },
+      ),
+    );
+    
+    return pdf.save();
+  }
+  pw.Widget _buildPdfMetricCard(String title, String value) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.grey),
+        borderRadius: const pw.BorderRadius.all(pw.Radius.circular(5)),
+      ),
+      width: 150,
+      child: pw.Column(
+        children: [
+          pw.Text(title, style: const pw.TextStyle(color: PdfColors.grey700)),
+          pw.SizedBox(height: 5),
+          pw.Text(value, style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
+        ],
+      ),
+    );
+  }
 }
+

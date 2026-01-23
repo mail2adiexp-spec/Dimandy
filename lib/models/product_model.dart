@@ -6,6 +6,7 @@ class Product {
   final String name;
   final String description;
   final double price;
+  final double basePrice; // Added basePrice (Buying Price)
   final String imageUrl; // Primary image
   final List<String>? imageUrls; // Multiple images (minimum 4)
   final String? category; // Product category
@@ -18,6 +19,7 @@ class Product {
   int viewCount;
   int stock;
   final int minimumQuantity; // Added minimum quantity field
+  final List<String> storeIds; // Added storeIds for availability
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -27,6 +29,7 @@ class Product {
     required this.name,
     required this.description,
     required this.price,
+    this.basePrice = 0.0, // Default to 0 if not provided
     required this.imageUrl,
     this.imageUrls,
     this.category,
@@ -39,6 +42,7 @@ class Product {
     this.viewCount = 0,
     this.stock = 0, // Added to constructor
     this.minimumQuantity = 1, // Default to 1
+    this.storeIds = const [], // Default empty
     this.createdAt,
     this.updatedAt, // Added to constructor
   });
@@ -51,6 +55,7 @@ class Product {
       'name': name,
       'description': description,
       'price': price,
+      'basePrice': basePrice,
       'imageUrl': imageUrl,
       'imageUrls': imageUrls,
       'category': category,
@@ -63,6 +68,7 @@ class Product {
       'viewCount': viewCount,
       'stock': stock,
       'minimumQuantity': minimumQuantity,
+      'storeIds': storeIds,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -76,6 +82,7 @@ class Product {
       name: map['name'] ?? '',
       description: map['description'] ?? '',
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
       imageUrl: map['imageUrl'] ?? '',
       imageUrls: (map['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() 
           ?? (map['images'] as List<dynamic>?)?.map((e) => e.toString()).toList(), // Fallback to 'images'
@@ -89,6 +96,7 @@ class Product {
       viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
       stock: (map['stock'] as num?)?.toInt() ?? 0,
       minimumQuantity: (map['minimumQuantity'] as num?)?.toInt() ?? 1,
+      storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 
           : null,

@@ -40,6 +40,13 @@ service cloud.firestore {
              getUserRole() != null && 
              getUserRole().role == 'core_staff';
     }
+
+    // Helper function to check if user is store manager (7. Store Manager)
+    function isStoreManager() {
+      return request.auth != null && 
+             getUserRole() != null && 
+             getUserRole().role == 'store_manager';
+    }
     
     // Helper function to check if user is authenticated (1. User)
     function isAuthenticated() {
@@ -60,6 +67,14 @@ service cloud.firestore {
       allow delete: if isAdmin() || isCoreStaff();
       
     }
+
+    // ==================== STORES COLLECTION ====================
+    // Read: Everyone (public for store locator)
+    // Write: Admin + Core Staff
+    match /stores/{storeId} {
+      allow read: if true;
+      allow write: if isAdmin() || isCoreStaff();
+    }
     
     // ==================== USER ADDRESSES ====================
     // DEBUG: Temporarily Public to verify deployment
@@ -69,15 +84,15 @@ service cloud.firestore {
     
     // ==================== PRODUCTS COLLECTION ====================
     // Read: Everyone (public)
-    // Write: Seller + Admin + Core Staff
+    // Write: Seller + Admin + Core Staff + Store Manager
     match /products/{productId} {
       allow read: if true;
-      allow create: if (isSeller() || isAdmin() || isCoreStaff()) && 
+      allow create: if (isSeller() || isAdmin() || isCoreStaff() || isStoreManager()) && 
                       request.resource.data.keys().hasAll(['name', 'price', 'imageUrl', 'description']) &&
                       request.resource.data.price is number &&
                       request.resource.data.price >= 0;
-      allow update: if isSeller() || isAdmin() || isCoreStaff();
-      allow delete: if isSeller() || isAdmin() || isCoreStaff();
+      allow update: if isSeller() || isAdmin() || isCoreStaff() || isStoreManager();
+      allow delete: if isSeller() || isAdmin() || isCoreStaff() || isStoreManager();
     }
     
     // Helper function to check if user is delivery partner (6. Delivery Partner)
@@ -93,7 +108,7 @@ service cloud.firestore {
     // Update: Admin + Core Staff + Seller + Delivery Partner
     match /orders/{orderId} {
       allow read: if isAuthenticated() && 
-                    (resource.data.userId == request.auth.uid || isSeller() || isAdmin() || isCoreStaff() || isDeliveryPartner());
+                    (resource.data.userId == request.auth.uid || isSeller() || isAdmin() || isCoreStaff() || isDeliveryPartner() || isStoreManager());
       allow create: if isAuthenticated();
       allow update: if isAdmin() || isSeller() || isCoreStaff() || isDeliveryPartner() || (isAuthenticated() && resource.data.userId == request.auth.uid);
       allow delete: if isAdmin() || isCoreStaff();
@@ -157,7 +172,7 @@ service cloud.firestore {
       allow delete: if isServiceProvider() || isAdmin();
     }
     
-    // ==================== SERVICE BOOKINGS COLLECTION ====================
+    // ==================== SERVICE BOOKINGS COLLECTION (Deprecated) ====================
     // Read: Own bookings + Service Provider + Admin
     // Create: Any authenticated user
     // Update: Service Provider (status) + Admin
@@ -169,6 +184,25 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated();
       allow update: if isServiceProvider() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // ==================== BOOKINGS COLLECTION (Active) ====================
+    // Read: Own bookings + Service Provider (if providerId matches) + Admin
+    // Create: Any authenticated user
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.providerId == request.auth.uid ||
+        isAdmin() || 
+        isCoreStaff()
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        resource.data.providerId == request.auth.uid || 
+        resource.data.userId == request.auth.uid ||
+        isAdmin()
+      );
       allow delete: if isAdmin();
     }
     

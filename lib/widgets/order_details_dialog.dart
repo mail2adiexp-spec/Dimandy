@@ -77,15 +77,25 @@ class OrderDetailsDialog extends StatelessWidget {
                         // Fetch user data for name
                         String? customerName;
                         final userId = orderData['userId'] as String?;
-                        if (userId != null) {
+                        if (userId != null && userId.isNotEmpty) {
                           try {
                             final userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
                             if (userDoc.exists) {
-                              customerName = userDoc.data()?['name'];
+                              final data = userDoc.data();
+                              customerName = data?['name'] as String?;
+                              // If name is missing in user doc, maybe try phone?
+                              if (customerName == null || customerName.isEmpty) {
+                                customerName = data?['phone'] as String?;
+                              }
                             }
                           } catch (e) {
                             debugPrint('Error fetching user name for invoice: $e');
                           }
+                        }
+
+                        // Fallback if still null
+                        if (customerName == null || customerName.isEmpty) {
+                           customerName = 'Customer'; // Or leave null to show ID
                         }
 
                         if (value == 'invoice') {

@@ -14,9 +14,11 @@ class ServiceCategoryProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
 
-  void startListening() {
-    _isLoading = true;
-    notifyListeners();
+  void startListening({bool silent = false}) {
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _sub?.cancel();
 
     debugPrint('🔧 Starting realtime listener for service_categories...');
@@ -27,9 +29,14 @@ class ServiceCategoryProvider with ChangeNotifier {
         .listen(
           (snapshot) {
             _errorMessage = null;
-            _serviceCategories = snapshot.docs
-                .map((doc) => ServiceCategory.fromMap(doc.data(), doc.id))
-                .toList();
+            _serviceCategories = snapshot.docs.map((doc) {
+              try {
+                return ServiceCategory.fromMap(doc.data(), doc.id);
+              } catch (e) {
+                debugPrint('⚠️ Error parsing service category ${doc.id}: $e');
+                return null;
+              }
+            }).whereType<ServiceCategory>().toList();
             _serviceCategories.sort((a, b) => a.name.compareTo(b.name));
             _isLoading = false;
             notifyListeners();
@@ -109,5 +116,10 @@ class ServiceCategoryProvider with ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+  Future<void> refresh() async {
+    // Data is already real-time via Firestore listener
+    // Just wait to show the RefreshIndicator animation
+    await Future.delayed(const Duration(milliseconds: 800));
   }
 }

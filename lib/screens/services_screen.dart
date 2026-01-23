@@ -284,41 +284,48 @@ class _ServicesScreenState extends State<ServicesScreen> {
                   );
                 }
 
-                return SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Service Categories Grid
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 3,
-                                    mainAxisSpacing: 12,
-                                    crossAxisSpacing: 12,
-                                    childAspectRatio: 0.85,
-                                  ),
-                              itemCount: filteredCategories.length,
-                              itemBuilder: (context, index) {
-                                final category = filteredCategories[index];
-                                final isSelected =
-                                    _selectedCategory?.id == category.id;
-                                return _buildServiceCategoryCard(
-                                  category: category,
-                                  isSelected: isSelected,
-                                );
-                              },
-                            ),
-                          ],
+                return RefreshIndicator(
+                  onRefresh: () => Provider.of<ServiceCategoryProvider>(
+                    context,
+                    listen: false,
+                  ).refresh(),
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      children: [
+                        // Service Categories Grid
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                      crossAxisCount: 3,
+                                      mainAxisSpacing: 12,
+                                      crossAxisSpacing: 12,
+                                      childAspectRatio: 0.85,
+                                    ),
+                                itemCount: filteredCategories.length,
+                                itemBuilder: (context, index) {
+                                  final category = filteredCategories[index];
+                                  final isSelected =
+                                      _selectedCategory?.id == category.id;
+                                  return _buildServiceCategoryCard(
+                                    category: category,
+                                    isSelected: isSelected,
+                                  );
+                                },
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                    ],
+                        const SizedBox(height: 16),
+                      ],
+                    ),
                   ),
                 );
               },

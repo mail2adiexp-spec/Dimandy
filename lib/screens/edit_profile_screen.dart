@@ -29,6 +29,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String? _pickedFileName;
   bool _isLoading = false;
   bool _showPasswordField = false;
+  bool _isPasswordInputVisible = false;
 
   @override
   void initState() {
@@ -346,13 +347,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Current Password',
-                    prefixIcon: Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    border: const OutlineInputBorder(),
                     helperText: 'Required for email change',
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordInputVisible
+                            ? Icons.visibility
+                            : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordInputVisible = !_isPasswordInputVisible;
+                        });
+                      },
+                    ),
                   ),
-                  obscureText: true,
+                  obscureText: !_isPasswordInputVisible,
                   validator: _showPasswordField
                       ? (v) => (v == null || v.isEmpty)
                             ? 'Password required'

@@ -6,7 +6,7 @@ class RoleManagementTab extends StatefulWidget {
   final String collection;
   final String? role;
   final String? requestRole;
-  final Function(String, String, String, String, String, String?) onEdit;
+  final Function(String, Map<String, dynamic>) onEdit;
   final Function(String, String) onDelete;
   final Function(String, String)? onRequestAction;
   final Function(String, Map<String, dynamic>)? onViewDashboard;
@@ -297,14 +297,7 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                                   PopupMenuButton<String>(
                                     onSelected: (value) {
                                       if (value == 'edit') {
-                                        widget.onEdit(
-                                          id,
-                                          name,
-                                          email,
-                                          phone,
-                                          widget.role ?? '',
-                                          servicePincode,
-                                        );
+                                        widget.onEdit(id, data);
                                       } else if (value == 'delete') {
                                         widget.onDelete(id, email);
                                       }

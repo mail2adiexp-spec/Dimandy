@@ -18,6 +18,7 @@ class JoinPartnerScreen extends StatefulWidget {
 
 class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
   final _formKey = GlobalKey<FormState>();
+  bool _isPasswordVisible = false;
   String _role = 'Seller';
   String _gender = 'Male';
   String? _selectedServiceCategoryId;
@@ -132,7 +133,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         'aadhaarNumber': _aadhaarController.text.trim(),
         'profilePicUrl': profilePicUrl,
         'status': 'pending',
-        'createdAt': Timestamp.now(),
+        'createdAt': FieldValue.serverTimestamp(),
       };
 
       if (_role == 'Delivery Partner') {
@@ -364,10 +365,20 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _passwordController,
-                      obscureText: true,
-                      decoration: const InputDecoration(
+                      obscureText: !_isPasswordVisible,
+                      decoration: InputDecoration(
                         labelText: 'Set Password',
-                        border: OutlineInputBorder(),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isPasswordVisible = !_isPasswordVisible;
+                            });
+                          },
+                        ),
                       ),
                       validator: (v) => v == null || v.trim().length < 6
                           ? 'Password kam se kam 6 character ka hona chahiye'

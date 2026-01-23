@@ -16,6 +16,7 @@ import 'cart_screen.dart';
 import 'account_screen.dart';
 import '../services/recommendation_service.dart';
 import '../widgets/marquee_widget.dart';
+import '../widgets/notifications_dialog.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -29,6 +30,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _searchQuery = '';
   String _sortBy = 'newest'; // newest, price_low, price_high
   List<Product> _trendingProducts = [];
+  bool _showAllCategories = false; // Track if all categories are expanded
 
   @override
   void initState() {
@@ -54,6 +56,23 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _trendingProducts = trending;
       });
+    }
+  }
+
+  // Pull-to-refresh handler
+  Future<void> _handleRefresh() async {
+    // Reload recommendations (products and categories auto-update via realtime listeners)
+    await _loadRecommendations();
+    
+    // Show a success message
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Refreshed!'),
+          duration: Duration(seconds: 1),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -194,6 +213,93 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
           ),
+          // Notification bell icon with badge (hidden for regular customers)
+          Consumer<AuthProvider>(
+            builder: (context, auth, _) {
+              final user = auth.currentUser;
+              if (user == null) return const SizedBox.shrink();
+              
+              // Check user role from Firestore to determine if bell should be shown
+              return StreamBuilder<DocumentSnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(user.uid)
+                    .snapshots(),
+                builder: (context, userSnapshot) {
+                  // Hide for customers or if role not found
+                  if (!userSnapshot.hasData) return const SizedBox.shrink();
+                  
+                  final userData = userSnapshot.data?.data() as Map<String, dynamic>?;
+                  final userRole = userData?['role'] as String?;
+                  
+                  // Only show for non-customers (sellers, admins, staff, etc.)
+                  // Hide for regular customers: 'customer' or 'user' roles
+                  if (userRole == null || userRole == 'customer' || userRole == 'user') {
+                    return const SizedBox.shrink();
+                  }
+                  
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('notifications')
+                        .where('toUserId', isEqualTo: user.uid)
+                        .where('isRead', isEqualTo: false)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                      
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.notifications_outlined),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => NotificationsDialog(userId: user.uid),
+                              );
+                            },
+                            hoverColor: Colors.transparent,
+                            highlightColor: Colors.transparent,
+                            splashColor: Colors.transparent,
+                            style: IconButton.styleFrom(overlayColor: Colors.transparent),
+                          ),
+                          if (unreadCount > 0)
+                            Positioned(
+                              right: 8,
+                              top: 10,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.redAccent,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                constraints: const BoxConstraints(
+                                  minWidth: 18,
+                                  minHeight: 18,
+                                ),
+                                child: Text(
+                                  unreadCount > 9 ? '9+' : unreadCount.toString(),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          ),
+          // Cart icon with badge
           Stack(
             alignment: Alignment.center,
             children: [
@@ -303,10 +409,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                // Scrollable content
+                // Scrollable content with pull-to-refresh
                 Expanded(
-                  child: CustomScrollView(
-                    slivers: [
+                  child: RefreshIndicator(
+                    onRefresh: _handleRefresh,
+                    child: CustomScrollView(
+                      slivers: [
                       if (isSearching)
                         SearchResults(
                           products: filteredProducts,
@@ -412,6 +520,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 final hasMore =
                                     categoryProvider.categories.length > 9;
 
+                                // Show categories based on expansion state
+                                final categoriesToShow = _showAllCategories
+                                    ? categoryProvider.categories
+                                    : displayCategories;
+                                
                                 return Column(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
@@ -424,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       crossAxisSpacing: 4,
                                       childAspectRatio: 0.95,
                                       children: [
-                                        ...displayCategories.map(
+                                        ...categoriesToShow.map(
                                           (cat) => _buildCategoryCard(
                                             cat.name,
                                             cat.name,
@@ -438,47 +551,13 @@ class _HomeScreenState extends State<HomeScreen> {
                                       Center(
                                         child: ElevatedButton.icon(
                                           onPressed: () {
-                                            showDialog(
-                                              context: context,
-                                              builder: (context) => AlertDialog(
-                                                title: const Text(
-                                                  'All Categories',
-                                                ),
-                                                content: SizedBox(
-                                                  width: double.maxFinite,
-                                                  child: GridView.count(
-                                                    shrinkWrap: true,
-                                                    crossAxisCount: 3,
-                                                    mainAxisSpacing: 12,
-                                                    crossAxisSpacing: 8,
-                                                    childAspectRatio: 0.85,
-                                                    children: [
-                                                      ...categoryProvider
-                                                          .categories
-                                                          .map(
-                                                            (cat) =>
-                                                                _buildCategoryCard(
-                                                                  cat.name,
-                                                                  cat.name,
-                                                                  cat.imageUrl,
-                                                                ),
-                                                          ),
-                                                    ],
-                                                  ),
-                                                ),
-                                                actions: [
-                                                  TextButton(
-                                                    onPressed: () =>
-                                                        Navigator.pop(context),
-                                                    child: const Text('Close'),
-                                                  ),
-                                                ],
-                                              ),
-                                            );
+                                            setState(() {
+                                              _showAllCategories = !_showAllCategories;
+                                            });
                                           },
-                                          icon: const Icon(Icons.grid_view),
-                                          label: const Text(
-                                            'View All Categories',
+                                          icon: Icon(_showAllCategories ? Icons.expand_less : Icons.grid_view),
+                                          label: Text(
+                                            _showAllCategories ? 'Show Less' : 'View All Categories',
                                           ),
                                         ),
                                       ),
@@ -778,7 +857,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                 ),
                               ),
                       ],
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],

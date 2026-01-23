@@ -172,6 +172,7 @@ class OrderItem {
   final int quantity;
   final double price;
   final String? imageUrl;
+  final Map<String, dynamic>? metadata;
 
   OrderItem({
     required this.productId,
@@ -180,6 +181,7 @@ class OrderItem {
     required this.quantity,
     required this.price,
     this.imageUrl,
+    this.metadata,
   });
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
@@ -190,6 +192,7 @@ class OrderItem {
       quantity: map['quantity'] ?? 1,
       price: (map['price'] ?? 0).toDouble(),
       imageUrl: map['imageUrl'],
+      metadata: map['metadata'] as Map<String, dynamic>?,
     );
   }
 
@@ -201,6 +204,7 @@ class OrderItem {
       'quantity': quantity,
       'price': price,
       'imageUrl': imageUrl,
+      if (metadata != null) 'metadata': metadata,
     };
   }
 }

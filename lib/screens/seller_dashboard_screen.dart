@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'seller_stock_report_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -76,10 +78,15 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
   
   // Add Product Dialog
   void _showAddProductDialog(BuildContext context, AppUser user) {
+    // CRITICAL: Capture the ScaffoldMessenger BEFORE showing dialog
+    // This ensures error messages appear on top of the dialog, not behind it
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
+    final descCtrl = TextEditingController(text: '\u2022 ');
     final priceCtrl = TextEditingController();
+    final basePriceCtrl = TextEditingController(); // Added Base Price
     final mrpCtrl = TextEditingController(); // Added MRP
     final stockCtrl = TextEditingController();
     final minQtyCtrl = TextEditingController(text: '1');
@@ -104,7 +111,12 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         final List<XFile> images = await picker.pickMultiImage();
         if (images.isNotEmpty) {
            if (images.length > 6) {
-             if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Max 6 images allowed')));
+             scaffoldMessenger.showSnackBar(
+               const SnackBar(
+                 content: Text('Max 6 images allowed'),
+                 behavior: SnackBarBehavior.floating,
+               ),
+             );
              return;
            }
           final List<Uint8List> imageBytes = [];
@@ -117,11 +129,12 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           });
         }
       } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error picking images: $e')),
-          );
-        }
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text('Error picking images: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     }
 
@@ -139,6 +152,22 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           imageUrls.add(url);
         } catch (e) {
           print('Error uploading image $i: $e');
+          
+          // Create user-friendly error message
+          String errorMessage = 'Failed to upload image ${i + 1}';
+          
+          // Check for permission errors
+          if (e.toString().contains('unauthorized') || 
+              e.toString().contains('permission') ||
+              e.toString().contains('403')) {
+            errorMessage = '⚠️ Permission Denied: Please contact admin to verify your seller account role is set correctly';
+          } else if (e.toString().contains('network')) {
+            errorMessage = '🌐 Network Error: Please check your internet connection';
+          }
+          
+          // Throw exception with user-friendly message
+          // This will be caught in the main try-catch and shown after dialog closes
+          throw Exception(errorMessage);
         }
       }
       return imageUrls;
@@ -181,12 +210,31 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       controller: descCtrl,
                       decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
                       maxLines: 3,
+                      onChanged: (value) {
+                        if (value.endsWith('\n')) {
+                           descCtrl.text = '$value\u2022 ';
+                           descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                        } else if (value.isEmpty) {
+                           descCtrl.text = '\u2022 ';
+                           descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
+                        }
+                      },
                     ),
                     const SizedBox(height: 16),
                     
                     // Prices and Stock Row
+                    // Base Price and MRP
                     Row(
                       children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: basePriceCtrl,
+                            decoration: const InputDecoration(labelText: 'Base Price (Buying) *', border: OutlineInputBorder(), prefixText: '₹'),
+                            keyboardType: TextInputType.number,
+                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
                         Expanded(
                           child: TextFormField(
                             controller: mrpCtrl,
@@ -199,7 +247,12 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                             }
                           ),
                         ),
-                        const SizedBox(width: 16),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    // Selling Price and Stock
+                    Row(
+                      children: [
                         Expanded(
                           child: TextFormField(
                             controller: priceCtrl,
@@ -393,7 +446,12 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                               : () async {
                                   if (!formKey.currentState!.validate()) return;
                                   if (selectedImages.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please add at least one image')));
+                                    scaffoldMessenger.showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Please add at least one image'),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
                                     return;
                                   }
 
@@ -403,12 +461,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                     // Create product ID
                                     final productId = FirebaseFirestore.instance.collection('products').doc().id;
                                     
-                                    // Upload images
+                                    // Upload images using captured ScaffoldMessenger
                                     final imageUrls = await uploadImages(productId);
-                                    
-                                    if (imageUrls.isEmpty) {
-                                      throw Exception('Failed to upload images');
-                                    }
 
                                     final mrp = double.tryParse(mrpCtrl.text) ?? 0.0;
                                     final price = double.parse(priceCtrl.text);
@@ -420,6 +474,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                       'name': nameCtrl.text.trim(),
                                       'description': descCtrl.text.trim(),
                                       'price': price,
+                                      'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
                                       'mrp': mrp,
                                       'mrp': mrp,
                                       'stock': int.parse(stockCtrl.text),
@@ -441,22 +496,41 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
 
                                     if (context.mounted) {
                                       Navigator.pop(ctx);
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      scaffoldMessenger.showSnackBar(
                                         const SnackBar(
-                                          content: Text('Product added successfully!'),
+                                          content: Text('✅ Product added successfully!'),
                                           backgroundColor: Colors.green,
+                                          behavior: SnackBarBehavior.floating,
                                         ),
                                       );
                                     }
                                   } catch (e) {
+                                    // CRITICAL: Close dialog FIRST, then show error
+                                    // This ensures error message is visible to the user
                                     if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error adding product: $e'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
+                                      Navigator.pop(ctx); // Close the dialog
                                     }
+                                    
+                                    // Extract the error message
+                                    String errorMsg = e.toString();
+                                    if (errorMsg.startsWith('Exception: ')) {
+                                      errorMsg = errorMsg.substring(11); // Remove "Exception: " prefix
+                                    }
+                                    
+                                    // Show error after dialog is closed
+                                    scaffoldMessenger.showSnackBar(
+                                      SnackBar(
+                                        content: Text(errorMsg),
+                                        backgroundColor: Colors.red,
+                                        behavior: SnackBarBehavior.floating,
+                                        duration: const Duration(seconds: 6),
+                                        action: SnackBarAction(
+                                          label: 'Dismiss',
+                                          textColor: Colors.white,
+                                          onPressed: () {},
+                                        ),
+                                      ),
+                                    );
                                   } finally {
                                     if (mounted) {
                                       setState(() => isLoading = false);
@@ -725,6 +799,128 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
       builder: (ctx) => Dialog(
         insetPadding: const EdgeInsets.all(16),
         child: SellerOrdersDialog(user: user),
+      ),
+    );
+  }
+
+  void _showInventoryOverviewDialog(BuildContext context, AppUser user) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          width: 500,
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Inventory Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+                ],
+              ),
+              const Divider(),
+              const SizedBox(height: 16),
+              FutureBuilder<List<dynamic>>(
+                future: Future.wait([
+                  FirebaseFirestore.instance.collection('products').where('sellerId', isEqualTo: user.uid).get(),
+                  FirebaseFirestore.instance.collection('orders').get(),
+                ]),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()));
+                  }
+                  
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  final productsDocs = (snapshot.data![0] as QuerySnapshot).docs;
+                  final ordersDocs = (snapshot.data![1] as QuerySnapshot).docs;
+
+                  // 1. Total Products
+                  final totalProducts = productsDocs.length;
+                  
+                  // 2. Inventory Valuation (Unsold Stock Value)
+                  double inventoryValuation = 0;
+                  for (var doc in productsDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final price = (data['price'] as num?)?.toDouble() ?? 0;
+                    final stock = (data['stock'] as num?)?.toInt() ?? 0;
+                    inventoryValuation += (price * stock);
+                  }
+
+                  // 3. Total Sales Value & 4. Total Pending Orders (for this seller)
+                  double totalSalesValue = 0;
+                  int pendingOrdersCount = 0;
+                  
+                  for (var doc in ordersDocs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final items = data['items'] as List<dynamic>? ?? [];
+                    final status = data['status'] ?? 'pending';
+                    
+                    bool hasSellerItems = false;
+                    for (var item in items) {
+                      if (item['sellerId'] == user.uid) {
+                        hasSellerItems = true;
+                        // For sales value, count only non-cancelled/returned
+                        if (!['cancelled', 'returned', 'refunded'].contains(status)) {
+                           final price = (item['price'] as num?)?.toDouble() ?? 0;
+                           final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+                           totalSalesValue += (price * qty);
+                        }
+                      }
+                    }
+
+                    if (hasSellerItems && status == 'pending') {
+                      pendingOrdersCount++;
+                    }
+                  }
+
+                  return Column(
+                    children: [
+                      _buildInventoryRow('Total Products', '$totalProducts', Icons.category, Colors.blue),
+                      const SizedBox(height: 12),
+                      _buildInventoryRow('Inventory Valuation', '₹${NumberFormat.compact().format(inventoryValuation)}', Icons.inventory, Colors.orange),
+                       const SizedBox(height: 12),
+                      _buildInventoryRow('Total Sales Value', '₹${NumberFormat.compact().format(totalSalesValue)}', Icons.monetization_on, Colors.green),
+                       const SizedBox(height: 12),
+                      _buildInventoryRow('Pending Orders', '$pendingOrdersCount', Icons.pending_actions, Colors.red),
+                    ],
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      )
+    );
+  }
+
+  Widget _buildInventoryRow(String label, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+          ),
+          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+        ],
       ),
     );
   }
@@ -1122,6 +1318,12 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         'icon': Icons.account_balance_wallet,
         'color': Colors.indigo,
         'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (context) => SellerWalletScreen(user: user))),
+      },
+      {
+        'title': 'Stock Report',
+        'icon': Icons.inventory,
+        'color': Colors.teal,
+        'onTap': () => Navigator.push(context, MaterialPageRoute(builder: (context) => SellerStockReportScreen(user: user))),
       },
     ];
 
