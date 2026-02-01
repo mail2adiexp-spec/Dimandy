@@ -1,5 +1,6 @@
 import 'package:ecommerce_app/widgets/search_results.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +18,7 @@ import 'account_screen.dart';
 import '../services/recommendation_service.dart';
 import '../widgets/marquee_widget.dart';
 import '../widgets/notifications_dialog.dart';
+import '../widgets/app_download_notification.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -44,6 +46,21 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
     _loadRecommendations();
+    
+    // Show app download notification popup on web after first frame
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showAppDownloadNotification();
+      });
+    }
+  }
+
+  void _showAppDownloadNotification() {
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const AppDownloadNotification(),
+    );
   }
 
   Future<void> _loadRecommendations() async {

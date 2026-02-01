@@ -303,6 +303,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     final basePriceCtrl = TextEditingController(); // Added Base Price
     final priceCtrl = TextEditingController();
     final stockCtrl = TextEditingController();
+    final minQtyCtrl = TextEditingController(text: '1');
     
     // Default categories if provider is empty (fallback)
     final categoryProvider = Provider.of<CategoryProvider>(context, listen: false); 
@@ -442,10 +443,17 @@ class _ProductsTabState extends State<_ProductsTab> {
                          Expanded(child: DropdownButtonFormField<String>(
                           value: selectedUnit,
                           decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                          items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                          items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                           onChanged: (v) => setState(() => selectedUnit = v!),
                         )),
                       ],
+                    ),
+                     const SizedBox(height: 12),
+                    TextFormField(
+                       controller: minQtyCtrl,
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                       keyboardType: TextInputType.number,
+                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                     ),
                      const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -561,7 +569,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                       'sellerId': 'store_manager', // Identify source
                       'isFeatured': false,
                       'isHotDeal': false, 
-                      'minimumQuantity': 1,
+                      'minimumQuantity': int.parse(minQtyCtrl.text),
                       'createdAt': FieldValue.serverTimestamp(),
                       'updatedAt': FieldValue.serverTimestamp(),
                     });
@@ -603,6 +611,7 @@ class _ProductsTabState extends State<_ProductsTab> {
     final basePriceCtrl = TextEditingController(text: product.basePrice.toString());
     final priceCtrl = TextEditingController(text: product.price.toString());
     final stockCtrl = TextEditingController(text: product.stock.toString());
+    final minQtyCtrl = TextEditingController(text: (product.minimumQuantity ?? 1).toString());
     final imageUrlCtrl = TextEditingController(text: product.imageUrl); // Fallback
 
     String selectedCategory = product.category ?? 'Daily Needs';
@@ -813,12 +822,19 @@ class _ProductsTabState extends State<_ProductsTab> {
                          Expanded(
                            child: DropdownButtonFormField<String>(
                              value: selectedUnit,
-                             items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                             items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                              onChanged: (v) => setState(() => selectedUnit = v!),
                              decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
                            ),
                          ),
                        ],
+                     ),
+                     const SizedBox(height: 12),
+                     TextFormField(
+                       controller: minQtyCtrl,
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                       keyboardType: TextInputType.number,
+                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                      ),
                      const SizedBox(height: 12),
                      // Category Dropdown (Simplified)
@@ -867,6 +883,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                         // Auto-update MRP to base price if not explicitly managed, or keep logic same as add
                         'mrp': double.parse(basePriceCtrl.text.trim()), 
                         'stock': int.parse(stockCtrl.text.trim()),
+                        'minimumQuantity': int.parse(minQtyCtrl.text.trim()),
                         'category': selectedCategory,
                         'unit': selectedUnit,
                         'imageUrl': finalImageUrls.isNotEmpty ? finalImageUrls.first : '',
@@ -957,7 +974,7 @@ class _ProductsTabState extends State<_ProductsTab> {
                     child: product.imageUrl.isEmpty ? const Icon(Icons.image) : null,
                   ),
                   title: Text(product.name),
-                  subtitle: Text('Stock: ${product.stock} | Price: ₹${product.price}'),
+                  subtitle: Text('Stock: ${product.stock} ${product.unit ?? ''} | Price: ₹${product.price}'),
                   trailing: IconButton(
                     icon: const Icon(Icons.edit),
                     onPressed: () {

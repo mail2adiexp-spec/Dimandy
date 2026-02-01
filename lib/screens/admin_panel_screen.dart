@@ -45,6 +45,7 @@ import 'admin_settings_screen.dart';
 // import 'admin_analytics_screen.dart';
 // import 'admin_reports_screen.dart';
 import '../widgets/manage_stores_tab.dart';
+import 'permission_editor_screen.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   static const routeName = '/admin-panel';
@@ -87,6 +88,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   late Stream<QuerySnapshot> _usersStream;
   late Stream<QuerySnapshot> _cancelledOrdersStream;
   late Stream<QuerySnapshot> _returnedOrdersStream;
+  late Stream<QuerySnapshot> _messagesStream;
   Stream<QuerySnapshot>? _topSellingStream;
   Stream<QuerySnapshot>? _topServicesStream;
   late Stream<QuerySnapshot> _recentOrdersStream;
@@ -146,6 +148,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         .where('status', isEqualTo: 'returned')
         .snapshots();
         
+    _messagesStream = FirebaseFirestore.instance
+        .collection('contact_messages')
+        .orderBy('timestamp', descending: true)
+        .snapshots();
+
     _recentOrdersStream = FirebaseFirestore.instance
         .collection('orders')
         .orderBy('orderDate', descending: true)
@@ -180,6 +187,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     'Service Providers',  // 18
     'Partner Requests',
     'Refund Requests',    // 17
+    'Messages',           // NEW
   ];
 
   final Map<int, int> _sortedToOriginalIndex = {
@@ -202,6 +210,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     16: 12, // Service Providers (was 18)
     17: 17, // Partner Requests (was 19)
     18: 19, // Refund Requests (was 20)
+    19: 21, // Messages
   };
 
   final List<IconData> _menuIcons = [
@@ -224,6 +233,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     Icons.handyman,            // Service Providers
     Icons.person_add,          // Partner Requests
     Icons.assignment_return,   // Refund Requests
+    Icons.message,             // Messages
   ];
 
   @override
@@ -387,6 +397,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             const AdminSettingsScreen(), // 17
                             _buildRefundRequestsTab(), // 18
                             const ManageStoresTab(), // 19
+                            _buildMessagesTab(), // 20
                           ],
                         ),
                       ),
@@ -729,6 +740,72 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     } finally {
       Navigator.of(context).pop(); // Dismiss loading indicator
     }
+  }
+
+  Widget _buildMessagesTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _messagesStream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return const Center(child: Text('No messages found'));
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: docs.length,
+          itemBuilder: (context, index) {
+            final data = docs[index].data() as Map<String, dynamic>;
+            final timestamp = data['timestamp'] as Timestamp?;
+            final dateStr = timestamp != null 
+                ? DateFormat('dd MMM yyyy, hh:mm a').format(timestamp.toDate()) 
+                : 'Unknown Date';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ExpansionTile(
+                leading: CircleAvatar(
+                  backgroundColor: Colors.deepPurple.shade50,
+                  child: const Icon(Icons.email, color: Colors.deepPurple),
+                ),
+                title: Text(data['name'] ?? 'Unknown Name'),
+                subtitle: Text(data['email'] ?? 'No Email'),
+                trailing: Text(
+                  dateStr, 
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12)
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Message:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(data['message'] ?? 'No content'),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            Text('Platform: ${data['platform'] ?? 'Unknown'}', 
+                              style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _buildDashboardTab() {
@@ -4342,6 +4419,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 DropdownMenuItem(value: 'service_provider', child: Text('Service Providers')),
                 DropdownMenuItem(value: 'delivery_partner', child: Text('Delivery Partners')),
                 DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
+                DropdownMenuItem(value: 'store_manager', child: Text('Store Managers')),
                 DropdownMenuItem(value: 'administrator', child: Text('Admin Panel')),
               ],
               onChanged: (val) {
@@ -4416,6 +4494,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     Map<String, dynamic> userData,
     Map<String, dynamic> currentPermissions,
   ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => PermissionEditorScreen(
+          userId: userId,
+          userName: userData['name'] ?? 'Unknown',
+          userRole: _selectedPermissionRole,
+          currentPermissions: currentPermissions,
+        ),
+      ),
+    );
+    return; // Use new screen, skip old logic
+
+    // ignore: dead_code, unused_local_variable
     final Map<String, String> availablePermissions = {};
     if (_selectedPermissionRole == 'seller') {
       // Product Management
@@ -4503,6 +4594,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_manage_partners'] = 'Manage Partner Requests';
       availablePermissions['can_manage_sellers'] = 'Manage Sellers';
       availablePermissions['can_manage_deliveries'] = 'Manage Delivery Partners';
+      availablePermissions['can_manage_stores'] = 'Manage Stores';
+      availablePermissions['can_manage_categories'] = 'Manage Categories';
+      availablePermissions['can_manage_service_categories'] = 'Manage Service Categories';
+      availablePermissions['can_manage_featured'] = 'Manage Featured Sections';
+      availablePermissions['can_manage_payouts'] = 'Manage Payout Requests';
+      availablePermissions['can_manage_gifts'] = 'Manage Gifts';
+      availablePermissions['can_manage_refunds'] = 'Manage Refunds';
+
+    } else if (_selectedPermissionRole == 'store_manager') {
+      availablePermissions['can_manage_store_products'] = 'Manage Store Products';
+      availablePermissions['can_manage_store_orders'] = 'Manage Store Orders';
+      availablePermissions['can_view_store_dashboard'] = 'View Store Dashboard';
+      availablePermissions['can_edit_store_settings'] = 'Edit Store Information';
       availablePermissions['can_manage_gifts'] = 'Manage Gifts';
       availablePermissions['can_manage_featured'] = 'Manage Featured Sections';
       availablePermissions['can_download_reports'] = 'Download Reports';
@@ -4517,10 +4621,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_manage_partners'] = 'Manage Partner Requests';
       availablePermissions['can_manage_deliveries'] = 'Manage Delivery Partners';
       availablePermissions['can_manage_core_staff'] = 'Manage Core Staff';
+      availablePermissions['can_manage_stores'] = 'Manage Stores'; // Added
       availablePermissions['can_manage_categories'] = 'Manage Categories';
       availablePermissions['can_manage_service_categories'] = 'Manage Service Categories';
       availablePermissions['can_manage_service_providers'] = 'Manage Service Providers';
       availablePermissions['can_manage_payouts'] = 'Manage Payout Requests';
+      availablePermissions['can_manage_refunds'] = 'Manage Refunds'; // Added
+      availablePermissions['can_manage_featured'] = 'Manage Featured Sections'; // Added
       availablePermissions['can_view_analytics'] = 'View Analytics';
       availablePermissions['can_view_dashboard'] = 'View Dashboard';
       availablePermissions['can_manage_permissions'] = 'Manage Permissions';
@@ -5816,7 +5923,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 const SizedBox(height: 16),
                                 Text('Price: ₹${price.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                 const SizedBox(height: 4),
-                                Text('Stock: $stock', style: TextStyle(color: stock < 5 ? Colors.red : Colors.grey[800])),
+                                Text('Stock: $stock ${data['unit'] ?? ''}', style: TextStyle(color: stock < 5 ? Colors.red : Colors.grey[800])),
                                 const SizedBox(height: 4),
                                 Row(
                                   children: [
@@ -6067,7 +6174,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                     const SizedBox(height: 16),
                     
-                    // Price, MRP, Stock, MinQty
+                    // Price and MRP
                     Row(
                       children: [
                         Expanded(
@@ -6086,7 +6193,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
                         ),
-                        const SizedBox(width: 8),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Stock and Unit
+                    Row(
+                      children: [
                         Expanded(
                           child: TextFormField(
                             controller: stockCtrl,
@@ -6097,22 +6210,34 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                            controller: minQtyCtrl,
-                            decoration: const InputDecoration(labelText: 'Min Qty', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                          child: DropdownButtonFormField<String>(
+                            value: selectedUnit,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Unit',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
+                                .map((u) => DropdownMenuItem(value: u, child: Text(u)))
+                                .toList(),
+                            onChanged: (val) => setState(() => selectedUnit = val!),
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 16),
                     
-                    // Category and Unit
-                    Row(
-                      children: [
-                        Expanded(
-                          child: StreamBuilder<QuerySnapshot>(
+                    // Min Qty
+                    TextFormField(
+                       controller: minQtyCtrl,
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                       keyboardType: TextInputType.number,
+                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Category
+                    StreamBuilder<QuerySnapshot>(
                             stream: FirebaseFirestore.instance.collection('categories').orderBy('order').snapshots(),
                             builder: (context, snapshot) {
                               if (!snapshot.hasData) {
@@ -6145,24 +6270,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 onChanged: (val) => setState(() => selectedCategory = val!),
                               );
                             }
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: selectedUnit,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Unit',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm']
-                                .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                                .toList(),
-                            onChanged: (val) => setState(() => selectedUnit = val!),
-                          ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 16),
                     

@@ -223,99 +223,137 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               overflow: TextOverflow.ellipsis,
             ),
             const SizedBox(height: 4),
-            // Price
-            Text(
-              _formatPriceWithUnit(product),
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w600,
-                color: Colors.green,
-              ),
-            ),
-            const SizedBox(height: 8),
-            // Quantity and Add to Cart in same row
+            // Price & Dropdown Row
             Row(
               children: [
-                Container(
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey[300]!),
-                    borderRadius: BorderRadius.circular(6),
+                Text(
+                  _formatPriceWithUnit(product),
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green,
                   ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.remove, size: 16),
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        onPressed: () {
-                          if (_quantity > widget.product.minimumQuantity) {
-                            setState(() => _quantity--);
-                          } else {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Minimum quantity is ${widget.product.minimumQuantity}'),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 1),
+                ),
+                if (_isWeightBased(product)) ...[
+                  const SizedBox(width: 12),
+                  Container(
+                    height: 36,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade400),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<_WeightVariant>(
+                        value: _selectedWeightVariant,
+                        isDense: true,
+                        hint: const Text('Weight', style: TextStyle(fontSize: 12)),
+                        items: _weightVariants.map((variant) {
+                          return DropdownMenuItem(
+                            value: variant,
+                            child: Text(
+                              variant.label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13,
                               ),
-                            );
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (variant) {
+                          if (variant != null) {
+                            setState(() {
+                              _selectedWeightVariant = variant;
+                              _quantity = 1;
+                            });
                           }
                         },
                       ),
-                      Text(
-                        '$_quantity',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.add, size: 16),
-                        padding: const EdgeInsets.all(4),
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                        onPressed: () {
-                          setState(() => _quantity++);
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      debugPrint('Add to Cart pressed. Quantity: $_quantity, MinQty: ${widget.product.minimumQuantity}');
-                      if (_quantity < widget.product.minimumQuantity) {
-                         debugPrint('Quantity too low');
-                         ScaffoldMessenger.of(context).showSnackBar(
-                           SnackBar(
-                             content: Text('Minimum quantity required is ${widget.product.minimumQuantity}'),
-                             backgroundColor: Colors.red,
-                           ),
-                         );
-                         return;
-                      }
-                      final cart = context.read<CartProvider>();
-                      for (int i = 0; i < _quantity; i++) {
-                        debugPrint('Adding product iteration: $i');
-                        cart.addProduct(product);
-                      }
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('Added $_quantity item(s) to cart'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                      setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
                     ),
-                    icon: const Icon(Icons.add_shopping_cart, size: 16),
-                    label: const Text('Add to Cart', style: TextStyle(fontSize: 13)),
                   ),
-                ),
+                ],
               ],
+            ),
+            const SizedBox(height: 8),
+
+            // Standard Quantity Counter (Only if NOT weight based)
+            if (!_isWeightBased(product)) ...[
+              Row(
+                children: [
+                   Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey[300]!),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.remove, size: 16),
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () {
+                            if (_quantity > widget.product.minimumQuantity) {
+                              setState(() => _quantity--);
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Minimum quantity is ${widget.product.minimumQuantity}'),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                        Text(
+                          '$_quantity',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 16),
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () {
+                            setState(() => _quantity++);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            const SizedBox(height: 16),
+
+            // Add to Cart Button (Updated logic)
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  if (_isWeightBased(product)) {
+                     _addToCartWeightBased();
+                  } else {
+                     _addToCartStandard();
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                ),
+                icon: const Icon(Icons.add_shopping_cart, size: 20),
+                label: Text(
+                  _isWeightBased(product) 
+                      ? 'Add ${_selectedWeightVariant!.label} to Cart - ${formatINR(product.price * _selectedWeightVariant!.multiplier)}'
+                      : 'Add to Cart', 
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ),
             ),
             const SizedBox(height: 8),
             // Description - Very compact
@@ -477,8 +515,103 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   String _formatPriceWithUnit(Product p) {
+    if (_isWeightBased(p) && _selectedWeightVariant != null) {
+      // Show dynamic price for selected variant
+      return formatINR(p.price * _selectedWeightVariant!.multiplier); 
+    }
     final price = formatINR(p.price);
     if (p.unit == null || p.unit!.isEmpty) return price;
     return '$price / ${p.unit}';
   }
+
+  // --- Weight Variant Logic ---
+
+  bool _isWeightBased(Product p) {
+    return p.unit?.trim().toLowerCase() == 'kg' || p.unit?.trim().toLowerCase() == 'kilogram';
+  }
+
+  // Define variants
+  final List<_WeightVariant> _weightVariants = [
+    _WeightVariant('100 g', 0.1, '_100g'),
+    _WeightVariant('250 g', 0.25, '_250g'),
+    _WeightVariant('500 g', 0.5, '_500g'),
+    _WeightVariant('1 Kg', 1.0, '_1kg'),
+    _WeightVariant('2 Kg', 2.0, '_2kg'),
+    _WeightVariant('5 Kg', 5.0, '_5kg'),
+  ];
+  
+  _WeightVariant? _selectedWeightVariant;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Set default variant if not set (e.g. 1 Kg)
+    if (_selectedWeightVariant == null && _isWeightBased(widget.product)) {
+      _selectedWeightVariant = _weightVariants.firstWhere((v) => v.multiplier == 1.0, orElse: () => _weightVariants.last);
+    }
+  }
+
+  void _addToCartStandard() {
+    if (_quantity < widget.product.minimumQuantity) {
+       ScaffoldMessenger.of(context).showSnackBar(
+         SnackBar(
+           content: Text('Minimum quantity required is ${widget.product.minimumQuantity}'),
+           backgroundColor: Colors.red,
+         ),
+       );
+       return;
+    }
+    final cart = context.read<CartProvider>();
+    for (int i = 0; i < _quantity; i++) {
+      cart.addProduct(widget.product);
+    }
+    _showSuccessMsg('Added $_quantity item(s) to cart');
+    setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
+  }
+
+  void _addToCartWeightBased() {
+    if (_selectedWeightVariant == null) return;
+    
+    final variant = _selectedWeightVariant!;
+    // Create virtual product
+    final virtualProduct = Product(
+      id: '${widget.product.id}${variant.idSuffix}',
+      sellerId: widget.product.sellerId,
+      name: '${widget.product.name} (${variant.label})',
+      description: widget.product.description,
+      price: widget.product.price * variant.multiplier,
+      basePrice: widget.product.basePrice * variant.multiplier,
+      imageUrl: widget.product.imageUrl,
+      imageUrls: widget.product.imageUrls,
+      category: widget.product.category,
+      unit: 'Pack', // Now it's a pack of that weight
+      mrp: widget.product.mrp * variant.multiplier,
+      isFeatured: widget.product.isFeatured,
+      stock: widget.product.stock, // Warning: Shared stock
+      storeIds: widget.product.storeIds,
+    );
+
+    final cart = context.read<CartProvider>();
+    cart.addProduct(virtualProduct);
+    
+    _showSuccessMsg('Added ${variant.label} pack to cart');
+  }
+
+  void _showSuccessMsg(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: Colors.green,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+  }
+}
+
+class _WeightVariant {
+  final String label;
+  final double multiplier;
+  final String idSuffix;
+
+  _WeightVariant(this.label, this.multiplier, this.idSuffix);
 }

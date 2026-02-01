@@ -548,10 +548,36 @@ exports.onOrderCreate = functions.firestore
       for (const item of items) {
         if (!item.productId) continue;
 
-        const productRef = admin.firestore().collection("products").doc(item.productId);
+        let targetId = item.productId;
+        let deductQty = item.quantity;
+
+        // Handle Weight Variants (e.g., prod123_500g)
+        // Checks if ID ends with valid weight suffix formatted as _Xg or _XKg
+        // NOTE: This assumes original product IDs do NOT end with this pattern unintentionally.
+        const variantMatch = targetId.match(/(.*)_(\d+(\.\d+)?[kK]?[gG])$/);
+        
+        if (variantMatch) {
+          const baseId = variantMatch[1];
+          const weightLabel = variantMatch[2].toLowerCase(); // e.g. 500g, 1kg
+          
+          let multiplier = 1.0;
+          if (weightLabel.endsWith('kg')) {
+             multiplier = parseFloat(weightLabel.replace('kg', ''));
+          } else if (weightLabel.endsWith('g')) {
+             multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
+          }
+          
+          if (multiplier > 0) {
+            targetId = baseId;
+            deductQty = item.quantity * multiplier;
+            console.log(`Weight Variant Detected: ${item.productId} -> Base: ${targetId}, Deduct: ${deductQty} (Qty: ${item.quantity} * ${multiplier})`);
+          }
+        }
+
+        const productRef = admin.firestore().collection("products").doc(targetId);
         // Use increment(-quantity) for atomic decrement
         batch.update(productRef, {
-          stock: admin.firestore.FieldValue.increment(-item.quantity),
+          stock: admin.firestore.FieldValue.increment(-deductQty),
           salesCount: admin.firestore.FieldValue.increment(item.quantity)
         });
       }

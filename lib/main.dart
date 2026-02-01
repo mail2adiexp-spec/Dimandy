@@ -21,6 +21,7 @@ import 'package:ecommerce_app/screens/delivery_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/core_staff_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/store_manager_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
+import 'package:ecommerce_app/screens/static_pages.dart';
 import 'package:ecommerce_app/models/service_category_model.dart';
 
 import 'package:ecommerce_app/screens/my_orders_screen.dart';
@@ -38,10 +39,12 @@ import 'package:ecommerce_app/providers/featured_section_provider.dart';
 import 'package:ecommerce_app/providers/gift_provider.dart';
 import 'package:ecommerce_app/services/recommendation_service.dart';
 import 'package:ecommerce_app/providers/settings_provider.dart';
+import 'package:flutter_web_plugins/url_strategy.dart'; // Add this for web url strategy
 import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  usePathUrlStrategy(); // Configure clean URLs (remove #)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: false);
   runApp(const MyApp());
@@ -192,6 +195,8 @@ class MyApp extends StatelessWidget {
                   const CoreStaffDashboardScreen(),
               StoreManagerDashboardScreen.routeName: (ctx) =>
                   const StoreManagerDashboardScreen(),
+              AboutScreen.routeName: (ctx) => const AboutScreen(),
+              ContactScreen.routeName: (ctx) => const ContactScreen(),
               // BookServiceScreen removed from routes - handled in onGenerateRoute
             },
             // For routes needing arguments

@@ -250,35 +250,45 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Selling Price and Stock
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
-                            onChanged: (val) {
-                                setState(() {
-                                  final p = double.tryParse(val) ?? 0;
-                                  final m = double.tryParse(mrpCtrl.text) ?? 0;
-                                  isHotDeal = (m > p && p > 0);
-                                });
-                            }
+                      // Selling Price and Stock and Unit
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: priceCtrl,
+                              decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
+                              onChanged: (val) {
+                                  setState(() {
+                                    final p = double.tryParse(val) ?? 0;
+                                    final m = double.tryParse(mrpCtrl.text) ?? 0;
+                                    isHotDeal = (m > p && p > 0);
+                                  });
+                              }
+                            ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: stockCtrl,
+                              decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: selectedUnit,
+                              isExpanded: true,
+                              decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
+                              items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                              onChanged: (v) => setState(() => selectedUnit = v!),
+                            ),
+                          ),
+                        ],
+                      ),
                     const SizedBox(height: 8),
                     // Platform Fee & Listing Price Preview
                     FutureBuilder<DocumentSnapshot>(
@@ -339,55 +349,27 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                     const SizedBox(height: 16),
                     TextFormField(
                        controller: minQtyCtrl,
-                       decoration: const InputDecoration(labelText: 'Minimum Quantity', border: OutlineInputBorder()),
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
                        keyboardType: TextInputType.number,
                        validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                     ),
                     const SizedBox(height: 16),
                     
-                    // Category and Unit
+                    // Category (Unit moved to Stock row)
                     MediaQuery.of(context).size.width < 600
-                    ? Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            value: selectedCategory,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                            items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                            onChanged: (v) => setState(() => selectedCategory = v!),
-                          ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<String>(
-                            value: selectedUnit,
-                            isExpanded: true,
-                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) => setState(() => selectedUnit = v!),
-                          ),
-                        ],
+                    ? DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                        items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                        onChanged: (v) => setState(() => selectedCategory = v!),
                       )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: selectedCategory,
-                              isExpanded: true,
-                              decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                              items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                              onChanged: (v) => setState(() => selectedCategory = v!),
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: DropdownButtonFormField<String>(
-                              value: selectedUnit,
-                              isExpanded: true,
-                              decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                              items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                              onChanged: (v) => setState(() => selectedUnit = v!),
-                            ),
-                          ),
-                        ],
+                    : DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                        items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+                        onChanged: (v) => setState(() => selectedCategory = v!),
                       ),
                     
                     const SizedBox(height: 16),
@@ -671,7 +653,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                          Text('MRP: ₹${mrp.toStringAsFixed(0)}', style: const TextStyle(decoration: TextDecoration.lineThrough, color: Colors.grey)),
                                        const SizedBox(height: 4),
                                        Text(
-                                         'Stock: $stock', 
+                                         'Stock: $stock ${productData['unit'] ?? ''}', 
                                          style: TextStyle(
                                            color: stock > 0 ? Colors.green : Colors.red,
                                            fontWeight: FontWeight.bold
@@ -1075,7 +1057,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(data['name'], maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
-                                Text('Stock: ${data['stock']}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                                Text('Stock: ${data['stock']} ${data['unit'] ?? ''}', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
                               ],
                             ),
                           );

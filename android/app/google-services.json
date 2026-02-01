@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:110161971301:android:1ca561a37bca76699ede8c",
+        "mobilesdk_app_id": "1:226065809285:android:c09300643798993855ff7c",
         "android_client_info": {
-          "package_name": "com.example.ecommerce_app"
+          "package_name": "in.dimandy.app"
         }
       },
       "oauth_client": [],

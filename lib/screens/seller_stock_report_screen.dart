@@ -275,7 +275,7 @@ class _SellerStockReportScreenState extends State<SellerStockReportScreen> {
                              ? ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.network(p['imageUrl'], width: 40, height: 40, fit: BoxFit.cover))
                              : const Icon(Icons.inventory_2),
                         title: Text(p['name'] ?? 'Unknown', overflow: TextOverflow.ellipsis),
-                        subtitle: Text('Stock: $stock'),
+                        subtitle: Text('Stock: $stock ${p['unit'] ?? ''}'),
                         trailing: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.end,

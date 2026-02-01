@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
 import 'services_screen.dart';
-import 'contact_screen.dart';
+import 'static_pages.dart';
 import '../widgets/more_bottom_sheet.dart';
 
 class MainNavigationScreen extends StatefulWidget {

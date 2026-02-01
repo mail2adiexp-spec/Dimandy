@@ -106,6 +106,34 @@ class ProductCard extends StatelessWidget {
                         ),
                       ),
                     ),
+                  if (product.stock <= 0)
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.6),
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(10.0),
+                            topRight: Radius.circular(10.0),
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Text(
+                            'Out of Stock',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -153,20 +181,30 @@ class ProductCard extends StatelessWidget {
                   ),
                   IconButton(
                     icon: const Icon(Icons.add_shopping_cart, size: 20),
-                    color: Theme.of(context).primaryColor,
+                    color: product.stock <= 0 ? Colors.grey : Theme.of(context).primaryColor,
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      context.read<CartProvider>().addProduct(product);
-                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('${product.name} added to cart'),
-                          duration: const Duration(seconds: 1),
-                        ),
-                      );
-                    },
+                    onPressed: product.stock <= 0 
+                      ? () {
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Item is out of stock'),
+                              duration: Duration(seconds: 1),
+                            ),
+                          );
+                        }
+                      : () {
+                          context.read<CartProvider>().addProduct(product);
+                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('${product.name} added to cart'),
+                              duration: const Duration(seconds: 1),
+                            ),
+                          );
+                        },
                   ),
                 ],
               ),

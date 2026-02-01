@@ -63,7 +63,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _priceController.dispose();
     _basePriceController.dispose(); // Added
     _mrpController.dispose();
-    _mrpController.dispose();
     _stockController.dispose();
     _minQtyController.dispose();
     super.dispose();
@@ -334,13 +333,24 @@ class _EditProductDialogState extends State<EditProductDialog> {
                             validator: (v) => int.tryParse(v ?? '') == null ? 'Invalid' : null,
                           ),
                         ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                            child: DropdownButtonFormField<String>(
+                            value: _selectedUnit,
+                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
+                                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                                .toList(),
+                            onChanged: (v) => setState(() => _selectedUnit = v!),
+                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
+                          ),
+                        ),
                       ],
                     ),
 
                     const SizedBox(height: 12),
                     TextFormField(
                        controller: _minQtyController,
-                       decoration: const InputDecoration(labelText: 'Min Quantity', border: OutlineInputBorder()),
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: _selectedUnit),
                        keyboardType: TextInputType.number,
                        validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                     ),
@@ -489,15 +499,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
                           );
                         },
                       ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                        value: _selectedUnit,
-                        items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm']
-                            .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                            .toList(),
-                        onChanged: (v) => setState(() => _selectedUnit = v!),
-                        decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                      ),
+                    // Removed separate Unit dropdown as it is now above in the row
                   ],
                 ),
               ],

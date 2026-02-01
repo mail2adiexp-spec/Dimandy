@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <!--
     If you are serving your web app in a path other than the root, change the
@@ -18,7 +19,8 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="आज के इस आधुनिक और भागदौड़ भरे युग में, जहाँ तकनीक ने दूरियों को कम किया है, वहीं कहीं न कहीं रिश्तों की वो गर्माहट और भरोसे की वो शुद्धता पीछे छूट गई है। इसी खालीपन को भरने और मानवता के साथ व्यापार को जोड़ने के संकल्प का नाम है—Dimandy। यह केवल एक ई-कॉमर्स प्लेटफॉर्म या सर्विस ऐप नहीं है, बल्कि यह एक वादा है—एक ऐसा वादा जो गाँव की मिट्टी की खुशबू को शहर की व्यस्त दहलीज तक पहुँचाने के लिए किया गया है।">
+  <meta name="description"
+    content="Shop online for groceries and get your order delivered to your Home. Enjoy delivery of 500+ products with Dimandy">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -27,12 +29,64 @@
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <link rel="icon" type="image/png" href="favicon.png" />
 
   <title>Dimandy (Home Delivery In 30 Minutes)</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- JSON-LD for Google Search Structure -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "name": "Dimandy",
+        "url": "https://www.dimandy.in",
+        "logo": "https://www.dimandy.in/icons/Icon-512.png",
+        "description": "Shop online for groceries and get your order delivered to your Home. Enjoy delivery of 500+ products with Dimandy",
+        "sameAs": [
+          "https://www.facebook.com/dimandy.in",
+          "https://www.instagram.com/dimandy.in"
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "name": "Dimandy",
+        "url": "https://www.dimandy.in",
+        "potentialAction": {
+          "@type": "SearchAction",
+          "target": "https://www.dimandy.in/search?q={search_term_string}",
+          "query-input": "required name=search_term_string"
+        }
+      },
+      {
+        "@type": "SiteNavigationElement",
+        "name": "Login / Sign Up",
+        "url": "https://www.dimandy.in/auth"
+      },
+      {
+        "@type": "SiteNavigationElement",
+        "name": "Join as Partner",
+        "url": "https://www.dimandy.in/join-partner"
+      },
+      {
+        "@type": "SiteNavigationElement",
+        "name": "About Us",
+        "url": "https://www.dimandy.in/about"
+      },
+      {
+        "@type": "SiteNavigationElement",
+        "name": "Contact Us",
+        "url": "https://www.dimandy.in/contact"
+      }
+    ]
+  }
+  </script>
 </head>
+
 <body>
   <script src="flutter_bootstrap.js" async></script>
 </body>
+
 </html>

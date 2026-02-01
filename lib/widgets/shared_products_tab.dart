@@ -657,7 +657,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             children: [
                               Icon(data['isFeatured'] == true ? Icons.star : Icons.star_border, size: 14, color: Colors.amber),
                               const SizedBox(width: 4),
-                              Expanded(child: Text('Stock: ${data['stock'] ?? 0}', style: TextStyle(fontSize: 10, color: Colors.grey[600]))),
+                              Expanded(child: Text('Stock: ${data['stock'] ?? 0} ${data['unit'] ?? ''}', style: TextStyle(fontSize: 10, color: Colors.grey[600]))),
                             ],
                           ),
                         ],
@@ -941,51 +941,38 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
                         ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: selectedUnit,
+                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
+                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                            onChanged: (v) => setState(() => selectedUnit = v!),
+                          ),
+                        ),
                       ],
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                        controller: minQtyCtrl,
-                       decoration: const InputDecoration(labelText: 'Minimum Quantity', border: OutlineInputBorder()),
+                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
                        keyboardType: TextInputType.number,
                        validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                     ),
                     const SizedBox(height: 16),
                     MediaQuery.of(context).size.width < 600
-                    ? Column(
-                        children: [
-                          DropdownButtonFormField<String>(
-                            value: selectedCategory,
-                            decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                            items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                            onChanged: (v) => setState(() => selectedCategory = v!),
-                          ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<String>(
-                            value: selectedUnit,
-                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) => setState(() => selectedUnit = v!),
-                          ),
-                        ],
+                    ? DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                        items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
+                        onChanged: (v) => setState(() => selectedCategory = v!),
                       )
-                    : Row(
-                      children: [
-                        Expanded(child: DropdownButtonFormField<String>(
-                          value: selectedCategory,
-                          decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                          items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                          onChanged: (v) => setState(() => selectedCategory = v!),
-                        )),
-                        const SizedBox(width: 16),
-                        Expanded(child: DropdownButtonFormField<String>(
-                          value: selectedUnit,
-                          decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                          items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                          onChanged: (v) => setState(() => selectedUnit = v!),
-                        )),
-                      ],
-                    ),
+                    : DropdownButtonFormField<String>(
+                        value: selectedCategory,
+                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                        items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
+                        onChanged: (v) => setState(() => selectedCategory = v!),
+                      ),
                     const SizedBox(height: 16),
                     SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
                     // Auto-calculated Hot Deal based on MRP > Price
@@ -1277,41 +1264,31 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           )),
                           const SizedBox(width: 16),
                           Expanded(child: TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => int.tryParse(v ?? '') != null ? null : 'Invalid')),
+                          const SizedBox(width: 16),
+                          Expanded(child: DropdownButtonFormField(
+                            value: selectedUnit,
+                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                            onChanged: (v) => setState(() => selectedUnit = v!),
+                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder())
+                          )),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                         controller: minQtyCtrl,
-                         decoration: const InputDecoration(labelText: 'Minimum Quantity', border: OutlineInputBorder()),
-                         keyboardType: TextInputType.number,
-                         validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
-                      ),
+                       TextFormField(
+                          controller: minQtyCtrl,
+                          decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                          keyboardType: TextInputType.number,
+                          validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                       ),
                       const SizedBox(height: 16),
                       MediaQuery.of(context).size.width < 600
-                      ? Column(
-                          children: [
-                            DropdownButtonFormField(
-                              value: selectedCategory,
-                              items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                              onChanged: (v) => setState(() => selectedCategory = v!),
-                              decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())
-                            ),
-                            const SizedBox(height: 16),
-                            DropdownButtonFormField(
-                              value: selectedUnit,
-                              items: ['Kg','Ltr','Pic','Pkt','Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                              onChanged: (v) => setState(() => selectedUnit = v!),
-                              decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder())
-                            ),
-                          ],
+                      ? DropdownButtonFormField(
+                          value: selectedCategory,
+                          items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
+                          onChanged: (v) => setState(() => selectedCategory = v!),
+                          decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())
                         )
-                      : Row(
-                        children: [
-                          Expanded(child: DropdownButtonFormField(value: selectedCategory, items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()))),
-                          const SizedBox(width: 16),
-                          Expanded(child: DropdownButtonFormField(value: selectedUnit, items: ['Kg','Ltr','Pic','Pkt','Grm'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(), onChanged: (v) => setState(() => selectedUnit = v!), decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()))),
-                        ],
-                      ),
+                      : DropdownButtonFormField(value: selectedCategory, items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())),
                       const SizedBox(height: 16),
                       SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
                       const SizedBox(height: 16),

@@ -3,7 +3,10 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import '../models/product_model.dart';
+import '../models/product_model.dart';
 import 'cart_screen.dart';
+import '../utils/locations_data.dart';
+import '../widgets/location_autocomplete.dart';
 
 class BookServiceScreen extends StatefulWidget {
   static const routeName = '/book-service';
@@ -38,7 +41,28 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   final _notesController = TextEditingController();
   final _pickupLocationController = TextEditingController();
   final _dropLocationController = TextEditingController();
+
   final _distanceController = TextEditingController();
+  
+  City? _pickupCity;
+  City? _dropCity;
+
+  void _calculateDistance() {
+    if (_pickupCity != null && _dropCity != null) {
+      final dist = LocationsData.calculateDistance(
+        _pickupCity!.lat, 
+        _pickupCity!.lng, 
+        _dropCity!.lat, 
+        _dropCity!.lng
+      );
+      setState(() {
+        _distanceController.text = dist.toString();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Distance calculated: $dist km')),
+      );
+    }
+  }
   
   // Payment method selection
   String _paymentMethod = 'prebooking'; // 'prebooking' or 'full'
@@ -414,44 +438,44 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
             // Conditional fields based on service type
             if (_isVehicleService) ...[
               // Pickup Location
-              Text(
-                'Pickup Location',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              TextField(
+              LocationAutocompleteField(
+                label: 'Pickup Location',
+                icon: Icons.my_location,
                 controller: _pickupLocationController,
-                decoration: InputDecoration(
-                  hintText: 'Enter pickup location',
-                  prefixIcon: const Icon(Icons.my_location),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                ),
+                onSelected: (City city) {
+                  setState(() {
+                    _pickupCity = city;
+                    _pickupLocationController.text = city.toString();
+                    _calculateDistance();
+                  });
+                },
+                onChanged: (val) {
+                   // If user types manually, clear the city object to ensure we don't calculate wrong distance using old coordinates
+                   // unless the text still matches perfectly. 
+                   if (_pickupCity != null && val != _pickupCity.toString()) {
+                     _pickupCity = null; 
+                   }
+                },
               ),
               const SizedBox(height: 16),
 
               // Drop Location
-              Text(
-                'Drop Location',
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              TextField(
+              LocationAutocompleteField(
+                label: 'Drop Location',
+                icon: Icons.location_on,
                 controller: _dropLocationController,
-                decoration: InputDecoration(
-                  hintText: 'Enter drop location',
-                  prefixIcon: const Icon(Icons.location_on),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  filled: true,
-                ),
+                onSelected: (City city) {
+                  setState(() {
+                    _dropCity = city;
+                    _dropLocationController.text = city.toString();
+                    _calculateDistance();
+                  });
+                },
+                onChanged: (val) {
+                   if (_dropCity != null && val != _dropCity.toString()) {
+                     _dropCity = null;
+                   }
+                },
               ),
               const SizedBox(height: 16),
               

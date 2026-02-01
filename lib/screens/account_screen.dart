@@ -11,6 +11,8 @@ import 'service_provider_dashboard_screen.dart';
 import 'service_provider_dashboard_screen.dart';
 import 'core_staff_dashboard_screen.dart';
 import 'store_manager_dashboard_screen.dart';
+import 'join_partner_screen.dart';
+import 'static_pages.dart';
 
 class AccountScreen extends StatefulWidget {
   static const routeName = '/account';
@@ -440,6 +442,35 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
+                            // General Section
+                            const SizedBox(height: 12),
+                            _buildProfileCard(
+                              context: context,
+                              icon: Icons.info_outline,
+                              title: 'About Us',
+                              subtitle: 'Learn more about Dimandy',
+                              onTap: () => Navigator.pushNamed(context, AboutScreen.routeName),
+                            ),
+                            const SizedBox(height: 12),
+                            _buildProfileCard(
+                              context: context,
+                              icon: Icons.contact_support_outlined,
+                              title: 'Contact Us',
+                              subtitle: 'Get help & support',
+                              onTap: () => Navigator.pushNamed(context, ContactScreen.routeName),
+                            ),
+                            const SizedBox(height: 12),
+                            // Join Partner Link (if not already a partner)
+                            if (auth.currentUser?.role == 'user')
+                               _buildProfileCard(
+                                context: context,
+                                icon: Icons.storefront,
+                                title: 'Become a Partner',
+                                subtitle: 'Sell on Dimandy',
+                                onTap: () => Navigator.pushNamed(context, JoinPartnerScreen.routeName),
+                              ),
+
+                            const SizedBox(height: 20),
                             const SizedBox(height: 20),
                             // Sign Out Button
                             SizedBox(
@@ -495,6 +526,91 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ),
                               ),
                             ),
+                            const SizedBox(height: 20),
+                            // Request Account Deletion logic
+                            SizedBox(
+                              width: double.infinity,
+                              child: TextButton.icon(
+                                onPressed: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Delete Account'),
+                                      content: const Text(
+                                        'Are you sure you want to request account deletion? Your data will be permanently removed within 30 days. This action cannot be undone.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        ElevatedButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.red,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+
+                                  if (confirm == true && mounted) {
+                                    try {
+                                      // 1. Submit deletion request
+                                      await FirebaseFirestore.instance
+                                          .collection('deletion_requests')
+                                          .add({
+                                        'userId': auth.currentUser!.uid,
+                                        'email': auth.currentUser!.email,
+                                        'reason': 'User requested via app',
+                                        'requestedAt': FieldValue.serverTimestamp(),
+                                        'status': 'pending',
+                                      });
+
+                                      // 2. Sign Out
+                                      if (mounted) {
+                                        await context.read<AuthProvider>().signOut();
+                                        
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(context).showSnackBar(
+                                            const SnackBar(
+                                              content: Text(
+                                                'Deletion request submitted. You have been signed out.',
+                                              ),
+                                              backgroundColor: Colors.red,
+                                            ),
+                                          );
+                                          // Navigation to AuthScreen is handled by AuthWrapper usually, 
+                                          // but ensuring we pop any dialogs or screens if needed.
+                                          Navigator.of(context).popUntil((route) => route.isFirst);
+                                        }
+                                      }
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Error: $e'),
+                                            backgroundColor: Colors.red,
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                                icon: const Icon(Icons.delete_forever),
+                                label: const Text('Request Account Deletion'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 80), // Increased safe area padding
                           ],
                         ),
@@ -540,6 +656,27 @@ class _AccountScreenState extends State<AccountScreen> {
                               vertical: 16,
                             ),
                           ),
+                        ),
+                        const SizedBox(height: 32),
+                        // Footer Links for SEO
+                        Wrap(
+                          spacing: 16,
+                          runSpacing: 16,
+                          alignment: WrapAlignment.center,
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.pushNamed(context, JoinPartnerScreen.routeName), 
+                              child: const Text('Join as Partner')
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pushNamed(context, AboutScreen.routeName), 
+                              child: const Text('About Us')
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pushNamed(context, ContactScreen.routeName), 
+                              child: const Text('Contact Us')
+                            ),
+                          ],
                         ),
                       ],
                     ),
