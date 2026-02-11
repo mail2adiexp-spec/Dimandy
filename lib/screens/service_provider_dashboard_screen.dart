@@ -1452,10 +1452,76 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                       ),
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: nameController,
-                      decoration: const InputDecoration(labelText: 'Service Name *', border: OutlineInputBorder()),
-                      validator: (v) => v?.isEmpty == true ? 'Required' : null
+                    const SizedBox(height: 16),
+                    // Service Name with Autocomplete
+                    Autocomplete<String>(
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        final suggestions = CategoryHelpers.getServiceSuggestions(selectedCategory);
+                        if (textEditingValue.text.isEmpty) {
+                          return const Iterable<String>.empty();
+                        }
+                        return suggestions.where((option) {
+                          return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                        });
+                      },
+                      onSelected: (String selection) {
+                        nameController.text = selection;
+                        
+                        // Auto-fill price if available and field is empty or default
+                        final price = CategoryHelpers.getServicePrice(selectedCategory, selection);
+                        if (price != null && (basePriceController.text.isEmpty || basePriceController.text == '0')) {
+                           basePriceController.text = price.toStringAsFixed(0);
+                           // Trigger price change logic
+                           // We need to manually call the logic that was in onChanged of basePriceController
+                           // For now, let's just set the controller and let user adjust or tap field
+                           // Or better, extract the price calculation logic to a method.
+                           
+                           // Calculate earnings immediately
+                            final isServiceCategory = CategoryHelpers.isMultiServiceCategory(selectedCategory);
+                            if (!isServiceCategory) {
+                              final earnings = price * (1 - platformFeePercentage / 100);
+                              setState(() => listingPrice = earnings);
+                            }
+                        }
+                        
+                        // Auto-fill description if empty or just bullet
+                        if (descriptionController.text.isEmpty || descriptionController.text == '\u2022 ') {
+                           descriptionController.text = '\u2022 $selection';
+                        }
+                      },
+                      fieldViewBuilder: (context, textEditingController, focusNode, onFieldSubmitted) {
+                        // Sync with original controller if needed, but Autocomplete uses its own.
+                        // We need to ensure nameController is updated. 
+                        // Actually, nameController is passed to `pickImages` etc?
+                        // nameController is used in `_addService`.
+                        
+                        // Bind textEditingController to nameController?
+                        // Or just use nameController AS the controller?
+                        // fieldViewBuilder gives us a controller we MUST use for the field.
+                        // But we have `nameController` defined outside.
+                        // Let's listen to `textEditingController` and update `nameController`.
+                        if (textEditingController.text != nameController.text) {
+                            textEditingController.text = nameController.text;
+                        }
+                        
+                        textEditingController.addListener(() {
+                          nameController.text = textEditingController.text;
+                        });
+                        
+                        return TextFormField(
+                          controller: textEditingController,
+                          focusNode: focusNode,
+                          onFieldSubmitted: (String value) {
+                            onFieldSubmitted();
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Service Name *', 
+                            border: OutlineInputBorder(),
+                            helperText: 'Type to see suggestions'
+                          ),
+                          validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                        );
+                      },
                     ),
                     const SizedBox(height: 16),
                     TextFormField(

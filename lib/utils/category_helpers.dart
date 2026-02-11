@@ -128,4 +128,104 @@ class CategoryHelpers {
   };
 
   static List<String> get commonSecurityServiceNames => commonSecurityServices.keys.toList();
+
+  // --- NEW SERVICE LISTS ---
+
+  static const Map<String, double> commonCleaningServices = {
+    'Home Cleaning (Full)': 2000.0,
+    'Kitchen Cleaning': 1000.0,
+    'Bathroom Cleaning': 800.0,
+    'Sofa Cleaning': 500.0,
+    'Carpet Cleaning': 600.0,
+    'Car Cleaning': 500.0,
+    'Water Tank Cleaning': 1000.0,
+  };
+
+  static const Map<String, double> commonPlumberServices = {
+    'Tap Repair': 200.0,
+    'Pipe Leakage Repair': 500.0,
+    'Water Tank Installation': 1000.0,
+    'Basin Installation': 800.0,
+    'Toilet Seat Installation': 1200.0,
+    'Blockage Removal': 400.0,
+    'Motor Installation': 500.0,
+  };
+
+  static const Map<String, double> commonElectricianServices = {
+    'Fan Installation': 200.0,
+    'Switch Repair': 150.0,
+    'Tube Light Installation': 150.0,
+    'MCB Change': 300.0,
+    'Wiring (Per Point)': 200.0,
+    'Inverter Installation': 500.0,
+    'AC Switch Installation': 400.0,
+  };
+
+  static const Map<String, double> commonCarpenterServices = {
+    'Furniture Repair': 300.0,
+    'Door Lock Installation': 250.0,
+    'Door Hinge Repair': 200.0,
+    'Curtain Rod Installation': 150.0,
+    'Furniture Assembly': 500.0,
+    'Bed Repair': 400.0,
+  };
+
+  static const Map<String, double> commonACRepairServices = {
+    'AC Service (Split)': 500.0,
+    'AC Service (Window)': 400.0,
+    'Gas Filling': 2500.0,
+    'AC Installation': 1500.0,
+    'AC Uninstallation': 800.0,
+    'PCB Repair': 1000.0,
+  };
+
+  static const Map<String, double> commonPainterServices = {
+    'Wall Painting (Per SqFt)': 12.0,
+    'Texture Painting (Per SqFt)': 25.0,
+    'Waterproofing': 5000.0,
+    'Wood Polishing': 1000.0,
+  };
+
+  // --- HELPER METHODS ---
+
+  static List<String> getServiceSuggestions(String category) {
+    final cat = category.toLowerCase();
+    
+    if (cat.contains('clean')) return commonCleaningServices.keys.toList();
+    if (cat.contains('plumb')) return commonPlumberServices.keys.toList();
+    if (cat.contains('electr')) return commonElectricianServices.keys.toList();
+    if (cat.contains('carpent')) return commonCarpenterServices.keys.toList();
+    if (cat.contains('ac') || cat.contains('air')) return commonACRepairServices.keys.toList();
+    if (cat.contains('paint')) return commonPainterServices.keys.toList();
+    
+    if (cat.contains('napit') || cat.contains('barber') || cat.contains('salon')) {
+       // Merge Napit + Beautician for salons? Or keep separate?
+       // 'Napit' usually refers to Barber. 'Salon' implies unisex or female.
+       // Let's return Napit for Barber/Napit, and Beautician for Beauty/Salon/Parlour.
+       if (cat.contains('beauty') || cat.contains('parlour')) return commonBeauticianServices.keys.toList();
+       return commonNapitServices.keys.toList();
+    }
+    if (cat.contains('beauty') || cat.contains('parlour')) return commonBeauticianServices.keys.toList();
+    
+    if (cat.contains('security') || cat.contains('guard')) return commonSecurityServices.keys.toList();
+    
+    return [];
+  }
+
+  static double? getServicePrice(String category, String serviceName) {
+    final cat = category.toLowerCase();
+    Map<String, double>? sourceMap;
+
+    if (cat.contains('clean')) sourceMap = commonCleaningServices;
+    else if (cat.contains('plumb')) sourceMap = commonPlumberServices;
+    else if (cat.contains('electr')) sourceMap = commonElectricianServices;
+    else if (cat.contains('carpent')) sourceMap = commonCarpenterServices;
+    else if (cat.contains('ac') || cat.contains('air')) sourceMap = commonACRepairServices;
+    else if (cat.contains('paint')) sourceMap = commonPainterServices;
+    else if (cat.contains('napit') || cat.contains('barber')) sourceMap = commonNapitServices;
+    else if (cat.contains('beauty') || cat.contains('parlour') || cat.contains('salon')) sourceMap = commonBeauticianServices;
+    else if (cat.contains('security') || cat.contains('guard')) sourceMap = commonSecurityServices;
+
+    return sourceMap?[serviceName];
+  }
 }
