@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/auth_provider.dart';
+import '../utils/locations_data.dart';
 
 class EditProfileScreen extends StatefulWidget {
   static const routeName = '/edit-profile';
@@ -21,6 +22,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
+  final _pincodeController = TextEditingController(); // Added Pincode Controller
   final _passwordController = TextEditingController();
 
   File? _imageFile;
@@ -31,6 +33,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   bool _showPasswordField = false;
   bool _isPasswordInputVisible = false;
 
+  String? _selectedState;
+  final List<String> _availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
+
   @override
   void initState() {
     super.initState();
@@ -39,7 +44,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       _nameController.text = user.name;
       _emailController.text = user.email;
       _phoneController.text = user.phoneNumber ?? '';
+      _pincodeController.text = user.pincode ?? ''; // Init Pincode
       _imageUrl = user.photoURL;
+      if (_availableStates.contains(user.state)) {
+        _selectedState = user.state;
+      }
     }
   }
 
@@ -48,6 +57,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _pincodeController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
@@ -95,9 +105,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final auth = context.read<AuthProvider>();
       final currentUser = auth.currentUser!;
 
-      // Update name if changed
-      if (_nameController.text.trim() != currentUser.name) {
-        await auth.updateProfile(name: _nameController.text);
+      // Update name, state, or pincode if changed
+      if (_nameController.text.trim() != currentUser.name || 
+          _selectedState != currentUser.state ||
+          _pincodeController.text.trim() != (currentUser.pincode ?? '')) {
+        await auth.updateProfile(
+          name: _nameController.text,
+          state: _selectedState,
+          pincode: _pincodeController.text.trim().isNotEmpty ? _pincodeController.text.trim() : null,
+        );
       }
 
       // Update email if changed
@@ -292,54 +308,68 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // Name Field
               TextFormField(
                 controller: _nameController,
+                readOnly: true, // READ-ONLY
                 decoration: const InputDecoration(
                   labelText: 'Name',
                   prefixIcon: Icon(Icons.person_outline),
                   border: OutlineInputBorder(),
+                  filled: true,
+                  fillColor: Colors.white70, // Visual cue
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
+              ),
+              const SizedBox(height: 16),
+              
+              // State Dropdown (Editable)
+              DropdownButtonFormField<String>(
+                value: _selectedState,
+                decoration: const InputDecoration(
+                  labelText: 'State',
+                  prefixIcon: Icon(Icons.location_city),
+                  border: OutlineInputBorder(),
+                ),
+                items: _availableStates.map((state) {
+                  return DropdownMenuItem(value: state, child: Text(state));
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedState = val),
+                validator: (v) => v == null ? 'Please select your state' : null,
+              ),
+              const SizedBox(height: 16),
+
+              // Pincode Field (Editable)
+              TextFormField(
+                controller: _pincodeController,
+                decoration: const InputDecoration(
+                  labelText: 'PIN Code',
+                  prefixIcon: Icon(Icons.pin_drop_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (v) {
+                  if (v != null && v.isNotEmpty) {
+                    if (v.length != 6) return 'PIN code must be 6 digits';
+                    if (!RegExp(r'^[0-9]+$').hasMatch(v)) return 'Only numbers allowed';
+                  }
+                  return null;
+                },
               ),
               const SizedBox(height: 16),
 
               // Email Field
               TextFormField(
                 controller: _emailController,
+                readOnly: true, // READ-ONLY
                 decoration: InputDecoration(
                   labelText: 'Email',
                   prefixIcon: const Icon(Icons.email_outlined),
                   border: const OutlineInputBorder(),
-                  helperText: 'Changing email requires password',
-                  suffixIcon:
-                      _emailController.text !=
-                          context.read<AuthProvider>().currentUser?.email
-                      ? IconButton(
-                          icon: Icon(
-                            _showPasswordField
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                          ),
-                          onPressed: () {
-                            setState(
-                              () => _showPasswordField = !_showPasswordField,
-                            );
-                          },
-                        )
-                      : null,
+                  filled: true,
+                  fillColor: Colors.white70,
+                  // Remove helper text and suffix icon since it's read-only and password change logic implies editing
                 ),
-                keyboardType: TextInputType.emailAddress,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) return 'Enter your email';
-                  if (!v.contains('@')) return 'Enter a valid email';
-                  return null;
-                },
-                onChanged: (v) {
-                  if (v != context.read<AuthProvider>().currentUser?.email) {
-                    setState(() => _showPasswordField = true);
-                  } else {
-                    setState(() => _showPasswordField = false);
-                  }
-                },
               ),
 
               // Password Field (shown when email is changed)

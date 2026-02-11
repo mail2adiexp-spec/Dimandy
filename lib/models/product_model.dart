@@ -20,6 +20,7 @@ class Product {
   int stock;
   final int minimumQuantity; // Added minimum quantity field
   final List<String> storeIds; // Added storeIds for availability
+  final String? state; // Added state field
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -43,6 +44,7 @@ class Product {
     this.stock = 0, // Added to constructor
     this.minimumQuantity = 1, // Default to 1
     this.storeIds = const [], // Default empty
+    this.state, // Added to constructor
     this.createdAt,
     this.updatedAt, // Added to constructor
   });
@@ -69,6 +71,7 @@ class Product {
       'stock': stock,
       'minimumQuantity': minimumQuantity,
       'storeIds': storeIds,
+      'state': state, // Added to map
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -97,6 +100,7 @@ class Product {
       stock: (map['stock'] as num?)?.toInt() ?? 0,
       minimumQuantity: (map['minimumQuantity'] as num?)?.toInt() ?? 1,
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      state: map['state'] as String?, // Added from map
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 
           : null,

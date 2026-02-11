@@ -2,7 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/store_model.dart';
+import '../utils/locations_data.dart'; // Import for state list
 
 class ManageStoresTab extends StatefulWidget {
   const ManageStoresTab({super.key});
@@ -17,9 +20,13 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+    final isStateAdmin = auth.isStateAdmin;
+    final assignedState = auth.currentUser?.assignedState;
     return Scaffold(
       backgroundColor: Colors.grey[50], // Light background for the tab
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'manage_stores_fab',
         onPressed: () => _showStoreDialog(),
         icon: const Icon(Icons.add),
         label: const Text('Add Store'),
@@ -51,12 +58,23 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
             const SizedBox(height: 24),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
-                stream: _storesCollection
-                    .orderBy('createdAt', descending: true)
-                    .snapshots(),
+                stream: () {
+                   Query query = _storesCollection.orderBy('createdAt', descending: true);
+                   if (isStateAdmin && assignedState != null) {
+                     query = query.where('state', isEqualTo: assignedState);
+                   }
+                   return query.snapshots();
+                }(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
+                    return Center(
+                      child: SelectionArea(
+                        child: SelectableText(
+                          'Error: ${snapshot.error}',
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    );
                   }
 
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -244,7 +262,19 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                       ),
                     ],
                   ),
+
                    const SizedBox(height: 8),
+                  if (store.state != null)
+                   Padding(
+                     padding: const EdgeInsets.only(bottom: 8.0),
+                     child: Row(
+                       children: [
+                         const Icon(Icons.map_outlined, size: 18, color: Colors.grey),
+                         const SizedBox(width: 8),
+                         Text('State: ${store.state}', style: const TextStyle(fontSize: 13)),
+                       ],
+                     ),
+                   ),
                   if (store.managerName != null)
                      Row(
                       children: [
@@ -311,10 +341,15 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
   }
 
   void _showStoreDialog({StoreModel? store}) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final isStateAdmin = auth.isStateAdmin;
+    final assignedState = auth.currentUser?.assignedState;
+
     final nameController = TextEditingController(text: store?.name ?? '');
     final addressController = TextEditingController(text: store?.address ?? '');
     final pincodesController =
         TextEditingController(text: store?.pincodes.join(', ') ?? '');
+    String? selectedState = store?.state ?? (isStateAdmin ? assignedState : null);
     
     String? selectedManagerId = store?.managerId;
     Map<String, dynamic>? selectedManagerData;
@@ -362,6 +397,18 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                       maxLines: 2,
                       validator: (value) =>
                           value?.isEmpty ?? true ? 'Please enter address' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedState,
+                      decoration: const InputDecoration(
+                        labelText: 'Store State',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.map),
+                      ),
+                      items: LocationsData.cities.map((e) => e.state).toSet().toList().map((s) => DropdownMenuItem(value: s, child: Text(s))).toList()..sort((a,b) => a.value!.compareTo(b.value!)),
+                      onChanged: isStateAdmin ? null : (val) => setState(() => selectedState = val), // Disable for State Admin
+                      validator: (value) => value == null ? 'Please select a state' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -488,6 +535,7 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                       'isActive': store?.isActive ?? true,
                       'createdAt': store?.createdAt ?? FieldValue.serverTimestamp(),
                       'managerId': selectedManagerId,
+                      'state': selectedState, // Save state
                     };
                     
                     // If manager is selected, add their details to store for easy display

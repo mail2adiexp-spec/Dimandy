@@ -30,6 +30,7 @@ class CartScreen extends StatelessWidget {
                 itemBuilder: (_, i) {
                   final item = cart.items[i];
                   final p = item.product;
+                  final isService = p.category == 'Services' || p.unit == 'service';
                   return ListTile(
                     contentPadding: const EdgeInsets.symmetric(
                       vertical: 8,
@@ -57,28 +58,30 @@ class CartScreen extends StatelessWidget {
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        IconButton(
-                          icon: const Icon(Icons.remove_circle_outline),
-                          onPressed: () {
-                            if (item.quantity > item.product.minimumQuantity) {
-                              cart.removeOne(p.id);
-                            } else {
-                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Minimum quantity is ${item.product.minimumQuantity}. Use delete to remove.'),
-                                  backgroundColor: Colors.red,
-                                  duration: const Duration(seconds: 2),
-                                ),
-                              );
-                            }
-                          },
-                        ),
+                        if (!isService)
+                          IconButton(
+                            icon: const Icon(Icons.remove_circle_outline),
+                            onPressed: () {
+                              if (item.quantity > item.product.minimumQuantity) {
+                                cart.removeOne(p.id);
+                              } else {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Minimum quantity is ${item.product.minimumQuantity}. Use delete to remove.'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
                         Text(item.quantity.toString()),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline),
-                          onPressed: () => cart.addProduct(p),
-                        ),
+                        if (!isService)
+                          IconButton(
+                            icon: const Icon(Icons.add_circle_outline),
+                            onPressed: () => cart.addProduct(p),
+                          ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline),
                           onPressed: () => cart.removeProduct(p.id),

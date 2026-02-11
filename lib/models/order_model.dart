@@ -14,19 +14,18 @@ class OrderModel {
   final DateTime? estimatedDelivery;
   final DateTime? actualDelivery;
   final Map<String, DateTime>? statusHistory;
-  final String? deliveryPartnerId;
-  final String? deliveryPartnerName;
-  final String? deliveryPincode;
-  final double deliveryFee; // Internal field for partner earnings, not charged to customer
-  
-  // Payment fields for QR code payment on delivery
-  final String? paymentMethod; // 'qr_code', 'cash', null
-  final String? paymentProofUrl;
-  final DateTime? paymentProofUploadedAt;
-  final String? paymentProofUploadedBy;
-  final bool paymentVerified;
-  final DateTime? paymentVerifiedAt;
-  final String? paymentVerifiedBy;
+  final String? deliveryPartnerId; // Restored
+  final String? deliveryPartnerName; // Restored
+  final String? deliveryPincode; // Restored
+  final double deliveryFee; // Restored
+  final String? paymentMethod; // Restored
+  final String? paymentProofUrl; // Restored
+  final DateTime? paymentProofUploadedAt; // Restored
+  final String? paymentProofUploadedBy; // Restored
+  final bool paymentVerified; // Restored
+  final DateTime? paymentVerifiedAt; // Restored
+  final String? paymentVerifiedBy; // Restored
+  final List<String> sellerIds; // Added for security rules to filter orders by seller
 
   OrderModel({
     required this.id,
@@ -52,6 +51,7 @@ class OrderModel {
     this.paymentVerified = false,
     this.paymentVerifiedAt,
     this.paymentVerifiedBy,
+    this.sellerIds = const [], // Default empty
   });
 
   factory OrderModel.fromMap(Map<String, dynamic> map, String documentId) {
@@ -111,6 +111,7 @@ class OrderModel {
           ? _parseDate(map['paymentVerifiedAt'])
           : null,
       paymentVerifiedBy: map['paymentVerifiedBy'],
+      sellerIds: (map['sellerIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
     );
   }
 
@@ -140,6 +141,7 @@ class OrderModel {
       'paymentVerified': paymentVerified,
       'paymentVerifiedAt': paymentVerifiedAt?.toIso8601String(),
       'paymentVerifiedBy': paymentVerifiedBy,
+      'sellerIds': sellerIds,
     };
   }
 

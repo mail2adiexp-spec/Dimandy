@@ -56,6 +56,7 @@ class OrderProvider extends ChangeNotifier {
     required double totalAmount,
     required String deliveryAddress,
     required String phoneNumber,
+    required String state, // Added state parameter
   }) async {
     final userId = authProvider.currentUser?.uid;
     if (userId == null) {
@@ -66,6 +67,7 @@ class OrderProvider extends ChangeNotifier {
     debugPrint('OrderProvider: Creating order for user $userId');
     debugPrint('OrderProvider: Items count: ${items.length}');
     debugPrint('OrderProvider: Total amount: $totalAmount');
+    debugPrint('OrderProvider: State: $state');
 
     try {
       // Extract pincode from address
@@ -93,17 +95,22 @@ class OrderProvider extends ChangeNotifier {
         debugPrint('Error fetching delivery settings: $e');
       }
 
+      // Extract unique seller IDs for security rules
+      final sellerIds = items.map((e) => e.sellerId).toSet().toList();
+
       final orderData = {
         'userId': userId,
         'items': items.map((item) => item.toMap()).toList(),
         'totalAmount': totalAmount,
         'deliveryAddress': deliveryAddress,
         'phoneNumber': phoneNumber,
+        'state': state, // Save state top-level
         'orderDate': DateTime.now().toIso8601String(),
         'status': 'pending',
         'statusHistory': {'pending': DateTime.now().toIso8601String()},
         'deliveryPincode': deliveryPincode,
         'deliveryFee': deliveryFee, // Save calculated fee
+        'sellerIds': sellerIds, // Added for security filtering
       };
       
       // =======================================================================

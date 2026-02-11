@@ -25,9 +25,15 @@ exports.deleteUserAccount = functions.https.onCall(async (data, context) => {
     .get();
 
   const callerRole = callerDoc.data()?.role;
+  // Check if caller is super admin by email
+  const callerEmail = context.auth.token.email;
+  const isSuperAdminEmail = callerEmail === "mail2adiexp@gmail.com";
+
   const isAdmin =
+    isSuperAdminEmail ||
     callerRole === "admin" ||
     callerRole === "administrator" ||
+    callerRole === "super_admin" ||
     context.auth.token.admin === true;
 
   if (!isAdmin) {
@@ -112,9 +118,15 @@ exports.updateUserRole = functions.https.onCall(async (data, context) => {
     .get();
 
   const callerRole = callerDoc.data()?.role;
+  // Check if caller is super admin by email
+  const callerEmail = context.auth.token.email;
+  const isSuperAdminEmail = callerEmail === "mail2adiexp@gmail.com";
+
   const isAdmin =
+    isSuperAdminEmail ||
     callerRole === "admin" ||
     callerRole === "administrator" ||
+    callerRole === "super_admin" ||
     context.auth.token.admin === true;
 
   if (!isAdmin) {
@@ -172,9 +184,16 @@ exports.approvePartnerRequest = functions.https.onCall(async (data, context) => 
   const callerUid = context.auth.uid;
   const callerDoc = await admin.firestore().collection("users").doc(callerUid).get();
   const callerRole = callerDoc.data()?.role;
+  // Check if caller is super admin by email
+  const callerEmail = context.auth.token.email;
+  const isSuperAdminEmail = callerEmail === "mail2adiexp@gmail.com";
+
   const isAdmin =
+    isSuperAdminEmail ||
     callerRole === "admin" ||
     callerRole === "administrator" ||
+    callerRole === "super_admin" ||
+    callerRole === "state_admin" ||
     context.auth.token.admin === true;
 
   if (!isAdmin) {
@@ -211,9 +230,14 @@ exports.approvePartnerRequest = functions.https.onCall(async (data, context) => 
       );
     }
 
-    const { email, password, name, phone, role, businessName, address, servicePincode } = requestData;
+    const { email, password, name, phone, role, businessName, address, servicePincode, state } = requestData;
 
-    const lowerCaseRole = role.toLowerCase();
+    // Map role to internal role names (snake_case)
+    let internalRole = role.toLowerCase();
+    if (role === 'Service Provider') internalRole = 'service_provider';
+    if (role === 'Delivery Partner') internalRole = 'delivery_partner';
+    if (role === 'Seller') internalRole = 'seller';
+    // Add other mappings if needed, but these are the main ones causing issues
 
     // 4. Create new user in Firebase Authentication
     const userRecord = await admin.auth().createUser({
@@ -230,17 +254,20 @@ exports.approvePartnerRequest = functions.https.onCall(async (data, context) => 
       name: name,
       email: email,
       phone: phone,
-      role: lowerCaseRole,
+      role: internalRole,
+      status: 'approved', // Explicitly set status to approved
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       businessName: businessName || null,
       address: address || null,
       servicePincode: servicePincode || null,
+      state: state || null, // Ensure state is copied
+
       // Add other fields as necessary
     };
 
     // Set custom claims if the role is admin
-    if (lowerCaseRole === 'admin' || lowerCaseRole === 'administrator') {
+    if (internalRole === 'admin' || internalRole === 'administrator' || internalRole === 'super_admin' || internalRole === 'state_admin') {
       await admin.auth().setCustomUserClaims(userRecord.uid, { admin: true });
     }
 
@@ -380,108 +407,87 @@ exports.createStaffAccount = functions.https.onCall(async (data, context) => {
     if (error.code && error.code.startsWith('auth/')) {
       throw new functions.https.HttpsError("already-exists", error.message);
     }
+
     throw new functions.https.HttpsError("internal", "An internal error occurred while creating the account.");
   }
 });
 
 /**
- * Approve Partner Request
- * Creates user account and updates request status
+ * Create a new State Admin account
  * Only admins can call this function
  */
-exports.approvePartnerRequest = functions.https.onCall(async (data, context) => {
-  // Check if caller is authenticated
+exports.createStateAdminAccount = functions.https.onCall(async (data, context) => {
+  // 1. Check if caller is authenticated and is an admin
   if (!context.auth) {
     throw new functions.https.HttpsError(
       "unauthenticated",
-      "User must be authenticated",
+      "User must be authenticated to create state admin accounts.",
     );
   }
 
-  // Check if caller is admin
   const callerUid = context.auth.uid;
-  const callerDoc = await admin
-    .firestore()
-    .collection("users")
-    .doc(callerUid)
-    .get();
-
-  const callerRole = callerDoc.data()?.role;
   const callerEmail = context.auth.token.email;
-  const isAdmin =
-    callerEmail === "mail2adiexp@gmail.com" ||
-    callerRole === "admin" ||
-    callerRole === "administrator" ||
-    context.auth.token.admin === true;
 
-  if (!isAdmin) {
-    throw new functions.https.HttpsError(
-      "permission-denied",
-      "Only admins can approve partner requests",
-    );
+  // CRITICAL: Check super admin email FIRST, before any Firestore lookups
+  const isSuperAdmin = callerEmail === "mail2adiexp@gmail.com";
+
+  if (isSuperAdmin) {
+    console.log("Super admin access granted for:", callerEmail);
+  } else {
+    // For non-super-admin users, fetch and validate Firestore document
+    const callerDoc = await admin.firestore().collection("users").doc(callerUid).get();
+
+    if (!callerDoc.exists) {
+      throw new functions.https.HttpsError(
+        "failed-precondition",
+        "User profile not found.",
+      );
+    }
+
+    const callerRole = callerDoc.data()?.role;
+
+    // Check if user has admin role
+    const isRegularAdmin =
+      callerRole === "admin" ||
+      callerRole === "administrator" ||
+      context.auth.token.admin === true;
+
+    if (!isRegularAdmin) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "Only admins can create state admin accounts.",
+      );
+    }
   }
 
-  const { requestId } = data;
-
-  if (!requestId) {
+  // 2. Validate input
+  const { email, password, name, phone, assignedState } = data;
+  if (!email || !password || !name || !assignedState) {
     throw new functions.https.HttpsError(
       "invalid-argument",
-      "requestId is required",
+      "Email, password, name, and assigned state are required.",
     );
   }
 
   try {
-    // 1. Fetch the partner request
-    const requestRef = admin.firestore().collection("partner_requests").doc(requestId);
-    const requestDoc = await requestRef.get();
-
-    if (!requestDoc.exists) {
-      throw new functions.https.HttpsError(
-        "not-found",
-        "Partner request not found",
-      );
-    }
-
-    const requestData = requestDoc.data();
-    const { email, password, name, phone, role, panNumber, aadhaarNumber, profilePicUrl } = requestData;
-
-    if (!email || !password || !name || !role) {
-      throw new functions.https.HttpsError(
-        "invalid-argument",
-        "Missing required fields in partner request",
-      );
-    }
-
-    // 2. Create user in Firebase Authentication
+    // 3. Create new user in Firebase Authentication
     const userRecord = await admin.auth().createUser({
       email: email,
       password: password,
       displayName: name,
+      phoneNumber: phone && phone.length > 0 ? phone : undefined, // Optional
       disabled: false,
     });
 
-    const userId = userRecord.uid;
-
-    // 3. Determine role mapping
-    let userRole = "user";
-    if (role === "Seller") {
-      userRole = "seller";
-    } else if (role === "Service Provider") {
-      userRole = "service_provider";
-    } else if (role === "Delivery Partner") {
-      userRole = "delivery_partner";
-    }
-
-    // 4. Create user document in Firestore
+    // 4. Create new user document in Firestore
+    const newUserRef = admin.firestore().collection("users").doc(userRecord.uid);
     const userData = {
-      uid: userId,
+      uid: userRecord.uid,
       name: name,
       email: email,
       phone: phone || "",
-      role: userRole,
-      panNumber: panNumber || "",
-      aadhaarNumber: aadhaarNumber || "",
-      profilePicUrl: profilePicUrl || "",
+      role: "state_admin",
+      assignedState: assignedState,
       permissions: {
         can_view_dashboard: true,
       },
@@ -489,46 +495,23 @@ exports.approvePartnerRequest = functions.https.onCall(async (data, context) => 
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // Add role-specific permissions
-    if (userRole === "seller") {
-      userData.permissions.can_manage_products = true;
-      userData.permissions.can_view_orders = true;
-    } else if (userRole === "service_provider") {
-      userData.permissions.can_manage_services = true;
-      userData.permissions.can_view_bookings = true;
-    } else if (userRole === "delivery_partner") {
-      userData.permissions.can_view_deliveries = true;
-      userData.permissions.can_update_delivery_status = true;
-    }
-
-    await admin.firestore().collection("users").doc(userId).set(userData);
-
-    // 5. Update partner request status
-    await requestRef.update({
-      status: "approved",
-      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
-      userId: userId,
-    });
+    await newUserRef.set(userData);
 
     return {
       success: true,
-      message: `Partner request approved successfully for ${email}`,
-      userId: userId,
+      message: `Successfully created state admin account for ${email} in ${assignedState}.`,
+      userId: userRecord.uid,
     };
   } catch (error) {
-    console.error("Error approving partner request:", error);
-
-    // If there's an error after user creation, try to clean up
-    if (error.code && error.code.startsWith("auth/")) {
+    console.error("Error creating state admin account:", error);
+    if (error.code && error.code.startsWith('auth/')) {
       throw new functions.https.HttpsError("already-exists", error.message);
     }
-
-    throw new functions.https.HttpsError(
-      "internal",
-      `Failed to approve partner request: ${error.message}`,
-    );
+    throw new functions.https.HttpsError("internal", "An internal error occurred while creating the account.");
   }
 });
+
+
 
 /**
  * On Order Create Trigger
@@ -555,18 +538,18 @@ exports.onOrderCreate = functions.firestore
         // Checks if ID ends with valid weight suffix formatted as _Xg or _XKg
         // NOTE: This assumes original product IDs do NOT end with this pattern unintentionally.
         const variantMatch = targetId.match(/(.*)_(\d+(\.\d+)?[kK]?[gG])$/);
-        
+
         if (variantMatch) {
           const baseId = variantMatch[1];
           const weightLabel = variantMatch[2].toLowerCase(); // e.g. 500g, 1kg
-          
+
           let multiplier = 1.0;
           if (weightLabel.endsWith('kg')) {
-             multiplier = parseFloat(weightLabel.replace('kg', ''));
+            multiplier = parseFloat(weightLabel.replace('kg', ''));
           } else if (weightLabel.endsWith('g')) {
-             multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
+            multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
           }
-          
+
           if (multiplier > 0) {
             targetId = baseId;
             deductQty = item.quantity * multiplier;
@@ -580,6 +563,16 @@ exports.onOrderCreate = functions.firestore
           stock: admin.firestore.FieldValue.increment(-deductQty),
           salesCount: admin.firestore.FieldValue.increment(item.quantity)
         });
+      }
+
+      // 1.5 Backfill sellerIds if missing (Self-Healing)
+      if (!orderData.sellerIds) {
+        const sellerIds = [...new Set(items.map(i => i.sellerId).filter(id => id))];
+        if (sellerIds.length > 0) {
+          const orderRef = admin.firestore().collection('orders').doc(orderId);
+          batch.update(orderRef, { sellerIds: sellerIds });
+          console.log(`Backfilling sellerIds for order ${orderId}:`, sellerIds);
+        }
       }
 
       // 2. Create Notifications
@@ -703,12 +696,25 @@ exports.verifyPayment = functions.https.onCall(async (data, context) => {
     // the 'onOrderCreate' trigger will handle stock reduction and notifications automatically 
     // when this document is created.
 
+    // Destructure state from data (passed from OrderProvider)
+    const { state } = data;
+
+    // Optional: Validate state if required (e.g. check against allowed list)
+    // For now, we trust the client or allow open input, but verify it exists
+    if (!state) {
+      console.warn("Order created without state field. State Admin filtering may fail.");
+    }
+
+    // Extract sellerIds for security rules
+    const sellerIds = [...new Set(items.map(item => item.sellerId).filter(id => id))];
+
     const orderData = {
       userId: userId,
       items: items, // Expecting list of objects matching OrderItem structure
       totalAmount: totalAmount,
       deliveryAddress: deliveryAddress,
       phoneNumber: phoneNumber,
+      state: state || null, // Create top-level state field
       orderDate: admin.firestore.FieldValue.serverTimestamp(),
       status: 'placed', // Initial status
       paymentStatus: 'paid', // Key difference: Paid immediately
@@ -717,6 +723,7 @@ exports.verifyPayment = functions.https.onCall(async (data, context) => {
       statusHistory: {
         'placed': admin.firestore.FieldValue.serverTimestamp()
       },
+      sellerIds: sellerIds, // Added for security filtering
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     };
 
@@ -802,6 +809,16 @@ exports.onOrderUpdate = functions.firestore
             referenceId: orderId,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
+        }
+      }
+
+      // 3. Backfill sellerIds if missing (Lazy Migration)
+      if (!newData.sellerIds) {
+        const sellerIds = [...new Set(items.map(i => i.sellerId).filter(id => id))];
+        if (sellerIds.length > 0) {
+          const orderRef = admin.firestore().collection('orders').doc(orderId);
+          batch.update(orderRef, { sellerIds: sellerIds });
+          console.log(`Lazy Migration: Backfilling sellerIds for order ${orderId}:`, sellerIds);
         }
       }
 

@@ -562,11 +562,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
        return;
     }
     final cart = context.read<CartProvider>();
-    for (int i = 0; i < _quantity; i++) {
-      cart.addProduct(widget.product);
+    try {
+      for (int i = 0; i < _quantity; i++) {
+        cart.addProduct(widget.product);
+      }
+      _showSuccessMsg('Added $_quantity item(s) to cart');
+      setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-    _showSuccessMsg('Added $_quantity item(s) to cart');
-    setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
   }
 
   void _addToCartWeightBased() {
@@ -592,9 +601,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
 
     final cart = context.read<CartProvider>();
-    cart.addProduct(virtualProduct);
-    
-    _showSuccessMsg('Added ${variant.label} pack to cart');
+    try {
+      cart.addProduct(virtualProduct);
+      _showSuccessMsg('Added ${variant.label} pack to cart');
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString().replaceAll('Exception: ', '')),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _showSuccessMsg(String msg) {

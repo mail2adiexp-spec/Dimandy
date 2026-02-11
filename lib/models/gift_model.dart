@@ -14,6 +14,7 @@ class Gift {
   final int displayOrder;
   final DateTime? createdAt;
   final DateTime? updatedAt;
+  final String? state; // Optional state for regional gifts
 
   Gift({
     required this.id,
@@ -27,6 +28,7 @@ class Gift {
     this.displayOrder = 0,
     this.createdAt,
     this.updatedAt,
+    this.state,
   });
 
   Gift copyWith({
@@ -41,6 +43,7 @@ class Gift {
     int? displayOrder,
     DateTime? createdAt,
     DateTime? updatedAt,
+    String? state,
   }) {
     return Gift(
       id: id ?? this.id,
@@ -54,6 +57,7 @@ class Gift {
       displayOrder: displayOrder ?? this.displayOrder,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
+      state: state ?? this.state,
     );
   }
 
@@ -71,6 +75,7 @@ class Gift {
           ? Timestamp.fromDate(createdAt!)
           : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'state': state,
     };
   }
 
@@ -96,6 +101,7 @@ class Gift {
       updatedAt: (data['updatedAt'] is Timestamp)
           ? (data['updatedAt'] as Timestamp).toDate()
           : null,
+      state: data['state'] as String?,
     );
   }
 }

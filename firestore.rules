@@ -5,6 +5,23 @@ service cloud.firestore {
     
     // ==================== HELPER FUNCTIONS ====================
     
+    // Helper to check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper to check if user is owner of the data
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Helper function to check if user is store manager (7. Store Manager)
+    function isStoreManager() {
+      return request.auth != null && 
+             getUserRole() != null && 
+             (getUserRole().role == 'store_manager' || getUserRole().role == 'Store Manager');
+    }
+    
     // Helper function to get user role safely
     function getUserRole() {
       return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid))
@@ -16,7 +33,7 @@ service cloud.firestore {
     function isAdmin() {
       return request.auth != null && (
              request.auth.token.email == 'mail2adiexp@gmail.com' ||
-             (getUserRole() != null && (getUserRole().role == 'admin' || getUserRole().role == 'administrator'))
+             (getUserRole() != null && (getUserRole().role == 'admin' || getUserRole().role == 'administrator' || getUserRole().role == 'super_admin'))
       );
     }
     
@@ -24,38 +41,34 @@ service cloud.firestore {
     function isSeller() {
       return request.auth != null && 
              getUserRole() != null && 
-             getUserRole().role == 'seller';
+             (getUserRole().role == 'seller' || getUserRole().role == 'Seller');
     }
     
     // Helper function to check if user is service provider (3. Service Provider)
     function isServiceProvider() {
       return request.auth != null && 
              getUserRole() != null && 
-             getUserRole().role == 'service_provider';
+             (getUserRole().role == 'service_provider' || getUserRole().role == 'Service Provider');
     }
     
     // Helper function to check if user is core staff (4. Core Staff)
     function isCoreStaff() {
       return request.auth != null && 
              getUserRole() != null && 
-             getUserRole().role == 'core_staff';
+             (getUserRole().role == 'core_staff' || getUserRole().role == 'Core Staff');
     }
 
-    // Helper function to check if user is store manager (7. Store Manager)
-    function isStoreManager() {
+    // Helper function to check if user is state admin (8. State Admin)
+    function isStateAdmin() {
       return request.auth != null && 
              getUserRole() != null && 
-             getUserRole().role == 'store_manager';
+             getUserRole().role == 'state_admin';
     }
-    
-    // Helper function to check if user is authenticated (1. User)
-    function isAuthenticated() {
-      return request.auth != null;
-    }
-    
-    // Helper function to check if user owns the document
-    function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+
+    // Helper to get assigned state for State Admin
+    function getAssignedState() {
+      // Logic: Get the assignedState field from the user's document
+      return getUserRole().assignedState;
     }
     
     // ==================== USERS COLLECTION ====================
@@ -63,8 +76,12 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated() || (resource.data.role == 'service_provider');
       allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin() || isCoreStaff();
-      allow delete: if isAdmin() || isCoreStaff();
+      // Admin/CoreStaff can update anyone. 
+      // State Admin can update ONLY users in their state (e.g. promoting sellers)
+      allow update: if isOwner(userId) || isAdmin() || isCoreStaff() || 
+                      (isStateAdmin() && resource.data.state == getAssignedState());
+      allow delete: if isAdmin() || isCoreStaff() || 
+                      (isStateAdmin() && resource.data.state == getAssignedState());
       
     }
 
@@ -84,33 +101,47 @@ service cloud.firestore {
     
     // ==================== PRODUCTS COLLECTION ====================
     // Read: Everyone (public)
-    // Write: Seller + Admin + Core Staff + Store Manager
+    // Write: Seller (Own) + Admin + Core Staff + Store Manager + State Admin (State Filtered)
     match /products/{productId} {
       allow read: if true;
-      allow create: if (isSeller() || isAdmin() || isCoreStaff() || isStoreManager()) && 
+      allow create: if (isSeller() || isAdmin() || isCoreStaff() || isStoreManager() || 
+                        (isStateAdmin() && request.resource.data.state == getAssignedState())) && 
                       request.resource.data.keys().hasAll(['name', 'price', 'imageUrl', 'description']) &&
                       request.resource.data.price is number &&
                       request.resource.data.price >= 0;
-      allow update: if isSeller() || isAdmin() || isCoreStaff() || isStoreManager();
-      allow delete: if isSeller() || isAdmin() || isCoreStaff() || isStoreManager();
+      allow update: if (isSeller() && resource.data.sellerId == request.auth.uid) || 
+                      isAdmin() || isCoreStaff() || isStoreManager() ||
+                      (isStateAdmin() && (resource == null || resource.data.state == getAssignedState()));
+      allow delete: if (isSeller() && resource.data.sellerId == request.auth.uid) || 
+                      isAdmin() || isCoreStaff() || isStoreManager() ||
+                      (isStateAdmin() && resource.data.state == getAssignedState());
     }
     
     // Helper function to check if user is delivery partner (6. Delivery Partner)
     function isDeliveryPartner() {
       return request.auth != null && 
              getUserRole() != null && 
-             getUserRole().role == 'delivery_partner';
+             (getUserRole().role == 'delivery_partner' || getUserRole().role == 'Delivery Partner');
     }
 
     // ==================== ORDERS COLLECTION ====================
-    // Read: Own orders + Seller + Admin + Core Staff + Delivery Partner
+    // Read: Own orders + Seller (Own) + Admin + Core Staff + Delivery Partner (Assigned) + State Admin
     // Create: Any authenticated user
-    // Update: Admin + Core Staff + Seller + Delivery Partner
+    // Update: Admin + Core Staff + Seller (Own) + Delivery Partner (Assigned) + State Admin
     match /orders/{orderId} {
-      allow read: if isAuthenticated() && 
-                    (resource.data.userId == request.auth.uid || isSeller() || isAdmin() || isCoreStaff() || isDeliveryPartner() || isStoreManager());
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        (isSeller() && request.auth.uid in resource.data.sellerIds) || 
+        isAdmin() || isCoreStaff() || 
+        (isDeliveryPartner() && resource.data.deliveryPartnerId == request.auth.uid) ||
+        isStoreManager() ||
+        (isStateAdmin() && resource.data.state == getAssignedState()));
       allow create: if isAuthenticated();
-      allow update: if isAdmin() || isSeller() || isCoreStaff() || isDeliveryPartner() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow update: if isAdmin() || isCoreStaff() || 
+                      (isSeller() && request.auth.uid in resource.data.sellerIds) ||
+                      (isDeliveryPartner() && resource.data.deliveryPartnerId == request.auth.uid) || 
+                      (isAuthenticated() && resource.data.userId == request.auth.uid) ||
+                      (isStateAdmin() && resource.data.state == getAssignedState());
       allow delete: if isAdmin() || isCoreStaff();
     }
 
@@ -119,7 +150,7 @@ service cloud.firestore {
     // ==================== DELIVERY PARTNERS COLLECTION (DEBUG) ====================
     match /delivery_partners/{partnerId} {
       allow read: if isAuthenticated();
-      allow write: if isAdmin() || isCoreStaff();
+      allow write: if isAdmin() || isCoreStaff() || isStateAdmin();
     }
 
     // ...
@@ -128,10 +159,10 @@ service cloud.firestore {
     match /partner_requests/{requestId} {
       allow read: if isAuthenticated() && (
         resource.data.email == request.auth.token.email ||
-        isAdmin() || isCoreStaff()
+        isAdmin() || isCoreStaff() || isStateAdmin()
       );
       allow create: if true; // Allow public partner request submissions
-      allow update: if isAdmin() || isCoreStaff();
+      allow update: if isAdmin() || isCoreStaff() || isStateAdmin();
       allow delete: if isAdmin() || isCoreStaff();
     }
     
@@ -139,10 +170,12 @@ service cloud.firestore {
     match /pending_sellers/{sellerId} {
       allow read: if isAuthenticated() && (
         resource.data.userId == request.auth.uid ||
-        isAdmin() || isCoreStaff()
+        isAdmin() || isCoreStaff() ||
+        (isStateAdmin() && resource.data.state == getAssignedState())
       );
       allow create: if isAuthenticated();
-      allow update: if isAdmin() || isCoreStaff();
+      allow update: if isAdmin() || isCoreStaff() || 
+                      (isStateAdmin() && resource.data.state == getAssignedState());
       allow delete: if isAdmin() || isCoreStaff();
     }
     
@@ -164,12 +197,17 @@ service cloud.firestore {
     
     // ==================== SERVICES COLLECTION ====================
     // Read: Everyone (public)
-    // Write: Service Provider + Admin
+    // Write: Service Provider (Own) + Admin + State Admin (for their state)
     match /services/{serviceId} {
       allow read: if true;
-      allow create: if isServiceProvider() || isAdmin();
-      allow update: if isServiceProvider() || isAdmin();
-      allow delete: if isServiceProvider() || isAdmin();
+      allow create: if isServiceProvider() || isAdmin() || isCoreStaff() ||
+                      (isStateAdmin() && request.resource.data.state == getAssignedState());
+      allow update: if (isServiceProvider() && resource.data.providerId == request.auth.uid) || 
+                      isAdmin() || isCoreStaff() ||
+                      (isStateAdmin() && (resource == null || resource.data.state == getAssignedState()));
+      allow delete: if (isServiceProvider() && resource.data.providerId == request.auth.uid) || 
+                      isAdmin() || isCoreStaff() ||
+                      (isStateAdmin() && resource.data.state == getAssignedState());
     }
     
     // ==================== SERVICE BOOKINGS COLLECTION (Deprecated) ====================
@@ -245,7 +283,6 @@ service cloud.firestore {
       allow write: if isAdmin() || isCoreStaff();
     }
 
-
     
     // ==================== GIFTS COLLECTION ====================
     // Read: Everyone (public)
@@ -257,19 +294,31 @@ service cloud.firestore {
     
 
     
-
-    
     // ==================== NOTIFICATIONS COLLECTION ====================
     // Read: Own notifications
     // Create: Sellers, Service Providers, Core Staff, Admin
     // Update/Delete: Own notification + Admin
     match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && resource.data.toUserId == request.auth.uid;
       allow create: if isAuthenticated();
       allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid ||
         isAdmin()
       );
+    }
+
+    // ==================== PAYOUTS COLLECTION ====================
+    match /payouts/{payoutId} {
+      // Allow users to see their own payouts
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        isAdmin() || isCoreStaff() || isStateAdmin()
+      );
+      // Allow users to create payouts
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      // Allow admins to update status
+      allow update: if isAdmin() || isCoreStaff() || isStateAdmin();
+      allow delete: if isAdmin();
     }
     
     // ==================== BANNERS/PROMOTIONS COLLECTION ====================
@@ -303,6 +352,13 @@ service cloud.firestore {
       allow read, write: if isAdmin() || isCoreStaff();
     }
     
+    // ==================== CONTACT MESSAGES COLLECTION ====================
+    match /contact_messages/{messageId} {
+      allow read: if isAdmin() || isCoreStaff() || isStateAdmin();
+      allow create: if true;
+      allow delete: if isAdmin() || isCoreStaff();
+    }
+
     // ==================== TRANSACTIONS COLLECTION ====================
     match /transactions/{transactionId} {
       allow read: if isAuthenticated() && (
@@ -322,3 +378,4 @@ service cloud.firestore {
     }
   }
 }
+

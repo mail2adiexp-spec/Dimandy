@@ -4,6 +4,7 @@ import '../models/product_model.dart';
 import '../providers/cart_provider.dart';
 import '../screens/product_detail_screen.dart';
 import '../utils/currency.dart';
+import '../widgets/custom_image.dart';
 
 class ProductCard extends StatelessWidget {
   final Product product;
@@ -48,20 +49,18 @@ class ProductCard extends StatelessWidget {
                         width: double.infinity,
                         height: double.infinity,
                         color: Colors.white, // Ensure background is white
-                        child: Image.network(
-                          (product.imageUrls != null && product.imageUrls!.isNotEmpty)
+                        child: CustomImage(
+                          imageUrl: (product.imageUrls != null && product.imageUrls!.isNotEmpty)
                               ? product.imageUrls!.first
                               : product.imageUrl,
                           fit: BoxFit.contain, // Prevents cropping
-                          errorBuilder: (context, error, stackTrace) {
-                            return const Center(
-                              child: Icon(
-                                Icons.broken_image,
-                                size: 50,
-                                color: Colors.grey,
-                              ),
-                            );
-                          },
+                          errorWidget: const Center(
+                            child: Icon(
+                              Icons.broken_image,
+                              size: 50,
+                              color: Colors.grey,
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -196,14 +195,25 @@ class ProductCard extends StatelessWidget {
                           );
                         }
                       : () {
-                          context.read<CartProvider>().addProduct(product);
-                          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${product.name} added to cart'),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
+                          try {
+                            context.read<CartProvider>().addProduct(product);
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('${product.name} added to cart'),
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(e.toString().replaceAll('Exception: ', '')),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 1),
+                              ),
+                            );
+                          }
                         },
                   ),
                 ],

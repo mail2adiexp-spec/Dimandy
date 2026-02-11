@@ -97,7 +97,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
             .child(widget.productId)
             .child('update_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
         
-        await ref.putData(_newImages[i]);
+        await ref.putData(_newImages[i], SettableMetadata(contentType: 'image/jpeg'));
         final url = await ref.getDownloadURL();
         urls.add(url);
     }

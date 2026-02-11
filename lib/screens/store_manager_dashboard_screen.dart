@@ -182,8 +182,49 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
         ),
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [
-            Tab(icon: Icon(Icons.list_alt), text: 'Orders'),
+          tabs: [
+            Tab(
+              child: Builder(
+                builder: (context) {
+                   final pincodes = _store?.pincodes.where((p) => p.isNotEmpty).take(10).toList();
+                   if (pincodes == null || pincodes.isEmpty) {
+                      return const Row(children: [Icon(Icons.list_alt), SizedBox(width: 8), Text('Orders')]);
+                   }
+                   
+                   return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance
+                        .collection('orders')
+                        .where('deliveryPincode', whereIn: pincodes)
+                        .snapshots(),
+                    builder: (context, snapshot) {
+                      int count = 0;
+                      if (snapshot.hasData) {
+                        count = snapshot.data!.docs.where((doc) {
+                           final data = doc.data() as Map<String, dynamic>;
+                           return data['status'] == 'pending';
+                        }).length;
+                      }
+                      
+                      if (count == 0) return const Row(children: [Icon(Icons.list_alt), SizedBox(width: 8), Text('Orders')]);
+                      
+                      return Row(
+                        children: [
+                           const Icon(Icons.list_alt),
+                           const SizedBox(width: 8),
+                           const Text('Orders'),
+                           const SizedBox(width: 4),
+                           Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                              child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                           ),
+                        ],
+                      );
+                    },
+                  );
+                }
+              ),
+            ),
             Tab(icon: Icon(Icons.inventory_2), text: 'Products'),
           ],
         ),

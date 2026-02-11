@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../models/product_model.dart';
 import '../providers/category_provider.dart';
 import '../providers/auth_provider.dart';
+import '../utils/locations_data.dart'; // Import locations data
 
 class SharedProductsTab extends StatefulWidget {
   final bool canManage;
@@ -64,12 +65,17 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
   }
 
   void _initializeStream() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     Query query = FirebaseFirestore.instance
         .collection('products')
         .orderBy('createdAt', descending: true);
 
     if (widget.sellerId != null) {
       query = query.where('sellerId', isEqualTo: widget.sellerId);
+    } else if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
+      // Filter by state for State Admins
+      // Note: This requires an index on 'state' and 'createdAt'
+      query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
     }
 
     _productsStream = query.snapshots();
@@ -85,7 +91,14 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return Center(
+            child: SelectionArea(
+              child: SelectableText(
+                'Error: ${snapshot.error}',
+                style: const TextStyle(color: Colors.red),
+              ),
+            ),
+          );
         }
 
         var products = snapshot.data?.docs ?? [];
@@ -358,7 +371,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       ),
-                      value: _selectedProductCategory,
+                      initialValue: _selectedProductCategory,
                       menuMaxHeight: 300,
                       items: [
                         const DropdownMenuItem(value: null, child: Text('All Categories')),
@@ -391,7 +404,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         ),
-                        value: _selectedProductCategory,
+                        initialValue: _selectedProductCategory,
                         menuMaxHeight: 300,
                         items: [
                           const DropdownMenuItem(value: null, child: Text('All Categories')),
@@ -465,7 +478,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                        const Text('Stock Status', style: TextStyle(fontWeight: FontWeight.bold)),
                        const SizedBox(height: 8),
                        DropdownButtonFormField<String>(
-                         value: _stockFilter,
+                         initialValue: _stockFilter,
                          decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                          items: const [
                            DropdownMenuItem(value: 'All', child: Text('All')),
@@ -503,7 +516,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         const Text('Featured Status', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _featuredFilter,
+                          initialValue: _featuredFilter,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           items: const [
                              DropdownMenuItem(value: 'All', child: Text('All')),
@@ -517,7 +530,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         const Text('Hot Deal Status', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _hotDealFilter,
+                          initialValue: _hotDealFilter,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           items: const [
                              DropdownMenuItem(value: 'All', child: Text('All')),
@@ -531,7 +544,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         const Text('Customer Choice Status', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         DropdownButtonFormField<String>(
-                          value: _customerChoiceFilter,
+                          initialValue: _customerChoiceFilter,
                           decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                           items: const [
                              DropdownMenuItem(value: 'All', child: Text('All')),
@@ -672,7 +685,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                  top: 8,
                  right: 8,
                  child: Container(
-                   decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0,2))]),
+                   decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0,2))]),
                    child: Checkbox(
                      value: _selectedProductIds.contains(product.id),
                      onChanged: (selected) {
@@ -696,7 +709,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                    width: 32,
                    height: 32,
                    decoration: BoxDecoration(
-                     color: Colors.white.withOpacity(0.9), 
+                     color: Colors.white.withValues(alpha: 0.9), 
                      shape: BoxShape.circle,
                      boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4)]
                    ),
@@ -803,6 +816,13 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     bool isLoading = false;
     List<Uint8List> selectedImages = [];
     List<String> selectedStoreIds = []; // Added for store linking
+
+    // State Selection
+    // State Selection
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    // Use user's state or assignedState if available (Seller or State Admin) as default
+    String? selectedState = auth.currentUser?.state ?? auth.currentUser?.assignedState;
+    final List<String> availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
     Future<void> pickImages(StateSetter setState) async {
       try {
@@ -944,13 +964,69 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         const SizedBox(width: 16),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: selectedUnit,
+                            initialValue: selectedUnit,
                             decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
                             items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                             onChanged: (v) => setState(() => selectedUnit = v!),
                           ),
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 8),
+                    // Platform Fee & Listing Price Preview
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
+                      builder: (context, snapshot) {
+                        double platformFeePercent = 0.05; // Default 5%
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data = snapshot.data!.data() as Map<String, dynamic>;
+                          platformFeePercent = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                             (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
+                          platformFeePercent = platformFeePercent / 100;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[100]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    final price = double.tryParse(priceCtrl.text) ?? 0;
+                                    final platformFee = price * platformFeePercent;
+                                    final listingPrice = price + platformFee;
+                                    
+                                    return Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(text: 'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
+                                          TextSpan(
+                                            text: '₹${platformFee.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                                          ),
+                                          const TextSpan(text: '  |  Listing Price: '),
+                                          TextSpan(
+                                            text: '₹${listingPrice.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                          ),
+                                        ],
+                                        style: TextStyle(color: Colors.blue[900], fontSize: 13),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
@@ -962,13 +1038,13 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     const SizedBox(height: 16),
                     MediaQuery.of(context).size.width < 600
                     ? DropdownButtonFormField<String>(
-                        value: selectedCategory,
+                        initialValue: selectedCategory,
                         decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
                         items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
                         onChanged: (v) => setState(() => selectedCategory = v!),
                       )
                     : DropdownButtonFormField<String>(
-                        value: selectedCategory,
+                        initialValue: selectedCategory,
                         decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
                         items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
                         onChanged: (v) => setState(() => selectedCategory = v!),
@@ -1047,11 +1123,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
                                                       return CheckboxListTile(
                                                         title: Text(storeName),
+                                                        subtitle: doc.data().toString().contains('state') && doc['state'] != null ? Text('State: ${doc['state']}') : null,
                                                         value: isSelected,
                                                         onChanged: (bool? value) {
                                                           setDialogState(() {
                                                             if (value == true) {
                                                               selectedStoreIds.add(storeId);
+                                                              // Auto-fill state if not linked to any state yet
+                                                              if (selectedState == null && doc.data().toString().contains('state') && doc['state'] != null) {
+                                                                setState(() {
+                                                                    selectedState = doc['state'];
+                                                                });
+                                                              }
                                                             } else {
                                                               selectedStoreIds.remove(storeId);
                                                             }
@@ -1127,7 +1210,10 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                  'sellerId': 'admin', // Or current user? Admin panel implies admin.
                                  'createdAt': FieldValue.serverTimestamp(),
                                  'updatedAt': FieldValue.serverTimestamp(),
+                                 'createdAt': FieldValue.serverTimestamp(),
+                                 'updatedAt': FieldValue.serverTimestamp(),
                                  'storeIds': selectedStoreIds,
+                                 'state': selectedState, // Save selected state
                                });
                                if (selectedImages.isNotEmpty) {
                                  final urls = await uploadImages(docRef.id);
@@ -1182,7 +1268,14 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       bool isHotDeal = productData['isHotDeal'] ?? false;
       bool isCustomerChoice = productData['isCustomerChoice'] ?? false;
       bool isLoading = false;
+
       List<String> selectedStoreIds = List<String>.from(productData['storeIds'] ?? []);
+      
+      // State Selection
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      // Use user's state or assignedState if available as default
+      String? selectedState = productData['state'] ?? auth.currentUser?.state ?? auth.currentUser?.assignedState;
+      final List<String> availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
       showDialog(
         context: context,
@@ -1266,13 +1359,69 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           Expanded(child: TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => int.tryParse(v ?? '') != null ? null : 'Invalid')),
                           const SizedBox(width: 16),
                           Expanded(child: DropdownButtonFormField(
-                            value: selectedUnit,
+                            initialValue: selectedUnit,
                             items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                             onChanged: (v) => setState(() => selectedUnit = v!),
                             decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder())
                           )),
                         ],
                       ),
+                    const SizedBox(height: 8),
+                    // Platform Fee & Listing Price Preview
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
+                      builder: (context, snapshot) {
+                        double platformFeePercent = 0.05; // Default 5%
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data = snapshot.data!.data() as Map<String, dynamic>;
+                          platformFeePercent = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                             (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
+                          platformFeePercent = platformFeePercent / 100;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[100]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Builder(
+                                  builder: (context) {
+                                    final price = double.tryParse(priceCtrl.text) ?? 0;
+                                    final platformFee = price * platformFeePercent;
+                                    final listingPrice = price + platformFee;
+                                    
+                                    return Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(text: 'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
+                                          TextSpan(
+                                            text: '₹${platformFee.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                                          ),
+                                          const TextSpan(text: '  |  Listing Price: '),
+                                          TextSpan(
+                                            text: '₹${listingPrice.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                          ),
+                                        ],
+                                        style: TextStyle(color: Colors.blue[900], fontSize: 13),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    ),
                       const SizedBox(height: 16),
                        TextFormField(
                           controller: minQtyCtrl,
@@ -1283,15 +1432,28 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       const SizedBox(height: 16),
                       MediaQuery.of(context).size.width < 600
                       ? DropdownButtonFormField(
-                          value: selectedCategory,
+                          initialValue: selectedCategory,
                           items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
                           onChanged: (v) => setState(() => selectedCategory = v!),
                           decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())
                         )
-                      : DropdownButtonFormField(value: selectedCategory, items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())),
+                      : DropdownButtonFormField(initialValue: selectedCategory, items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())),
                       const SizedBox(height: 16),
-                      SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
+
                       const SizedBox(height: 16),
+                      // State Selection (For Super Admins)
+                      if (!auth.isStateAdmin) ...[
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedState,
+                          decoration: const InputDecoration(labelText: 'Product State', border: OutlineInputBorder()),
+                          items: [
+                             const DropdownMenuItem(value: null, child: Text('Global / No State')),
+                             ...availableStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                          ],
+                          onChanged: (v) => setState(() => selectedState = v),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       // Store Selection (Admin/Core Staff Only)
                       Consumer<AuthProvider>(
                         builder: (context, auth, child) {
@@ -1336,11 +1498,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
                                                         return CheckboxListTile(
                                                           title: Text(storeName),
+                                                          subtitle: doc.data().toString().contains('state') ? Text('State: ${doc['state']}') : null,
                                                           value: isSelected,
                                                           onChanged: (bool? value) {
                                                             setDialogState(() {
                                                               if (value == true) {
                                                                 selectedStoreIds.add(storeId);
+                                                                 // Auto-fill state if not set
+                                                                if (selectedState == null && doc.data().toString().contains('state') && doc['state'] != null) {
+                                                                   setState(() {
+                                                                      selectedState = doc['state'];
+                                                                   });
+                                                                }
                                                               } else {
                                                                 selectedStoreIds.remove(storeId);
                                                               }
@@ -1413,7 +1582,10 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                   // isCustomerChoice not updated manually anymore
                                   // isCustomerChoice not updated manually anymore
                                   'updatedAt': FieldValue.serverTimestamp(),
+                                  // isCustomerChoice not updated manually anymore
+                                  'updatedAt': FieldValue.serverTimestamp(),
                                   'storeIds': selectedStoreIds,
+                                  'state': selectedState, // Update state
                                 });
                                 if (mounted) {
                                   Navigator.pop(context);
@@ -1504,7 +1676,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     const Divider(),
                     const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
-                      value: editType,
+                      initialValue: editType,
                       decoration: const InputDecoration(labelText: 'What to Edit', border: OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'price', child: Text('Price')),
@@ -1516,20 +1688,20 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     ),
                     const SizedBox(height: 16),
                     if (editType == 'price') ...[
-                      DropdownButtonFormField<String>(value: priceAction, items: const [DropdownMenuItem(value: 'add_percent', child: Text('Increase by %')), DropdownMenuItem(value: 'subtract_percent', child: Text('Decrease by %')), DropdownMenuItem(value: 'set_fixed', child: Text('Set to Fixed Value'))], onChanged: (v) => setState(() => priceAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),
+                      DropdownButtonFormField<String>(initialValue: priceAction, items: const [DropdownMenuItem(value: 'add_percent', child: Text('Increase by %')), DropdownMenuItem(value: 'subtract_percent', child: Text('Decrease by %')), DropdownMenuItem(value: 'set_fixed', child: Text('Set to Fixed Value'))], onChanged: (v) => setState(() => priceAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),
                       const SizedBox(height: 16),
                       TextFormField(controller: priceCtrl, decoration: InputDecoration(labelText: priceAction == 'set_fixed' ? 'New Price' : 'Percentage', border: const OutlineInputBorder(), prefixText: priceAction == 'set_fixed' ? '₹' : '', suffixText: priceAction != 'set_fixed' ? '%' : ''), keyboardType: TextInputType.number),
                     ],
                     if (editType == 'stock') ...[
-                       DropdownButtonFormField<String>(value: stockAction, items: const [DropdownMenuItem(value: 'add', child: Text('Add to Stock')), DropdownMenuItem(value: 'subtract', child: Text('Subtract from Stock')), DropdownMenuItem(value: 'set', child: Text('Set to Value'))], onChanged: (v) => setState(() => stockAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),
+                       DropdownButtonFormField<String>(initialValue: stockAction, items: const [DropdownMenuItem(value: 'add', child: Text('Add to Stock')), DropdownMenuItem(value: 'subtract', child: Text('Subtract from Stock')), DropdownMenuItem(value: 'set', child: Text('Set to Value'))], onChanged: (v) => setState(() => stockAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),
                        const SizedBox(height: 16),
                        TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock Value', border: OutlineInputBorder()), keyboardType: TextInputType.number),
                     ],
                     if (editType == 'category') ...[
-                       DropdownButtonFormField<String>(value: selectedCategory, items: ProductCategory.all.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'New Category', border: OutlineInputBorder())),
+                       DropdownButtonFormField<String>(initialValue: selectedCategory, items: ProductCategory.all.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'New Category', border: OutlineInputBorder())),
                     ],
                     if (editType == 'featured') ...[
-                       DropdownButtonFormField<bool>(value: setFeatured, items: const [DropdownMenuItem(value: true, child: Text('Set as Featured')), DropdownMenuItem(value: false, child: Text('Remove from Featured'))], onChanged: (v) => setState(() => setFeatured = v), decoration: const InputDecoration(labelText: 'Featured Status', border: OutlineInputBorder())),
+                       DropdownButtonFormField<bool>(initialValue: setFeatured, items: const [DropdownMenuItem(value: true, child: Text('Set as Featured')), DropdownMenuItem(value: false, child: Text('Remove from Featured'))], onChanged: (v) => setState(() => setFeatured = v), decoration: const InputDecoration(labelText: 'Featured Status', border: OutlineInputBorder())),
                     ],
                     const SizedBox(height: 24),
                     Row(

@@ -4,6 +4,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:google_sign_in/google_sign_in.dart';
 
 // Role constants
 class UserRole {
@@ -16,6 +17,10 @@ class UserRole {
   static const String manager = 'manager';
   static const String deliveryPartner = 'delivery_partner';
   static const String customerCare = 'customer_care';
+  
+  // New Roles for Multi-State System
+  static const String superAdmin = 'super_admin';
+  static const String stateAdmin = 'state_admin';
 }
 
 class AppUser {
@@ -26,6 +31,9 @@ class AppUser {
   final String? photoURL;
   final String? role;
   final String? storeId;
+  final String? assignedState; // For State Admins
+  final String? state; // For Customers/Sellers
+  final String? pincode; // Added pincode
   final Map<String, dynamic> permissions;
 
   AppUser({
@@ -36,6 +44,9 @@ class AppUser {
     this.photoURL,
     this.role,
     this.storeId,
+    this.assignedState,
+    this.state,
+    this.pincode,
     this.permissions = const {},
   });
 
@@ -103,6 +114,21 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser!.role == UserRole.customerCare;
   }
 
+  bool get isSuperAdmin {
+    if (_currentUser == null) return false;
+    return _currentUser!.role == UserRole.superAdmin || _adminEmails.contains(_currentUser!.email);
+  }
+
+  bool get isStateAdmin {
+    if (_currentUser == null) return false;
+    return _currentUser!.role == UserRole.stateAdmin;
+  }
+  
+  // Checking if user has ANY admin privileges (Super or State)
+  bool get hasAdminAccess {
+    return isSuperAdmin || isStateAdmin || isAdministrator;
+  }
+
   Future<void> _onAuthStateChanged(User? firebaseUser) async {
     if (firebaseUser != null) {
       print('🔄 Auth state changed for user: ${firebaseUser.uid}');
@@ -111,6 +137,9 @@ class AuthProvider extends ChangeNotifier {
       // Fetch user role from Firestore
       String userRole = 'user';
       String? storeId;
+      String? assignedState; // Added declaration
+      String? state;         // Added declaration
+      String? pincode;       // Added declaration
       Map<String, dynamic> permissions = {};
 
       String? firestorePhone;
@@ -123,6 +152,9 @@ class AuthProvider extends ChangeNotifier {
           final data = userDoc.data() ?? {};
           userRole = data['role'] ?? 'user';
           storeId = data['storeId'] as String?;
+          assignedState = data['assignedState'] as String?; // Added assignment
+          state = data['state'] as String?;                 // Added assignment
+          pincode = data['pincode'] as String? ?? data['servicePincode'] as String?; // Try both
           permissions = data['permissions'] as Map<String, dynamic>? ?? {};
           firestorePhone = data['phoneNumber'] as String? ?? data['phone'] as String?;
           
@@ -136,17 +168,19 @@ class AuthProvider extends ChangeNotifier {
         print('Error fetching user role or updating lastLogin: $e');
       }
 
+
+      
       _currentUser = AppUser(
         uid: firebaseUser.uid,
         email: firebaseUser.email ?? '',
-        name:
-            firebaseUser.displayName ??
-            firebaseUser.email?.split('@').first ??
-            'User',
+        name: firebaseUser.displayName ?? firebaseUser.email?.split('@').first ?? 'User',
         phoneNumber: firestorePhone ?? firebaseUser.phoneNumber,
         photoURL: firebaseUser.photoURL,
         role: userRole,
         storeId: storeId,
+        assignedState: assignedState,
+        state: state,
+        pincode: pincode,
         permissions: permissions,
       );
 
@@ -203,6 +237,8 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
     String role = 'user', // Default role should be plain user until approved
+    String? state, // Added state parameter
+    String? pincode, // Added pincode parameter
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -220,11 +256,18 @@ class AuthProvider extends ChangeNotifier {
           'email': email.trim(),
           'name': name.trim(),
           'role': role,
+          'state': state,
+          'pincode': pincode, // Save pincode
           'createdAt': FieldValue.serverTimestamp(),
           'photoURL': null,
           'phoneNumber': null,
         });
         print('✅ User created in Firestore with role: $role');
+        print('🔍 Saved state: $state, pincode: $pincode');
+        
+        // Force reload to ensure AppUser gets fresh Firestore data immediately
+        await credential.user?.reload();
+        await _onAuthStateChanged(credential.user);
       }
     } on FirebaseAuthException catch (e) {
       if (e.code == 'weak-password') {
@@ -276,6 +319,67 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> signInWithGoogle() async {
+    try {
+      // Trigger the authentication flow
+      // Explicitly pass clientId for Web to avoid 'ClientID not set' errors
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        clientId: kIsWeb 
+            ? '110161971301-4krovef2iegma5v33aefbchk8crqqjus.apps.googleusercontent.com' 
+            : null,
+      );
+      
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+
+      if (googleUser == null) {
+        // The user canceled the sign-in
+        return;
+      }
+
+      // Obtain the auth details from the request
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+      // Create a new credential
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      // Once signed in, return the UserCredential
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
+
+      if (user != null) {
+        // Check if user exists in Firestore
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        
+        if (!userDoc.exists) {
+          // Create new user
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'id': user.uid,
+            'email': user.email ?? googleUser.email,
+            'name': user.displayName ?? googleUser.displayName ?? 'Google User',
+            'role': 'user', // Default role
+            'photoURL': user.photoURL ?? googleUser.photoUrl,
+            'createdAt': FieldValue.serverTimestamp(),
+            'lastLogin': FieldValue.serverTimestamp(),
+          });
+          print('✅ New Google user created in Firestore');
+        } else {
+          // Update existing user's last login and photo URL if changed
+           await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+            'lastLogin': FieldValue.serverTimestamp(),
+            // Optional: Update photo URL if it's missing or changed, but respecting user's choice is better
+             if (user.photoURL != null) 'photoURL': user.photoURL,
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('🔴 Google Sign-In Error: $e');
+      throw Exception('Google Sign-In failed: $e');
+    }
+  }
+
   Future<void> signOut() async {
     await _auth.signOut();
   }
@@ -296,11 +400,24 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> updateProfile({required String name}) async {
+  Future<void> updateProfile({required String name, String? state, String? pincode}) async {
     try {
       final user = _auth.currentUser;
       if (user == null) throw Exception('No user signed in');
+      
       await user.updateDisplayName(name.trim());
+      
+      // Update Firestore
+      final Map<String, dynamic> updates = {};
+      if (state != null) updates['state'] = state;
+      if (pincode != null) updates['pincode'] = pincode; // Add pincode update
+      // We might want to update name in Firestore too if we store it there (we do)
+      updates['name'] = name.trim();
+      
+      if (updates.isNotEmpty) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update(updates);
+      }
+
       await user.reload();
       // Trigger state change to update UI
       _onAuthStateChanged(_auth.currentUser);

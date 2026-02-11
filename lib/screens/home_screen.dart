@@ -19,6 +19,7 @@ import '../services/recommendation_service.dart';
 import '../widgets/marquee_widget.dart';
 import '../widgets/notifications_dialog.dart';
 import '../widgets/app_download_notification.dart';
+import '../widgets/custom_image.dart'; // Import CustomImage
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -194,11 +195,14 @@ class _HomeScreenState extends State<HomeScreen> {
               onPressed: () =>
                   Navigator.pushNamed(context, AccountScreen.routeName),
               icon: user?.photoURL != null
-                  ? CircleAvatar(
-                      radius: 16,
-                      backgroundImage: NetworkImage(user!.photoURL!),
-                      key: ValueKey(user.photoURL),
-                      backgroundColor: Colors.grey[200],
+                  ? ClipOval(
+                      child: CustomImage(
+                        imageUrl: user!.photoURL!,
+                        width: 32,
+                        height: 32,
+                        fit: BoxFit.cover,
+                        errorWidget: const Icon(Icons.person),
+                      ),
                     )
                   : const Icon(Icons.person),
               hoverColor: Colors.transparent,
@@ -905,6 +909,7 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             borderRadius: BorderRadius.circular(12),
             child: Container(
+              padding: const EdgeInsets.all(0.0), // Remove padding if any
               decoration: BoxDecoration(
                 color: isSelected
                     ? Theme.of(context).colorScheme.primaryContainer
@@ -925,23 +930,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(0.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10), // Inner radius
                 child: isNetworkImage
-                    ? Image.network(
-                        imagePathOrUrl,
+                    ? CustomImage(
+                        imageUrl: imagePathOrUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Icon(
-                            Icons.category,
-                            size: 32,
-                            color: isSelected
-                                ? Theme.of(context).colorScheme.primary
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
-                          );
-                        },
+                        errorWidget: Icon(
+                          Icons.category,
+                          size: 32,
+                          color: isSelected
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       )
                     : Image.asset(
                         imagePathOrUrl,
@@ -952,9 +953,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             size: 32,
                             color: isSelected
                                 ? Theme.of(context).colorScheme.primary
-                                : Theme.of(
-                                    context,
-                                  ).colorScheme.onSurfaceVariant,
+                                : Theme.of(context).colorScheme.onSurfaceVariant,
                           );
                         },
                       ),

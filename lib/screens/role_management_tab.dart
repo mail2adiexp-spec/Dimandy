@@ -10,6 +10,7 @@ class RoleManagementTab extends StatefulWidget {
   final Function(String, String) onDelete;
   final Function(String, String)? onRequestAction;
   final Function(String, Map<String, dynamic>)? onViewDashboard;
+  final String? assignedState; // NEW: Filter by state
 
   const RoleManagementTab({
     super.key,
@@ -20,6 +21,7 @@ class RoleManagementTab extends StatefulWidget {
     required this.onDelete,
     this.onRequestAction,
     this.onViewDashboard,
+    this.assignedState,
   });
 
   @override
@@ -41,7 +43,7 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
   @override
   void didUpdateWidget(RoleManagementTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.collection != oldWidget.collection || widget.role != oldWidget.role) {
+    if (widget.collection != oldWidget.collection || widget.role != oldWidget.role || widget.assignedState != oldWidget.assignedState) {
       _initializeStream();
     }
   }
@@ -50,6 +52,9 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
     Query query = FirebaseFirestore.instance.collection(widget.collection);
     if (widget.role != null) {
       query = query.where('role', isEqualTo: widget.role);
+    }
+    if (widget.assignedState != null) {
+      query = query.where('state', isEqualTo: widget.assignedState);
     }
     _stream = query.snapshots();
   }

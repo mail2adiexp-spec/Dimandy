@@ -149,7 +149,7 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_download_reports': 'Download Reports',
         'can_view_analytics': 'View Store Analytics',
       };
-    } else if (widget.userRole == 'administrator') {
+    } else if (widget.userRole == 'administrator' || widget.userRole == 'admin' || widget.userRole == 'super_admin') {
       permissionSections['Full Access'] = {
         'can_manage_permissions': 'Manage Permissions',
         'can_manage_products': 'Manage Products',
@@ -161,7 +161,18 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_view_dashboard': 'View Dashboard',
         // Add all others implicitly or explicitly
       };
-      // Admins typically have all, but list some just in case granular control is needed
+    } else if (widget.userRole == 'state_admin') {
+      permissionSections['State Operations'] = {
+        'can_view_dashboard': 'View Dashboard (State)',
+        'can_manage_users': 'Manage Users (State)',
+        'can_manage_orders': 'Manage Orders (State)',
+        'can_manage_products': 'Manage Products (State)',
+        'can_manage_services': 'Manage Services (State)',
+        'can_manage_sellers': 'Manage Sellers (State)',
+        'can_manage_service_providers': 'Manage Service Providers (State)',
+        'can_manage_delivery_partners': 'Manage Delivery Partners (State)',
+        'can_manage_partner_requests': 'Manage Partner Requests (State)',
+      };
     }
     
     // Check for "Custom" permissions (keys present in tempPermissions but not in sections)

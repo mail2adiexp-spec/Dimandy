@@ -1,5 +1,3 @@
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -9,6 +7,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/service_category_provider.dart';
+import '../providers/auth_provider.dart';
+import '../models/service_item_model.dart';
+import '../widgets/services_list_manager.dart';
+import '../utils/category_helpers.dart';
 
 class SharedServicesTab extends StatefulWidget {
   final bool canManage;
@@ -58,6 +60,23 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
     _servicesStream = query.orderBy('createdAt', descending: true).snapshots();
   }
 
+  // Helper methods to determine which fields to show based on category
+  bool _shouldShowRatePerKm(String category) {
+    // Only show for vehicle/transport related services
+    final categoryLower = category.toLowerCase();
+    return categoryLower.contains('vehicle') || 
+           categoryLower.contains('transport') ||
+           categoryLower.contains('taxi') ||
+           categoryLower.contains('cab') ||
+           categoryLower.contains('bike') ||
+           categoryLower.contains('auto');
+  }
+
+  bool _shouldShowPreBookingAmount(String category) {
+    // Show for all categories
+    return true;
+  }
+
   void _showAddServiceDialog() {
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController();
@@ -74,6 +93,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
     bool isLoading = false;
     Uint8List? selectedImage;
     final ImagePicker picker = ImagePicker();
+    List<ServiceItem> servicesList = []; // For Barber/Napit services list
 
     Future<void> pickImage(StateSetter setState) async {
       try {
@@ -172,7 +192,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                     Column(
                       children: [
                         DropdownButtonFormField<String>(
-                          value: pricingModel,
+                          initialValue: pricingModel,
                           decoration: const InputDecoration(
                             labelText: 'Pricing Model',
                             border: OutlineInputBorder(),
@@ -188,7 +208,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                           builder: (context, provider, _) {
                             if (provider.serviceCategories.isEmpty) {
                               return DropdownButtonFormField<String>(
-                                value: selectedCategory,
+                                initialValue: selectedCategory,
                                 decoration: const InputDecoration(
                                   labelText: 'Category',
                                   border: OutlineInputBorder(),
@@ -200,7 +220,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                               );
                             }
                             return DropdownButtonFormField<String>(
-                              value: provider.serviceCategories
+                              initialValue: provider.serviceCategories
                                       .any((cat) => cat.name == selectedCategory)
                                   ? selectedCategory
                                   : provider.serviceCategories.first.name,
@@ -212,7 +232,15 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                   .map((cat) => DropdownMenuItem(
                                       value: cat.name, child: Text(cat.name)))
                                   .toList(),
-                              onChanged: (val) => setState(() => selectedCategory = val!),
+                              onChanged: (val) {
+                                setState(() {
+                                  selectedCategory = val!;
+                                  // Clear Rate Per KM if switching to non-vehicle category
+                                  if (!_shouldShowRatePerKm(val)) {
+                                    ratePerKmCtrl.clear();
+                                  }
+                                });
+                              },
                             );
                           },
                         ),
@@ -275,38 +303,54 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // Rate Per KM (for vehicle/transport services)
-                    TextFormField(
-                      controller: ratePerKmCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Rate Per KM (Optional)',
-                        border: OutlineInputBorder(),
-                        prefixText: '₹',
-                        helperText: 'For vehicle/transport services only',
+                    // Rate Per KM - Only show for vehicle/transport categories
+                    if (_shouldShowRatePerKm(selectedCategory)) ...[
+                      TextFormField(
+                        controller: ratePerKmCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Rate Per KM (Optional)',
+                          border: OutlineInputBorder(),
+                          prefixText: '₹',
+                          helperText: 'Price per kilometer for distance-based pricing',
+                        ),
+                        keyboardType: TextInputType.number,
                       ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
                     
-                    // Pre-booking Amount
-                    TextFormField(
-                      controller: preBookAmountCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Pre-booking Amount (Optional)',
-                        border: OutlineInputBorder(),
-                        prefixText: '₹',
-                        helperText: 'Advance payment to confirm booking',
+                    // Pre-booking Amount - Conditional
+                    if (_shouldShowPreBookingAmount(selectedCategory)) ...[
+                      TextFormField(
+                        controller: preBookAmountCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Pre-booking Amount (Optional)',
+                          border: OutlineInputBorder(),
+                          prefixText: '₹',
+                          helperText: 'Advance payment to confirm booking',
+                        ),
+                        keyboardType: TextInputType.number,
                       ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
                     
-                    // Available Toggle
-                    SwitchListTile(
-                      title: const Text('Service Available'),
-                      value: isAvailable,
-                      onChanged: (val) => setState(() => isAvailable = val),
-                    ),
+                    // Services List Manager - For multi-service categories
+                    if (CategoryHelpers.isMultiServiceCategory(selectedCategory)) ...[
+                      const Divider(thickness: 2),
+                      const SizedBox(height: 16),
+                      ServicesListManager(
+                        initialServices: servicesList,
+                        category: selectedCategory, // Pass category
+                        onServicesChanged: (services) {
+                          setState(() {
+                            servicesList = services;
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(thickness: 2),
+                      const SizedBox(height: 16),
+                    ],
+
                     const SizedBox(height: 16),
                     
                     // Image Upload
@@ -366,6 +410,11 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                   setState(() => isLoading = true);
                                   
                                   try {
+                                    // Get current user's state if State Admin
+                                    final auth = Provider.of<AuthProvider>(context, listen: false);
+                                    final isStateAdmin = auth.isStateAdmin;
+                                    final assignedState = auth.currentUser?.assignedState;
+                                    
                                     final serviceData = {
                                       'name': nameCtrl.text,
                                       'description': descCtrl.text,
@@ -381,8 +430,18 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                       'updatedAt': FieldValue.serverTimestamp(),
                                     };
                                     
+                                    // Add state field for State Admin
+                                    if (isStateAdmin && assignedState != null) {
+                                      serviceData['state'] = assignedState;
+                                    }
+                                    
                                     if (pricingModel == 'range' && maxPriceCtrl.text.isNotEmpty) {
                                       serviceData['maxPrice'] = double.parse(maxPriceCtrl.text);
+                                    }
+                                    
+                                    // Add servicesList for multi-service categories
+                                    if (CategoryHelpers.isMultiServiceCategory(selectedCategory)) {
+                                      serviceData['servicesList'] = servicesList.map((s) => s.toMap()).toList();
                                     }
                                     
                                     // Create service document
@@ -517,7 +576,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                     Column(
                       children: [
                         DropdownButtonFormField<String>(
-                          value: pricingModel,
+                          initialValue: pricingModel,
                           decoration: const InputDecoration(
                             labelText: 'Pricing Model',
                             border: OutlineInputBorder(),
@@ -532,7 +591,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                           builder: (context, provider, _) {
                              if (provider.serviceCategories.isEmpty) {
                               return DropdownButtonFormField<String>(
-                                value: selectedCategory,
+                                initialValue: selectedCategory,
                                 decoration: const InputDecoration(
                                   labelText: 'Category',
                                   border: OutlineInputBorder(),
@@ -544,7 +603,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                               );
                             }
                             return DropdownButtonFormField<String>(
-                              value: provider.serviceCategories
+                              initialValue: provider.serviceCategories
                                       .any((cat) => cat.name == selectedCategory)
                                   ? selectedCategory
                                   : provider.serviceCategories.first.name,
@@ -600,18 +659,20 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                     ),
                     const SizedBox(height: 16),
                     
-                    // Rate Per KM (for vehicle/transport services)
-                    TextFormField(
-                      controller: ratePerKmCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Rate Per KM (Optional)',
-                        border: OutlineInputBorder(),
-                        prefixText: '₹',
-                        helperText: 'For vehicle/transport services only',
+                    // Rate Per KM - Only show for vehicle/transport categories
+                    if (_shouldShowRatePerKm(selectedCategory)) ...[
+                      TextFormField(
+                        controller: ratePerKmCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Rate Per KM (Optional)',
+                          border: OutlineInputBorder(),
+                          prefixText: '₹',
+                          helperText: 'Price per kilometer for distance-based pricing',
+                        ),
+                        keyboardType: TextInputType.number,
                       ),
-                      keyboardType: TextInputType.number,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
+                    ],
                     
                     // Available Toggle
                     SwitchListTile(
@@ -651,7 +712,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                       'updatedAt': FieldValue.serverTimestamp(),
                                     };
                                     
-                                    print('DEBUG UPDATE: Saving service with ratePerKm=${updateData['ratePerKm']}');
+                                    if (kDebugMode) print('DEBUG UPDATE: Saving service with ratePerKm=${updateData['ratePerKm']}');
                                     
                                     if (pricingModel == 'range' && maxPriceCtrl.text.isNotEmpty) {
                                       updateData['maxPrice'] = double.parse(maxPriceCtrl.text);
@@ -1124,8 +1185,8 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                               decoration: BoxDecoration(
                                                 color: data['isAvailable'] == true 
-                                                    ? Colors.green.withOpacity(0.1)
-                                                    : Colors.red.withOpacity(0.1),
+                                                    ? Colors.green.withValues(alpha: 0.1)
+                                                    : Colors.red.withValues(alpha: 0.1),
                                                 borderRadius: BorderRadius.circular(12),
                                                 border: Border.all(
                                                   color: data['isAvailable'] == true ? Colors.green : Colors.red,

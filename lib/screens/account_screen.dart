@@ -217,12 +217,12 @@ class _AccountScreenState extends State<AccountScreen> {
                         padding: const EdgeInsets.all(16),
                         child: Column(
                           children: [
+                            // 1. MOST IMPORTANT - Edit Profile (Short, Frequently Used)
                             _buildProfileCard(
                               context: context,
                               icon: Icons.person_outline,
                               title: 'Edit Profile',
-                              subtitle:
-                                  'Update your name, email, phone & image',
+                              subtitle: 'Update your details',
                               onTap: () {
                                 Navigator.pushNamed(
                                   context,
@@ -231,25 +231,20 @@ class _AccountScreenState extends State<AccountScreen> {
                               },
                             ),
                             const SizedBox(height: 12),
-                            _buildProfileCard(
-                              context: context,
-                              icon: Icons.email_outlined,
-                              title: 'Email',
-                              subtitle: auth.currentUser!.email,
-                              onTap: null,
-                            ),
-                            const SizedBox(height: 12),
+                            
+                            // 2. My Orders (Short, Frequently Used)
                             _buildProfileCard(
                               context: context,
                               icon: Icons.shopping_bag_outlined,
                               title: 'My Orders',
-                              subtitle: 'View your order history',
+                              subtitle: 'Order history',
                               onTap: () =>
                                   Navigator.pushNamed(context, '/my-orders'),
                             ),
                             const SizedBox(height: 12),
 
-                            // Service Provider Dashboard - Only for service_provider role
+                            // 3. DASHBOARDS - Role-based (Medium Priority)
+                            // Service Provider Dashboard
                             if (auth.currentUser?.role == 'service_provider')
                               Column(
                                 children: [
@@ -257,8 +252,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.work_outline,
                                     title: 'My Dashboard',
-                                    subtitle:
-                                        'View your service requests and status',
+                                    subtitle: 'Service requests',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -271,7 +265,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // Seller Dashboard - Only for seller role
+                            // Seller Dashboard
                             if (auth.currentUser?.role == 'seller')
                               Column(
                                 children: [
@@ -279,7 +273,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.dashboard,
                                     title: 'My Dashboard',
-                                    subtitle: 'Manage your products and sales',
+                                    subtitle: 'Products & sales',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -299,11 +293,31 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.people_alt_outlined,
                                     title: 'My Dashboard',
-                                    subtitle: 'Manage core operations',
+                                    subtitle: 'Core operations',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
                                         CoreStaffDashboardScreen.routeName,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                              ),
+
+                            // State Admin Dashboard
+                            if (auth.isStateAdmin)
+                              Column(
+                                children: [
+                                  _buildProfileCard(
+                                    context: context,
+                                    icon: Icons.business,
+                                    title: 'My Dashboard',
+                                    subtitle: 'State operations',
+                                    onTap: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        AdminPanelScreen.routeName,
                                       );
                                     },
                                   ),
@@ -319,7 +333,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.admin_panel_settings,
                                     title: 'My Dashboard',
-                                    subtitle: 'Full system administration',
+                                    subtitle: 'System admin',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -339,8 +353,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.store_outlined,
                                     title: 'My Dashboard',
-                                    subtitle:
-                                        'Manage store inventory and staff',
+                                    subtitle: 'Store inventory',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -360,7 +373,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.manage_accounts_outlined,
                                     title: 'My Dashboard',
-                                    subtitle: 'Manage team and operations',
+                                    subtitle: 'Team operations',
                                     onTap: () {
                                       ScaffoldMessenger.of(
                                         context,
@@ -385,7 +398,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.delivery_dining_outlined,
                                     title: 'My Dashboard',
-                                    subtitle: 'Manage your deliveries',
+                                    subtitle: 'Your deliveries',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -405,7 +418,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.support_agent_outlined,
                                     title: 'My Dashboard',
-                                    subtitle: 'Handle customer queries',
+                                    subtitle: 'Customer queries',
                                     onTap: () {
                                       ScaffoldMessenger.of(
                                         context,
@@ -422,7 +435,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // Admin Panel (legacy - only for old admin flag)
+                            // Admin Panel (legacy)
                             if (auth.isAdmin && !auth.isAdministrator)
                               Column(
                                 children: [
@@ -430,7 +443,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                     context: context,
                                     icon: Icons.admin_panel_settings,
                                     title: 'My Dashboard',
-                                    subtitle: 'Manage products and inventory',
+                                    subtitle: 'Products & inventory',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
@@ -442,25 +455,36 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // General Section
+                            // 4. Email (Info Only - Medium Priority)
+                            _buildProfileCard(
+                              context: context,
+                              icon: Icons.email_outlined,
+                              title: 'Email',
+                              subtitle: auth.currentUser!.email,
+                              onTap: null,
+                            ),
                             const SizedBox(height: 12),
+
+                            // 5. GENERAL INFO - Lower Priority
                             _buildProfileCard(
                               context: context,
                               icon: Icons.info_outline,
                               title: 'About Us',
-                              subtitle: 'Learn more about Dimandy',
+                              subtitle: 'Learn about Dimandy',
                               onTap: () => Navigator.pushNamed(context, AboutScreen.routeName),
                             ),
                             const SizedBox(height: 12),
+                            
                             _buildProfileCard(
                               context: context,
                               icon: Icons.contact_support_outlined,
                               title: 'Contact Us',
-                              subtitle: 'Get help & support',
+                              subtitle: 'Help & support',
                               onTap: () => Navigator.pushNamed(context, ContactScreen.routeName),
                             ),
                             const SizedBox(height: 12),
-                            // Join Partner Link (if not already a partner)
+                            
+                            // 6. LEAST PRIORITY - Partner Signup (Only for regular users)
                             if (auth.currentUser?.role == 'user')
                                _buildProfileCard(
                                 context: context,

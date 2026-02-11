@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class SharedUsersTab extends StatefulWidget {
   final bool canManage;
@@ -22,12 +24,20 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
   late Stream<QuerySnapshot> _stream;
 
   @override
-  void initState() {
-    super.initState();
-    _stream = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'user')
-        .snapshots();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _initializeStream();
+  }
+
+  void _initializeStream() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    Query query = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'user');
+    
+    if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
+      query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
+    }
+    
+    _stream = query.snapshots();
   }
 
   @override
@@ -535,6 +545,23 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
   void _changeUserRole(String userId, String currentRole) {
     String? selectedRole = currentRole == 'admin' ? 'administrator' : currentRole;
 
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final isSuperAdmin = auth.isSuperAdmin;
+
+    final List<DropdownMenuItem<String>> items = [
+      const DropdownMenuItem(value: 'user', child: Text('User')),
+      const DropdownMenuItem(value: 'seller', child: Text('Seller')),
+      const DropdownMenuItem(
+        value: 'delivery_partner',
+        child: Text('Delivery Partner'),
+      ),
+    ];
+
+    if (isSuperAdmin) {
+      items.add(const DropdownMenuItem(value: 'admin', child: Text('Admin')));
+      items.add(const DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')));
+    }
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -546,18 +573,9 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
               const Text('Select new role for user:'),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
-                value: selectedRole,
+                initialValue: selectedRole,
                 decoration: const InputDecoration(border: OutlineInputBorder()),
-                items: const [
-                  DropdownMenuItem(value: 'user', child: Text('User')),
-                  DropdownMenuItem(value: 'seller', child: Text('Seller')),
-                  DropdownMenuItem(
-                    value: 'delivery_partner',
-                    child: Text('Delivery Partner'),
-                  ),
-                  DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                  DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
-                ],
+                items: items,
                 onChanged: (value) {
                   setState(() => selectedRole = value);
                 },

@@ -28,18 +28,20 @@ class CartItem {
     if (metadata != null) 'metadata': metadata,
   };
 
-  factory CartItem.fromMap(Map<String, dynamic> map) => CartItem(
-    product: Product(
-      id: map['id'] as String,
-      sellerId: map['sellerId'] as String? ?? '',
-      name: map['name'] as String,
-      description: map['description'] as String,
-      price: (map['price'] as num).toDouble(),
-      imageUrl: map['imageUrl'] as String,
-    ),
-    quantity: (map['quantity'] as num).toInt(),
-    metadata: map['metadata'] as Map<String, dynamic>?,
-  );
+  factory CartItem.fromMap(Map<String, dynamic> map) {
+    return CartItem(
+      product: Product(
+        id: map['id']?.toString() ?? '',
+        sellerId: map['sellerId']?.toString() ?? '',
+        name: map['name']?.toString() ?? 'Unknown Item',
+        description: map['description']?.toString() ?? '',
+        price: (map['price'] as num?)?.toDouble() ?? 0.0,
+        imageUrl: map['imageUrl']?.toString() ?? '',
+      ),
+      quantity: (map['quantity'] as num?)?.toInt() ?? 1,
+      metadata: map['metadata'] is Map ? (map['metadata'] as Map).cast<String, dynamic>() : null,
+    );
+  }
 }
 
 class CartProvider extends ChangeNotifier {
@@ -61,7 +63,22 @@ class CartProvider extends ChangeNotifier {
   void addProduct(Product product, {Map<String, dynamic>? metadata}) {
     debugPrint('CartProvider: addProduct called for ${product.id}');
     final id = product.id;
+    
+    // Services check: category is 'Services', unit is 'service', or ID starts with 'svc_'
+    final isService = product.category == 'Services' || 
+                      product.unit?.toLowerCase() == 'service' || 
+                      product.id.startsWith('svc_');
+    
+    // Only check stock for actual products (not services)
+    if (!isService && product.stock <= 0) {
+      throw Exception('Product is out of stock');
+    }
+    
     if (_items.containsKey(id)) {
+      // Only validate stock for products, not services
+      if (!isService && _items[id]!.quantity + 1 > product.stock) {
+        throw Exception('Only ${product.stock} items available in stock');
+      }
       _items[id]!.quantity += 1;
     } else {
       _items[id] = CartItem(product: product, quantity: 1, metadata: metadata);

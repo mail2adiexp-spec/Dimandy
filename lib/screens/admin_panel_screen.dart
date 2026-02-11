@@ -13,6 +13,7 @@ import 'package:intl/intl.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import '../utils/locations_data.dart'; // Needed for State Gift logic
 
 import '../models/product_model.dart';
 import '../models/category_model.dart';
@@ -46,6 +47,8 @@ import 'admin_settings_screen.dart';
 // import 'admin_reports_screen.dart';
 import '../widgets/manage_stores_tab.dart';
 import 'permission_editor_screen.dart';
+import '../widgets/manage_admins_tab.dart'; // NEW
+
 
 class AdminPanelScreen extends StatefulWidget {
   static const routeName = '/admin-panel';
@@ -92,6 +95,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Stream<QuerySnapshot>? _topSellingStream;
   Stream<QuerySnapshot>? _topServicesStream;
   late Stream<QuerySnapshot> _recentOrdersStream;
+  late Stream<QuerySnapshot> _payoutRequestsStream;
+  late Stream<QuerySnapshot> _deleteRequestsStream;
 
   late AnimationController _refreshController;
 
@@ -104,6 +109,21 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _initializeStreams();
   }
 
+  String? _currentAssignedState;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final auth = Provider.of<AuthProvider>(context);
+    final newAssignedState = auth.currentUser?.assignedState;
+    
+    // Re-initialize streams if assignedState changes (e.g. loads late)
+    if (newAssignedState != _currentAssignedState) {
+      _currentAssignedState = newAssignedState;
+      _initializeStreams();
+    }
+  }
+
   @override
   void dispose() {
     _refreshController.dispose();
@@ -111,141 +131,128 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   void _initializeStreams() {
-    _partnerRequestsStream = FirebaseFirestore.instance
-        .collection('partner_requests')
-        .where('status', isEqualTo: 'pending')
-        .snapshots();
-        
-    _serviceProvidersStream = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'service_provider')
-        .snapshots();
-        
-    _sellersStream = FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'seller')
-        .snapshots();
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final isStateAdmin = auth.isStateAdmin;
+    final assignedState = auth.currentUser?.assignedState;
 
-    _deliveryPartnersStream = FirebaseFirestore.instance
-        .collection('delivery_partners')
-        .snapshots();
-        
-    _ordersStream = FirebaseFirestore.instance
-        .collection('orders')
-        .snapshots();
-        
-    _usersStream = FirebaseFirestore.instance
-        .collection('users')
-        .snapshots();
-        
-    _cancelledOrdersStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('status', isEqualTo: 'cancelled')
-        .snapshots();
-        
-    _returnedOrdersStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('status', isEqualTo: 'returned')
-        .snapshots();
-        
-    _messagesStream = FirebaseFirestore.instance
-        .collection('contact_messages')
-        .orderBy('timestamp', descending: true)
-        .snapshots();
+    Query partnerRequestsQuery = FirebaseFirestore.instance.collection('partner_requests');
+    Query serviceProvidersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'service_provider');
+    Query sellersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'seller');
+    Query deliveryPartnersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'delivery_partner');
+    Query ordersQuery = FirebaseFirestore.instance.collection('orders');
+    Query usersQuery = FirebaseFirestore.instance.collection('users'); // Includes customers
+    Query cancelledOrdersQuery = FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'cancelled');
+    Query returnedOrdersQuery = FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'returned');
+    Query messagesQuery = FirebaseFirestore.instance.collection('contact_messages').orderBy('timestamp', descending: true);
+    Query recentOrdersQuery = FirebaseFirestore.instance.collection('orders').orderBy('orderDate', descending: true).limit(10);
+    Query topSellingQuery = FirebaseFirestore.instance.collection('orders');
+    Query topServicesQuery = FirebaseFirestore.instance.collection('service_categories'); // Global, no filter needed usually
 
-    _recentOrdersStream = FirebaseFirestore.instance
-        .collection('orders')
-        .orderBy('orderDate', descending: true)
-        .limit(10)
-        .snapshots();
-    _topSellingStream = FirebaseFirestore.instance
-        .collection('orders')
-        .snapshots();
+    // Apply State Filters
+    if (isStateAdmin && assignedState != null) {
+      // Users/Sellers/ServiceProviders: 'state' field exists (added in Phase 1)
+      serviceProvidersQuery = serviceProvidersQuery.where('state', isEqualTo: assignedState);
+      sellersQuery = sellersQuery.where('state', isEqualTo: assignedState);
+      usersQuery = usersQuery.where('state', isEqualTo: assignedState);
+      
+      // Partner Requests: usually have 'state' or 'address'. Assuming 'state' field exists or we might need to rely on 'service_pincode' mapping.
+      // For now, attempting 'state' filter if schema supports it, otherwise logic might need adjustment.
+      partnerRequestsQuery = partnerRequestsQuery.where('state', isEqualTo: assignedState);
+      
+      // Delivery Partners: have 'service_pincode'. Mapping pincode to state is hard without DB. 
+      // Assuming they might have 'state' added or we filter manually. 
+      // Adding 'state' filter for now assuming future compliance.
+      deliveryPartnersQuery = deliveryPartnersQuery.where('state', isEqualTo: assignedState);
 
-    _topServicesStream = FirebaseFirestore.instance
-        .collection('service_categories')
-        .snapshots();
+      // Orders: Critical. Order docs MUST have 'state' field for this to work server-side.
+      // If not, we might need client-side filtering (inefficient but works for start).
+      // Assuming we will add 'state' to orders.
+      ordersQuery = ordersQuery.where('state', isEqualTo: assignedState);
+      cancelledOrdersQuery = cancelledOrdersQuery.where('state', isEqualTo: assignedState);
+      returnedOrdersQuery = returnedOrdersQuery.where('state', isEqualTo: assignedState);
+      
+      // Recent Orders - composite index might be needed: state + orderDate
+      recentOrdersQuery = FirebaseFirestore.instance.collection('orders')
+          .where('state', isEqualTo: assignedState)
+          .orderBy('orderDate', descending: true)
+          .limit(10);
+          
+      topSellingQuery = topSellingQuery.where('state', isEqualTo: assignedState);
+    }
+
+    _partnerRequestsStream = partnerRequestsQuery.where('status', isEqualTo: 'pending').snapshots();
+    _serviceProvidersStream = serviceProvidersQuery.snapshots();
+    _sellersStream = sellersQuery.snapshots();
+    _deliveryPartnersStream = deliveryPartnersQuery.snapshots();
+    _ordersStream = ordersQuery.snapshots();
+    _usersStream = usersQuery.snapshots();
+    _cancelledOrdersStream = cancelledOrdersQuery.snapshots();
+    _returnedOrdersStream = returnedOrdersQuery.snapshots();
+    _messagesStream = messagesQuery.snapshots();
+    _recentOrdersStream = recentOrdersQuery.snapshots();
+    _topSellingStream = topSellingQuery.snapshots();
+    _topServicesStream = topServicesQuery.snapshots();
+    _payoutRequestsStream = FirebaseFirestore.instance.collection('payouts').where('status', isEqualTo: 'pending').snapshots();
+    _deleteRequestsStream = FirebaseFirestore.instance.collection('users').where('deleteRequested', isEqualTo: true).snapshots();
   }
 
-  final List<String> _menuTitles = [
-    'Dashboard',           // First
-    'Settings',           // NEW - Moved to top
-    'Users',              // 5
-    'Gifts',              // 5
-    'Orders',             // 6
-    'Sellers',            // 7
-    'Stores',             // NEW
-    'Products',           // 8
-    'Services',           // 8
-    'Categories',         // 11
-    'Core Staff',         // 12
-    'Permissions',        // 13
-    'Payout Requests',    // 15
-    'Featured Sections',  // 17
-    'Delivery Partners',  // 17
-    'Service Categories', // 18
-    'Service Providers',  // 18
-    'Partner Requests',
-    'Refund Requests',    // 17
-    'Messages',           // NEW
-  ];
+  int _currentStackIndex = 0; // Replaces _selectedIndex for IndexedStack control
 
-  final Map<int, int> _sortedToOriginalIndex = {
-    0: 0,  // Dashboard
-    1: 18, // Settings (was 17, now 18 in stack)
-    2: 6,  // Users
-    3: 7,  // Gifts
-    4: 8,  // Orders
-    5: 11, // Sellers
-    6: 20, // Stores
-    7: 1,  // Products
-    8: 3,  // Services
-    9: 2, // Categories (was 11)
-    10: 9, // Core Staff (was 12)
-    11: 10, // Permissions (was 13)
-    12: 13, // Payout Requests (was 14)
-    13: 4,  // Featured Sections (was 15)
-    14: 5,  // Delivery Partners (was 16)
-    15: 14, // Service Categories (was 17)
-    16: 12, // Service Providers (was 18)
-    17: 17, // Partner Requests (was 19)
-    18: 19, // Refund Requests (was 20)
-    19: 21, // Messages
-  };
+  // Define Menu Item Structure
+  List<Map<String, dynamic>> _getAllMenuItems(bool isSuperAdmin) {
+    // Each item: { 'title': String, 'icon': IconData, 'index': int, 'requiresSuperAdmin': bool }
+    // PRIORITIZED ITEMS (Badges first)
+    final allItems = [
+      {'title': 'Dashboard', 'icon': Icons.dashboard, 'index': 0},
+      {'title': 'Messages', 'icon': Icons.message, 'index': 22}, // Moved up
+      {'title': 'Partner Requests', 'icon': Icons.person_add, 'index': 17}, // Moved up
+      {'title': 'Payout Requests', 'icon': Icons.payment, 'index': 13}, // Moved up
+      {'title': 'Delete Requests', 'icon': Icons.delete_forever, 'index': 23}, // Moved up
 
-  final List<IconData> _menuIcons = [
-    Icons.dashboard,           // Dashboard
-    Icons.settings,            // Settings
-    Icons.person,              // Users
-    Icons.card_giftcard,       // Gifts
-    Icons.receipt_long,        // Orders
-    Icons.store,               // Sellers
-    Icons.store_mall_directory,// Stores
-    Icons.inventory_2,         // Products
-    Icons.home_repair_service, // Services
-    Icons.category,            // Categories
-    Icons.group,               // Core Staff
-    Icons.security,            // Permissions
-    Icons.payment,             // Payout Requests
-    Icons.star,                // Featured Sections
-    Icons.delivery_dining,     // Delivery Partners
-    Icons.miscellaneous_services, // Service Categories
-    Icons.handyman,            // Service Providers
-    Icons.person_add,          // Partner Requests
-    Icons.assignment_return,   // Refund Requests
-    Icons.message,             // Messages
-  ];
+      // REMAINING ITEMS
+      {'title': 'Users', 'icon': Icons.person, 'index': 6},
+      {'title': 'Orders', 'icon': Icons.receipt_long, 'index': 8},
+      {'title': 'Sellers', 'icon': Icons.store, 'index': 11},
+      {'title': 'Stores', 'icon': Icons.store_mall_directory, 'index': 20, 'requiresSuperAdmin': false},
+      {'title': 'Products', 'icon': Icons.inventory_2, 'index': 1},
+      {'title': 'Services', 'icon': Icons.home_repair_service, 'index': 3},
+      {'title': 'Categories', 'icon': Icons.category, 'index': 2, 'requiresSuperAdmin': true},
+      {'title': 'Gifts', 'icon': Icons.card_giftcard, 'index': 7},
+      {'title': 'Permissions', 'icon': Icons.security, 'index': 10, 'requiresSuperAdmin': false},
+      {'title': 'Settings', 'icon': Icons.settings, 'index': 18, 'requiresSuperAdmin': true},
+      
+      {'title': 'Core Staff', 'icon': Icons.group, 'index': 9, 'requiresSuperAdmin': true},
+      {'title': 'Manage Admins', 'icon': Icons.admin_panel_settings, 'index': 21, 'requiresSuperAdmin': true},
+      {'title': 'Refund Requests', 'icon': Icons.assignment_return, 'index': 19},
+      {'title': 'Service Providers', 'icon': Icons.handyman, 'index': 12},
+      {'title': 'Delivery Partners', 'icon': Icons.delivery_dining, 'index': 5},
+      
+      {'title': 'Service Categories', 'icon': Icons.miscellaneous_services, 'index': 14, 'requiresSuperAdmin': true},
+      {'title': 'Featured Sections', 'icon': Icons.star, 'index': 4, 'requiresSuperAdmin': true},
+    ];
+
+    if (isSuperAdmin) {
+      return allItems;
+    } else {
+      return allItems.where((item) => item['requiresSuperAdmin'] != true).toList();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = Provider.of<AuthProvider>(context);
-    final isAdmin = auth.isAdmin;
+    // Allow if Super Admin, State Admin, Administrator, Core Staff, or Store Manager
+    final hasAccess = auth.isSuperAdmin || 
+                      auth.isStateAdmin || 
+                      auth.isAdministrator || 
+                      auth.isCoreStaff || 
+                      auth.isStoreManager;
+    final isSuperAdmin = auth.isSuperAdmin;
+    final menuItems = _getAllMenuItems(isSuperAdmin);
 
-    if (!isAdmin) {
+    if (!hasAccess) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
+        // ... existing denial logic ...
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Access denied: Admins only'),
@@ -280,15 +287,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        Theme.of(context).colorScheme.primary,
-                        Theme.of(context).colorScheme.primaryContainer,
+                        Colors.deepPurple.shade800,
+                        Colors.deepPurple.shade600,
                       ],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withOpacity(0.2),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -374,14 +381,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       Expanded(
                         child: IndexedStack(
                           sizing: StackFit.expand,
-                          index: _sortedToOriginalIndex[_selectedIndex] ?? 0,
+                          index: _currentStackIndex,
                           children: [
+                            // ... 0-20 existing ...
                             _buildDashboardTab(), // 0
                             _buildProductsTab(), // 1
                             _buildCategoriesTab(), // 2
                             _buildServicesTab(), // 3
-                            _buildFeaturedSectionsTab(isAdmin: isAdmin), // 4
-                            _buildDeliveryPartnersTab(), // 5
+                            _buildFeaturedSectionsTab(isAdmin: isSuperAdmin), // 4
+                            _buildRoleBasedUsersTab('delivery_partner'), // 5 (Replaced _buildDeliveryPartnersTab)
                             _buildUsersTab(), // 6
                             _buildGiftsTab(), // 7
                             _buildOrdersTab(), // 8
@@ -390,14 +398,16 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildRoleBasedUsersTab('seller'), // 11
                             _buildRoleBasedUsersTab('service_provider'), // 12
                             _buildPayoutRequestsTab(), // 13
-                            _buildServiceCategoriesTab(isAdmin: isAdmin), // 14
-                            const SizedBox(), // 15 (was Analytics)
-                            const SizedBox(), // 16 (was Reports)
-                            _buildPartnerRequestsTab(), // 16
-                            const AdminSettingsScreen(), // 17
-                            _buildRefundRequestsTab(), // 18
-                            const ManageStoresTab(), // 19
-                            _buildMessagesTab(), // 20
+                            _buildServiceCategoriesTab(isAdmin: isSuperAdmin), // 14
+                            const SizedBox(), // 15
+                            const SizedBox(), // 16 
+                            _buildPartnerRequestsTab(), // 17
+                            const AdminSettingsScreen(), // 18 
+                            _buildRefundRequestsTab(), // 19
+                            const ManageStoresTab(), // 20
+                            const ManageAdminsTab(), // 21 - NEW Manage Admins
+                            _buildMessagesTab(), // 22 - MESSAGES
+                            _buildDeleteRequestsTab(), // 23 - DELETE REQUESTS
                           ],
                         ),
                       ),
@@ -412,13 +422,70 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  Widget _buildDeleteRequestsTab() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _deleteRequestsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('No account deletion requests'));
+
+        return ListView.builder(
+           padding: const EdgeInsets.all(16),
+           itemCount: snapshot.data!.docs.length,
+           itemBuilder: (context, index) {
+              final doc = snapshot.data!.docs[index];
+              final data = doc.data() as Map<String, dynamic>;
+              return Card(
+                child: ListTile(
+                  leading: const Icon(Icons.warning, color: Colors.red),
+                  title: Text(data['name'] ?? 'Unknown User'),
+                  subtitle: Text(data['email'] ?? 'No email'),
+                  trailing: ElevatedButton(
+                    onPressed: () => _showDeleteConfirmation(doc.id, data['email']),
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                    child: const Text('Process Deletion', style: TextStyle(color: Colors.white)),
+                  ),
+                ),
+              );
+           }
+        );
+      },
+    );
+  }
+
+  void _showDeleteConfirmation(String userId, String? email) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Deletion'),
+        content: Text('Are you sure you want to permanently delete $email? This action cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+             onPressed: () async {
+                Navigator.pop(ctx);
+                await FirebaseFirestore.instance.collection('users').doc(userId).delete();
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('User deleted successfully')));
+             },
+             child: const Text('Delete Permanently', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSidebarContent({required bool isMobile}) {
+    final auth = Provider.of<AuthProvider>(context);
+    final isSuperAdmin = auth.isSuperAdmin;
+    final menuItems = _getAllMenuItems(isSuperAdmin);
+
     return Container(
       decoration: BoxDecoration(
-        color: Colors.grey[50],
+        color: Colors.deepPurple.shade900,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withOpacity(0.3),
             blurRadius: 8,
             offset: const Offset(2, 0),
           ),
@@ -429,7 +496,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           if (isMobile) ...[
             DrawerHeader(
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
+                color: Colors.deepPurple.shade800,
               ),
               child: Center(
                 child: Column(
@@ -438,7 +505,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     Icon(
                       Icons.admin_panel_settings,
                       size: 48,
-                      color: Theme.of(context).colorScheme.primary,
+                      color: Colors.white,
                     ),
                     const SizedBox(height: 10),
                     Text(
@@ -446,7 +513,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -456,123 +523,88 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           ],
           // Menu Items - Scrollable
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _partnerRequestsStream,
-              builder: (context, snapshot) {
-                final pendingCount =
-                    snapshot.hasData ? snapshot.data!.docs.length : 0;
+            child: ListView.builder(
+              padding: EdgeInsets.fromLTRB(0, 8, 0, 24 + MediaQuery.of(context).padding.bottom),
+              itemCount: menuItems.length,
+              itemBuilder: (context, listIndex) {
+                final item = menuItems[listIndex];
+                // DEBUG: Trace what is being built
+                print('DEBUG: Building Sidebar Item $listIndex: ${item['title']}');
+                
+                final itemIndex = item['index'] as int;
 
-                return ListView.builder(
-                  padding: EdgeInsets.fromLTRB(0, 8, 0, 24 + MediaQuery.of(context).padding.bottom),
-                  itemCount: _menuTitles.length,
-                  itemBuilder: (context, listIndex) {
-                    final isSelected = _selectedIndex == listIndex;
-                    final isPartnerRequestsTab =
-                        _menuTitles[listIndex] == 'Partner Requests';
-                    final showBadge = isPartnerRequestsTab && pendingCount > 0;
+                final isSelected = _currentStackIndex == itemIndex;
+                
+                // Determine which stream to use for badge
+                Stream<QuerySnapshot>? badgeStream;
+                if (item['title'] == 'Partner Requests') badgeStream = _partnerRequestsStream;
+                else if (item['title'] == 'Payout Requests') badgeStream = _payoutRequestsStream;
+                else if (item['title'] == 'Messages') badgeStream = _messagesStream;
+                else if (item['title'] == 'Delete Requests') badgeStream = _deleteRequestsStream;
 
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      child: Material(
-                        color: isSelected
-                            ? Theme.of(context)
-                                .colorScheme
-                                .primary
-                                .withOpacity(0.15)
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _selectedIndex = listIndex;
-                            });
-                            if (isMobile) {
-                              Navigator.pop(context); // Close drawer
-                            }
-                          },
-                          borderRadius: BorderRadius.circular(12),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  child: Material(
+                    color: isSelected ? Colors.deepPurple.shade700 : Colors.transparent,
+                    borderRadius: BorderRadius.circular(12),
+                    child: InkWell(
+                      onTap: () {
+                        setState(() {
+                          _currentStackIndex = itemIndex;
+                        });
+                        if (isMobile) Navigator.pop(context);
+                      },
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: isSelected
+                            ? BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border(left: BorderSide(color: Colors.purpleAccent.shade200, width: 4)),
+                              )
+                            : null,
+                        child: Row(
+                          children: [
+                            Icon(
+                              item['icon'] as IconData,
+                              color: isSelected ? Colors.white : Colors.grey.shade300,
+                              size: 24,
                             ),
-                            decoration: isSelected
-                                ? BoxDecoration(
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border(
-                                      left: BorderSide(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                        width: 4,
-                                      ),
-                                    ),
-                                  )
-                                : null,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.start,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  _menuIcons[listIndex],
-                                  color: isSelected
-                                      ? Theme.of(context).colorScheme.primary
-                                      : Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                  size: 24,
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                item['title'] as String,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                  color: isSelected ? Colors.white : Colors.grey.shade300,
                                 ),
-                                const SizedBox(width: 16),
-                                Expanded(
-                                  child: Text(
-                                    _menuTitles[listIndex],
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    textAlign: TextAlign.left,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: isSelected
-                                          ? FontWeight.bold
-                                          : FontWeight.normal,
-                                      color: isSelected
-                                          ? Theme.of(context).colorScheme.primary
-                                          : Theme.of(context)
-                                              .colorScheme
-                                              .onSurfaceVariant,
-                                    ),
-                                  ),
-                                ),
-                                if (showBadge) ...[
-                                  const SizedBox(width: 8),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.red,
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (badgeStream != null)
+                              StreamBuilder<QuerySnapshot>(
+                                stream: badgeStream,
+                                builder: (context, snapshot) {
+                                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const SizedBox();
+                                  
+                                  final count = snapshot.data!.docs.length;
+                                  return Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
                                     child: Text(
-                                      pendingCount.toString(),
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
+                                      '$count',
+                                      style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
                                     ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                                  );
+                                },
+                              ),
+                          ],
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 );
               },
             ),
@@ -595,7 +627,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       children: [
                         Icon(
                           Icons.arrow_back,
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          color: Colors.grey.shade300,
                           size: 24,
                         ),
                         const SizedBox(width: 16),
@@ -603,7 +635,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           'Back to App',
                           style: TextStyle(
                             fontSize: 14,
-                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                            color: Colors.grey.shade300,
                           ),
                         ),
                       ],
@@ -625,9 +657,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildPartnerRequestsTab() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     return RoleManagementTab(
       key: const ValueKey('partner_requests'),
       collection: 'partner_requests',
+      assignedState: auth.isStateAdmin ? auth.currentUser?.assignedState : null, // Filter by state
       onEdit: (id, data) {
         // This is not expected to be called for partner requests.
       },
@@ -676,29 +710,66 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
 
     try {
-      if (action == 'approved') {
-        // 1. Fetch the request document details FIRST
-        final requestDoc = await FirebaseFirestore.instance
-            .collection('partner_requests')
-            .doc(requestId)
-            .get();
+      // 1. Fetch the request document details FIRST to validate permissions
+      final requestDoc = await FirebaseFirestore.instance
+          .collection('partner_requests')
+          .doc(requestId)
+          .get();
 
-        if (!requestDoc.exists) {
-          throw Exception('Request not found');
+      if (!requestDoc.exists) {
+        throw Exception('Request not found');
+      }
+
+      final requestData = requestDoc.data()!;
+      final requestState = requestData['state'] as String?;
+
+      // 2. Permission Check for State Admins
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isStateAdmin) {
+        final assignedState = auth.currentUser?.assignedState;
+        if (assignedState == null || requestState != assignedState) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Permission Denied: You can only manage requests from your assigned state.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return; // Exit
         }
+      }
 
-        final requestData = requestDoc.data()!;
+      if (action == 'approved') {
         final role = requestData['role'] as String? ?? '';
         
-        // 2. Call the Cloud Function to create the user in Auth and Users collection
+        // 3. Call the Cloud Function to create the user in Auth and Users collection
         final callable = functions.httpsCallable('approvePartnerRequest');
         final result = await callable.call({'requestId': requestId});
         
         final userId = result.data['userId'];
 
-        // 3. Post-Approval: Create specific role documents if needed
-        if (role == 'Delivery Partner' && userId != null) {
           final pincode = requestData['service_pincode'] ?? requestData['pincode'];
+          final state = requestData['state'];
+
+          // PATCH: Manually update user document with state and pincode
+          // because Cloud Function might be missing these mappings or using old version.
+          if (userId != null) {
+             print('DEBUG: Waiting 2s before patching user $userId');
+             // Add delay to avoid race condition with Cloud Function creation
+             await Future.delayed(const Duration(seconds: 2));
+             
+             print('DEBUG: Patching user $userId with State: $state, Pincode: $pincode');
+
+             // Force merge to ensure fields are written
+             await FirebaseFirestore.instance.collection('users').doc(userId).set({
+                'state': state,
+                'pincode': pincode,
+                'servicePincode': pincode, // Ensure backend compatibility
+                'servicePincodes': pincode != null ? [pincode] : [], // FIXED: Add as array for query visibility
+             }, SetOptions(merge: true));
+          }
+
+        // 4. Post-Approval: Create specific role documents if needed
+        if (role == 'Delivery Partner' && userId != null) {
           
           await FirebaseFirestore.instance.collection('delivery_partners').doc(userId).set({
             'id': userId,
@@ -738,7 +809,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         SnackBar(content: Text('An unexpected error occurred: $e')),
       );
     } finally {
-      Navigator.of(context).pop(); // Dismiss loading indicator
+      if (mounted) {
+        Navigator.of(context).pop(); // Dismiss loading indicator
+      }
     }
   }
 
@@ -1232,12 +1305,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             );
                           }
                           if (snapshot.hasError) {
-                            return const Text(
-                              '!',
-                              style: TextStyle(
+                            return Tooltip(
+                              message: 'Error: ${snapshot.error}',
+                              child: const Icon(
+                                Icons.error_outline,
                                 color: Colors.white,
-                                fontSize: 32,
-                                fontWeight: FontWeight.bold,
+                                size: 32,
                               ),
                             );
                           }
@@ -1277,7 +1350,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   Widget _buildGiftsTab() {
     return Consumer<GiftProvider>(
       builder: (context, giftProvider, _) {
-        final gifts = giftProvider.gifts;
+        final auth = Provider.of<AuthProvider>(context, listen: false);
+        var gifts = giftProvider.gifts;
+        
+        // Filter for State Admin
+        if (auth.isStateAdmin) {
+          gifts = gifts.where((g) => g.state == auth.currentUser?.assignedState).toList();
+        }
         return Column(
           children: [
             // Count + Add button
@@ -1431,6 +1510,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                         crossAxisAlignment:
                                             WrapCrossAlignment.center,
                                         children: [
+                                          if (gift.state != null)
+                                             Container(
+                                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                                               decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.orange.shade200)),
+                                               child: Text(gift.state!, style: TextStyle(fontSize: 10, color: Colors.orange.shade800)),
+                                             ),
                                           const Text('Active:'),
                                           Icon(
                                             gift.isActive
@@ -1554,6 +1639,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       text: existing?.displayOrder.toString() ?? '0',
     );
     bool isActive = existing?.isActive ?? true;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    String? selectedState = existing?.state ?? (auth.isStateAdmin ? auth.currentUser?.assignedState : null);
+    final List<String> availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
     // Multi-image storage (up to 6 images)
     final List<Uint8List?> imageBytes = List.filled(6, null);
@@ -1700,6 +1789,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (!auth.isStateAdmin) ...[
+                     DropdownButtonFormField<String>(
+                        initialValue: selectedState,
+                        decoration: const InputDecoration(labelText: 'Gift State', border: OutlineInputBorder(), helperText: 'Leave empty for Global Gift'),
+                        items: [
+                             const DropdownMenuItem(value: null, child: Text('Global / No State')),
+                             ...availableStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                        ],
+                        onChanged: (v) => setState(() => selectedState = v),
+                      ),
+                      const SizedBox(height: 12),
+                  ],
                   SwitchListTile(
                     value: isActive,
                     onChanged: (v) => setState(() => isActive = v),
@@ -1880,6 +1981,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               int.tryParse(orderCtrl.text.trim()) ?? 0,
                           createdAt: existing?.createdAt,
                           updatedAt: DateTime.now(),
+                          state: selectedState,
                         );
                         final provider = Provider.of<GiftProvider>(
                           context,
@@ -2399,7 +2501,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 margin: const EdgeInsets.all(12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withOpacity(0.15),
+                  color: Colors.amber.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.amber.shade400),
                 ),
@@ -3376,10 +3478,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: payout.status == PayoutStatus.pending
-                            ? Colors.orange.withOpacity(0.2)
+                            ? Colors.orange.withValues(alpha: 0.2)
                             : payout.status == PayoutStatus.approved
-                                ? Colors.green.withOpacity(0.2)
-                                : Colors.red.withOpacity(0.2),
+                                ? Colors.green.withValues(alpha: 0.2)
+                                : Colors.red.withValues(alpha: 0.2),
                         child: Icon(
                           payout.status == PayoutStatus.pending
                               ? Icons.pending
@@ -3474,7 +3576,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         status.toUpperCase(),
         style: TextStyle(color: color, fontSize: 12),
       ),
-      backgroundColor: color.withOpacity(0.1),
+      backgroundColor: color.withValues(alpha: 0.1),
     );
   }
 
@@ -3592,6 +3694,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             'businessName': requestData['businessName'],
             'district': requestData['district'],
             'minCharge': requestData['minCharge'],
+            'state': requestData['state'], // Copy state from request
             'updatedAt': FieldValue.serverTimestamp(),
           };
 
@@ -3624,6 +3727,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 'panNumber': requestData['panNumber'],
                 'aadhaarNumber': requestData['aadhaarNumber'],
                 'profilePicUrl': requestData['profilePicUrl'],
+                'aadhaarNumber': requestData['aadhaarNumber'],
+                'profilePicUrl': requestData['profilePicUrl'],
+                'state': requestData['state'], // Copy state from request
                 'createdAt': FieldValue.serverTimestamp(),
               });
         }
@@ -3726,116 +3832,131 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final minChargeCtrl = TextEditingController(
       text: request.minCharge.toString(),
     );
+    String? selectedState = request.state;
+
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Edit Partner Request'),
-        content: SingleChildScrollView(
-          child: SizedBox(
-            width: 500,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Name'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: phoneCtrl,
-                  decoration: const InputDecoration(labelText: 'Phone'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: emailCtrl,
-                  decoration: const InputDecoration(labelText: 'Email'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: districtCtrl,
-                  decoration: const InputDecoration(labelText: 'District'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: pincodeCtrl,
-                  decoration: const InputDecoration(labelText: 'PIN Code'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: businessCtrl,
-                  decoration: const InputDecoration(labelText: 'Business Name'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: panCtrl,
-                  decoration: const InputDecoration(labelText: 'PAN Number'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: aadhaarCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Aadhaar Number',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Edit Partner Request'),
+          content: SingleChildScrollView(
+            child: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameCtrl,
+                    decoration: const InputDecoration(labelText: 'Name'),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: minChargeCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Minimum Charge',
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: phoneCtrl,
+                    decoration: const InputDecoration(labelText: 'Phone'),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: emailCtrl,
+                    decoration: const InputDecoration(labelText: 'Email'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: districtCtrl,
+                    decoration: const InputDecoration(labelText: 'District'),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // State Dropdown
+                  DropdownButtonFormField<String>(
+                    initialValue: selectedState,
+                    decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
+                    items: LocationsData.cities.map((e) => e.state).toSet().toList().map((s) => DropdownMenuItem(value: s, child: Text(s))).toList()..sort((a,b) => a.value!.compareTo(b.value!)),
+                    onChanged: Provider.of<AuthProvider>(context, listen: false).isStateAdmin ? null : (v) => setState(() => selectedState = v),
+                  ),
+                  const SizedBox(height: 12),
+
+                  TextField(
+                    controller: pincodeCtrl,
+                    decoration: const InputDecoration(labelText: 'PIN Code'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: businessCtrl,
+                    decoration: const InputDecoration(labelText: 'Business Name'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: panCtrl,
+                    decoration: const InputDecoration(labelText: 'PAN Number'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: aadhaarCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Aadhaar Number',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: minChargeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Minimum Charge',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              try {
-                await FirebaseFirestore.instance
-                    .collection('partner_requests')
-                    .doc(request.id)
-                    .update({
-                      'name': nameCtrl.text,
-                      'phone': phoneCtrl.text,
-                      'email': emailCtrl.text,
-                      'district': districtCtrl.text,
-                      'pincode': pincodeCtrl.text,
-                      'businessName': businessCtrl.text,
-                      'panNumber': panCtrl.text,
-                      'aadhaarNumber': aadhaarCtrl.text,
-                      'minCharge': minChargeCtrl.text,
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    });
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                try {
+                  await FirebaseFirestore.instance
+                      .collection('partner_requests')
+                      .doc(request.id)
+                      .update({
+                        'name': nameCtrl.text,
+                        'phone': phoneCtrl.text,
+                        'email': emailCtrl.text,
+                        'district': districtCtrl.text,
+                        'pincode': pincodeCtrl.text,
+                        'businessName': businessCtrl.text,
+                        'panNumber': panCtrl.text,
+                        'aadhaarNumber': aadhaarCtrl.text,
+                        'minCharge': minChargeCtrl.text,
+                        'state': selectedState,
+                        'updatedAt': FieldValue.serverTimestamp(),
+                      });
 
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Request updated successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Request updated successfully'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to update: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Failed to update: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Update'),
-          ),
-        ],
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3937,9 +4058,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                     margin: const EdgeInsets.only(top: 4),
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
+                                      color: Colors.blue.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                                      border: Border.all(color: Colors.blue.withValues(alpha: 0.5)),
                                     ),
                                     child: const Text(
                                       'Store Manager',
@@ -4408,7 +4529,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: DropdownButtonFormField<String>(
-              value: _selectedPermissionRole,
+              initialValue: _selectedPermissionRole,
               decoration: const InputDecoration(
                 labelText: 'Select Role',
                 border: OutlineInputBorder(),
@@ -4420,7 +4541,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 DropdownMenuItem(value: 'delivery_partner', child: Text('Delivery Partners')),
                 DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
                 DropdownMenuItem(value: 'store_manager', child: Text('Store Managers')),
-                DropdownMenuItem(value: 'administrator', child: Text('Admin Panel')),
+                DropdownMenuItem(value: 'admin', child: Text('Global Admins')),
+                DropdownMenuItem(value: 'state_admin', child: Text('State Admins')),
+                DropdownMenuItem(value: 'super_admin', child: Text('Super Admins')),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -4431,12 +4554,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
+        child: StreamBuilder<QuerySnapshot>(
+          stream: () {
+            final auth = Provider.of<AuthProvider>(context, listen: false);
+            Query query = FirebaseFirestore.instance
                 .collection('users')
-                .where('role', isEqualTo: _selectedPermissionRole)
-                .snapshots(),
-            builder: (context, snapshot) {
+                .where('role', isEqualTo: _selectedPermissionRole);
+            
+            if (auth.isStateAdmin) {
+               query = query.where('state', isEqualTo: auth.currentUser?.assignedState);
+            }
+            return query.snapshots();
+          }(),
+          builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
@@ -4869,7 +4999,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.2),
+            color: Colors.white.withValues(alpha: 0.2),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: Colors.white),
@@ -4925,9 +5055,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildRoleBasedUsersTab(String role) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     return RoleManagementTab(
       collection: 'users',
       role: role,
+      assignedState: auth.isStateAdmin ? auth.currentUser?.assignedState : null,
       requestRole: role == 'seller' 
           ? 'Seller' 
           : role == 'service_provider'
@@ -4963,6 +5095,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final descriptionCtrl = TextEditingController(text: userData['description'] ?? '');
     
     String? selectedCategory = userData['category'];
+    String? selectedState = userData['state']; // New State field
     bool isVerified = userData['isVerified'] ?? false;
     
     bool isLoading = false;
@@ -4995,6 +5128,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         decoration: const InputDecoration(labelText: 'Phone', border: OutlineInputBorder()),
                         validator: (v) => v!.isEmpty ? 'Required' : null,
                       ),
+                      const SizedBox(height: 12),
+                      
+                      // State Dropdown
+                      DropdownButtonFormField<String>(
+                        initialValue: selectedState,
+                        decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
+                        items: LocationsData.cities.map((e) => e.state).toSet().toList().map((s) => DropdownMenuItem(value: s, child: Text(s))).toList()..sort((a,b) => a.value!.compareTo(b.value!)),
+                        onChanged: Provider.of<AuthProvider>(context, listen: false).isStateAdmin ? null : (v) => setState(() => selectedState = v), // Read-only for State Admin
+                      ),
                       const SizedBox(height: 16),
                       
                       // -- DELIVERY PARTNER SPECIFIC --
@@ -5024,7 +5166,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                              }
                              
                              return DropdownButtonFormField<String>(
-                               value: selectedCategory,
+                               initialValue: selectedCategory,
                                decoration: const InputDecoration(labelText: 'Service Category', border: OutlineInputBorder()),
                                items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                                onChanged: (v) => setState(() => selectedCategory = v),
@@ -5063,7 +5205,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           title: const Text('Verified Provider'),
                           value: isVerified,
                           onChanged: (v) => setState(() => isVerified = v),
-                          activeColor: Colors.green,
+                          activeTrackColor: Colors.green,
                         ),
                       ],
                    ],
@@ -5085,6 +5227,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     Map<String, dynamic> updates = {
                       'name': nameCtrl.text.trim(),
                       'phone': phoneCtrl.text.trim(),
+                      'state': selectedState, // Save state
                     };
                     
                     if (role == 'delivery_partner') {
@@ -5745,7 +5888,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 margin: const EdgeInsets.only(bottom: 12),
                                 child: ListTile(
                                   leading: CircleAvatar(
-                                    backgroundColor: statusColor.withOpacity(0.2),
+                                    backgroundColor: statusColor.withValues(alpha: 0.2),
                                     child: Icon(Icons.shopping_bag, color: statusColor),
                                   ),
                                   title: Text('Order #${orderId.substring(0, 8)}'),
@@ -5779,7 +5922,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                           vertical: 2,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withOpacity(0.2),
+                                          color: statusColor.withValues(alpha: 0.2),
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: Text(
@@ -6036,7 +6179,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           if (!isListed)
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.5),
+                                color: Colors.black.withValues(alpha: 0.5),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Center(
@@ -6211,7 +6354,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: selectedUnit,
+                            initialValue: selectedUnit,
                             isExpanded: true,
                             decoration: const InputDecoration(
                               labelText: 'Unit',
@@ -6254,7 +6397,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               }
 
                               return DropdownButtonFormField<String>(
-                                value: selectedCategory,
+                                initialValue: selectedCategory,
                                 isExpanded: true,
                                 menuMaxHeight: 300,
                                 decoration: const InputDecoration(
@@ -6609,7 +6752,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: selectedCategory,
+                            initialValue: selectedCategory,
                             decoration: const InputDecoration(
                               labelText: 'Category',
                               border: OutlineInputBorder(),
@@ -6623,7 +6766,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         const SizedBox(width: 16),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: selectedUnit,
+                            initialValue: selectedUnit,
                             decoration: const InputDecoration(
                               labelText: 'Unit',
                               border: OutlineInputBorder(),
@@ -6890,7 +7033,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   
                   // Edit Type Selection
                   DropdownButtonFormField<String>(
-                    value: editType,
+                    initialValue: editType,
                     decoration: const InputDecoration(
                       labelText: 'What to Edit',
                       border: OutlineInputBorder(),
@@ -6908,7 +7051,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   // Price Edit Options
                   if (editType == 'price') ...[
                     DropdownButtonFormField<String>(
-                      value: priceAction,
+                      initialValue: priceAction,
                       decoration: const InputDecoration(
                         labelText: 'Action',
                         border: OutlineInputBorder(),
@@ -6936,7 +7079,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   // Stock Edit Options
                   if (editType == 'stock') ...[
                     DropdownButtonFormField<String>(
-                      value: stockAction,
+                      initialValue: stockAction,
                       decoration: const InputDecoration(
                         labelText: 'Action',
                         border: OutlineInputBorder(),
@@ -6962,7 +7105,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   // Category Edit
                   if (editType == 'category') ...[
                     DropdownButtonFormField<String>(
-                      value: selectedCategory,
+                      initialValue: selectedCategory,
                       decoration: const InputDecoration(
                         labelText: 'New Category',
                         border: OutlineInputBorder(),
@@ -6977,7 +7120,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   // Featured Edit
                   if (editType == 'featured') ...[
                     DropdownButtonFormField<bool>(
-                      value: setFeatured,
+                      initialValue: setFeatured,
                       decoration: const InputDecoration(
                         labelText: 'Featured Status',
                         border: OutlineInputBorder(),

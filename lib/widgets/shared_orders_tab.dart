@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import 'order_details_dialog.dart';
 import 'barcode_scanner_dialog.dart';
 
@@ -73,7 +76,15 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
   }
 
   void _initializeStream() {
-    Query query = FirebaseFirestore.instance.collection('orders').orderBy('orderDate', descending: true);
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    Query query = FirebaseFirestore.instance.collection('orders');
+    
+    // State Admin Filter
+    if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
+      query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
+    }
+    
+    query = query.orderBy('orderDate', descending: true);
     
     if (widget.isDeliveryPartner) {
         // Implementation for delivery partner specific stream if needed
@@ -164,7 +175,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                       SizedBox(
                         width: 140,
                         child: DropdownButtonFormField<String>(
-                          value: _selectedDateFilter,
+                          initialValue: _selectedDateFilter,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Date Range',
@@ -231,7 +242,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                       SizedBox(
                         width: 140,
                         child: DropdownButtonFormField<String>(
-                          value: _selectedStatusFilter,
+                          initialValue: _selectedStatusFilter,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Status',
@@ -271,7 +282,30 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                 }
                 if (snapshot.hasError) {
                   return Center(
-                    child: Text('Failed to load orders: ${snapshot.error}'),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Failed to load orders: ${snapshot.error}\n\n(Wait for index to build or copy error below)',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Clipboard.setData(ClipboardData(text: snapshot.error.toString()));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Error copied to clipboard! Paste it in your browser.'))
+                              );
+                            },
+                            icon: const Icon(Icons.copy),
+                            label: const Text('Copy Error'),
+                          ),
+                        ],
+                      ),
+                    ),
                   );
                 }
                 var docs = snapshot.data?.docs ?? [];
@@ -388,7 +422,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                       Container(
                                         padding: const EdgeInsets.all(8),
                                         decoration: BoxDecoration(
-                                          color: Colors.blue.withOpacity(0.1),
+                                          color: Colors.blue.withValues(alpha: 0.1),
                                           borderRadius: BorderRadius.circular(8),
                                         ),
                                         child: const Icon(Icons.shopping_bag_outlined, color: Colors.blue, size: 20),
@@ -419,9 +453,9 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
                                     decoration: BoxDecoration(
-                                      color: _getStatusColor(status).withOpacity(0.1),
+                                      color: _getStatusColor(status).withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(20),
-                                      border: Border.all(color: _getStatusColor(status).withOpacity(0.5)),
+                                      border: Border.all(color: _getStatusColor(status).withValues(alpha: 0.5)),
                                     ),
                                     child: DropdownButtonHideUnderline(
                                       child: DropdownButton<String>(
@@ -525,7 +559,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     decoration: BoxDecoration(
-                                      color: _getStatusColor(status).withOpacity(0.1),
+                                      color: _getStatusColor(status).withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(20),
                                       border: Border.all(color: _getStatusColor(status)),
                                     ),
@@ -757,10 +791,16 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
   }
 
   Future<void> _showAssignDeliveryPartnerDialog(String orderId, Map<String, dynamic> orderData) async {
-    final deliveryPartnersSnapshot = await FirebaseFirestore.instance
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    Query query = FirebaseFirestore.instance
         .collection('users')
-        .where('role', isEqualTo: 'delivery_partner')
-        .get();
+        .where('role', isEqualTo: 'delivery_partner');
+
+    if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
+      query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
+    }
+
+    final deliveryPartnersSnapshot = await query.get();
 
     if (!mounted) return;
 
@@ -790,10 +830,10 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                   ),
                 ),
               DropdownButtonFormField<String>(
-                value: selectedPartnerId,
+                initialValue: selectedPartnerId,
                 decoration: const InputDecoration(labelText: 'Select Delivery Partner', border: OutlineInputBorder()),
                 items: deliveryPartners.map((doc) {
-                  final data = doc.data();
+                  final data = doc.data() as Map<String, dynamic>;
                   return DropdownMenuItem(value: doc.id, child: Text(data['name'] ?? doc.id));
                 }).toList(),
                 onChanged: (value) => setState(() => selectedPartnerId = value),
@@ -826,7 +866,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                   : () async {
                       try {
                         final partnerDoc = deliveryPartners.firstWhere((doc) => doc.id == selectedPartnerId);
-                        final partnerData = partnerDoc.data();
+                        final Map<String, dynamic> partnerData = partnerDoc.data() as Map<String, dynamic>;
                         await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
                           'deliveryPartnerId': selectedPartnerId,
                           'deliveryPartnerName': partnerData['name'] ?? 'Unknown',

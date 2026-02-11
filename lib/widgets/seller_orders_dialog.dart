@@ -35,6 +35,7 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
     // Initialize stream only once
     _ordersStream = FirebaseFirestore.instance
         .collection('orders')
+        .where('sellerIds', arrayContains: widget.user.uid)
         .orderBy('orderDate', descending: true)
         .snapshots();
   }

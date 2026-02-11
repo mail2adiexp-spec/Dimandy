@@ -55,16 +55,7 @@ class ProductProvider with ChangeNotifier {
 
   Future<void> addProduct(Product product) async {
     try {
-      await _firestore.collection('products').doc(product.id).set({
-        'name': product.name,
-        'price': product.price,
-        'imageUrl': product.imageUrl,
-        'description': product.description,
-        'imageUrls': product.imageUrls,
-        'category': product.category,
-        'unit': product.unit,
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+      await _firestore.collection('products').doc(product.id).set(product.toMap());
     } catch (e) {
       rethrow;
     }
@@ -72,16 +63,9 @@ class ProductProvider with ChangeNotifier {
 
   Future<void> updateProduct(String id, Product updatedProduct) async {
     try {
-      await _firestore.collection('products').doc(id).update({
-        'name': updatedProduct.name,
-        'price': updatedProduct.price,
-        'imageUrl': updatedProduct.imageUrl,
-        'description': updatedProduct.description,
-        'imageUrls': updatedProduct.imageUrls,
-        'category': updatedProduct.category,
-        'unit': updatedProduct.unit,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
+      final Map<String, dynamic> data = updatedProduct.toMap();
+      data.remove('createdAt'); // Don't update createdAt
+      await _firestore.collection('products').doc(id).update(data);
     } catch (e) {
       rethrow;
     }

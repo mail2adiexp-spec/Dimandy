@@ -10,6 +10,9 @@ import '../services/transaction_service.dart';
 import '../services/payout_service.dart';
 import '../models/payout_model.dart';
 import '../providers/auth_provider.dart';
+import '../models/service_item_model.dart';
+import '../widgets/services_list_manager.dart';
+import '../utils/category_helpers.dart';
 
 class ServiceProviderDashboardScreen extends StatefulWidget {
   static const routeName = '/service-provider-dashboard';
@@ -96,10 +99,45 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
         appBar: AppBar(
           title: const Text('My Dashboard'),
           elevation: 2,
-          bottom: const TabBar(
+          bottom: TabBar(
             tabs: [
               Tab(text: 'Overview'),
-              Tab(text: 'Transactions'),
+              Tab(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _bookingsCountStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasData) {
+                       final allDocs = snapshot.data!.docs;
+                       // print('DEBUG Provider Badge: Total Bookings: ${allDocs.length}');
+                       
+                       final pendingDocs = allDocs.where((doc) {
+                         final data = doc.data() as Map<String, dynamic>;
+                         final status = data['status'];
+                         // print('DEBUG Provider Badge: Booking ${doc.id} status: $status');
+                         return status == 'pending';
+                       }).toList();
+                       
+                       // print('DEBUG Provider Badge: Pending Count: ${pendingDocs.length}');
+
+                       if (pendingDocs.isNotEmpty) {
+                          return Row(
+                             mainAxisAlignment: MainAxisAlignment.center,
+                             children: [
+                                const Text('Transactions'),
+                                const SizedBox(width: 8),
+                                Container(
+                                   padding: const EdgeInsets.all(6),
+                                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                   child: Text('${pendingDocs.length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                                ),
+                             ],
+                          );
+                       }
+                    }
+                    return const Text('Transactions');
+                  }
+                ),
+              ),
             ],
           ),
         ),
@@ -946,6 +984,17 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
     final preBookingAmountController = TextEditingController(text: (data['preBookingAmount'] ?? 0).toString());
 
     String? selectedCategory = data['category'];
+    
+    // Initialize services list using helper method to avoid type errors
+    List<ServiceItem> servicesList = [];
+    if (data['servicesList'] != null) {
+      try {
+        servicesList = (data['servicesList'] as List).map((i) => ServiceItem.fromMap(i as Map<String, dynamic>)).toList();
+      } catch (e) {
+        debugPrint('Error parsing services list: $e');
+      }
+    }
+
     bool isLoading = false;
 
     showDialog(
@@ -968,7 +1017,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                  
                  for (var file in pickedFiles) {
                    var bytes = await file.readAsBytes();
-                   if (mounted) setState(() => newImagesData.add(bytes));
+                   if (context.mounted) setState(() => newImagesData.add(bytes));
                  }
                  setState(() => errorMessage = null);
                }
@@ -1127,13 +1176,15 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                             ]
                           ),
                           const SizedBox(height: 16),
-                          TextFormField(
-                            controller: ratePerKmController,
-                            decoration: const InputDecoration(labelText: 'Rate per Km (₹/km)', border: OutlineInputBorder(), helperText: 'Set 0 for fixed price services'),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                          ),
-                          const SizedBox(height: 16),
+                          if (!CategoryHelpers.isMultiServiceCategory(selectedCategory ?? ''))
+                            TextFormField(
+                              controller: ratePerKmController,
+                              decoration: const InputDecoration(labelText: 'Rate per Km (₹/km)', border: OutlineInputBorder(), helperText: 'Set 0 for fixed price services'),
+                              keyboardType: TextInputType.number,
+                              validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                            ),
+                          if (!CategoryHelpers.isMultiServiceCategory(selectedCategory ?? ''))
+                            const SizedBox(height: 16),
                           TextFormField(
                             controller: preBookingAmountController,
                             decoration: const InputDecoration(labelText: 'Pre-booking Amount (₹)', border: OutlineInputBorder(), helperText: 'Amount to pay in advance (set 0 if not required)'),
@@ -1147,7 +1198,23 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                              padding: const EdgeInsets.all(12),
                              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
                              child: Text('Your Earnings: ₹${earnings.toStringAsFixed(2)}', style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center)
-                          )
+                          ),
+                          
+                          if (selectedCategory != null && CategoryHelpers.isMultiServiceCategory(selectedCategory!)) ...[
+                            const SizedBox(height: 16),
+                            const Divider(thickness: 2),
+                            const SizedBox(height: 16),
+                            ServicesListManager(
+                              initialServices: servicesList,
+                              platformFeePercentage: platformFeePercentage,
+                              category: selectedCategory, // Pass category
+                              onServicesChanged: (services) {
+                                setState(() {
+                                  servicesList = services;
+                                });
+                              },
+                            ),
+                          ],
                        ]
                      )
                    )
@@ -1181,6 +1248,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           'category': selectedCategory,
                           'imageUrl': finalImages.first,
                           'imageUrls': finalImages,
+                          'servicesList': servicesList.map((s) => s.toMap()).toList(),
                           'updatedAt': FieldValue.serverTimestamp()
                        });
                        
@@ -1191,7 +1259,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     } catch (e) {
                        setState(() => errorMessage = e.toString());
                     } finally {
-                       if (mounted) setState(() => isLoading = false);
+                       if (context.mounted) setState(() => isLoading = false);
                     }
                  },
                  child: isLoading ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Update')
@@ -1225,10 +1293,50 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
     final basePriceController = TextEditingController();
     final ratePerKmController = TextEditingController(text: '0');
     final preBookingAmountController = TextEditingController(text: '0');
+    
+    // Get user's existing category from their services or partner request
     String selectedCategory = 'General';
+    bool isCategoryLocked = false; // Track if category should be locked
+    try {
+      // First, try to get category from existing services
+      final servicesSnapshot = await FirebaseFirestore.instance
+          .collection('services')
+          .where('providerId', isEqualTo: user.uid)
+          .limit(1)
+          .get();
+      
+      if (servicesSnapshot.docs.isNotEmpty) {
+        selectedCategory = servicesSnapshot.docs.first.data()['category'] ?? 'General';
+        isCategoryLocked = true; // Lock category if user has existing services
+      } else {
+        // If no services, try to get from partner request
+        final partnerSnapshot = await FirebaseFirestore.instance
+            .collection('partner_requests')
+            .where('email', isEqualTo: user.email)
+            .limit(1)
+            .get();
+        
+        if (partnerSnapshot.docs.isNotEmpty) {
+          final partnerData = partnerSnapshot.docs.first.data();
+          // Try serviceCategoryName first, then fall back to category or role
+          selectedCategory = partnerData['serviceCategoryName'] ?? 
+                           partnerData['category'] ?? 
+                           partnerData['role'] ?? 
+                           'General';
+          isCategoryLocked = true; // Lock category from partner request
+          debugPrint('📋 Partner Request Data: ${partnerData.keys.toList()}');
+          debugPrint('📋 Service Category from Partner: $selectedCategory');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching user category: $e');
+    }
+    
     bool isLoading = false;
     List<Uint8List> selectedImages = [];
     final ImagePicker picker = ImagePicker();
+    List<ServiceItem> servicesList = []; // For Barber/Napit services list
+    final servicePincodeController = TextEditingController(); // Service area pincode
     
     double listingPrice = 0.0;
 
@@ -1259,6 +1367,13 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
       context: context,
       builder: (ctx) {
         String? errorMessage;
+        
+        // Debug: Print category to verify it's set correctly
+        debugPrint('🔍 Add Service Dialog - Selected Category: $selectedCategory');
+        debugPrint('🔍 Is Barber: ${selectedCategory.toLowerCase().contains('barber')}');
+        debugPrint('🔍 Is Napit: ${selectedCategory.toLowerCase().contains('napit')}');
+        debugPrint('🔍 Is Salon: ${selectedCategory.toLowerCase().contains('salon')}');
+        
         return StatefulBuilder(
         builder: (context, setState) {
           
@@ -1375,9 +1490,21 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                             decoration: const InputDecoration(labelText: 'Minimum Price *', border: OutlineInputBorder(), prefixText: '₹'),
                             keyboardType: TextInputType.number,
                             onChanged: (val) {
-                              final price = double.tryParse(val) ?? 0.0;
-                              final earnings = price / (1 + platformFeePercentage / 100);
-                              setState(() => listingPrice = earnings); 
+                              // For Barber/Napit/Salon: Calculate earnings on services list total
+                              // For others: Calculate on minimum price
+                              final isServiceCategory = CategoryHelpers.isMultiServiceCategory(selectedCategory);
+                              
+                              if (isServiceCategory && servicesList.isNotEmpty) {
+                                // Use services list total
+                                final servicesTotal = servicesList.fold<double>(0, (sum, service) => sum + service.price);
+                                final earnings = servicesTotal * (1 - platformFeePercentage / 100);
+                                setState(() => listingPrice = earnings);
+                              } else {
+                                // Use minimum price
+                                final price = double.tryParse(val) ?? 0.0;
+                                final earnings = price * (1 - platformFeePercentage / 100);
+                                setState(() => listingPrice = earnings); 
+                              }
                             },
                             validator: (v) {
                               if (v?.isEmpty == true) return 'Required';
@@ -1389,58 +1516,54 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('service_categories').orderBy('name').snapshots(),
-                            builder: (context, snapshot) {
-                              List<String> categories = ['General'];
-                              if (snapshot.hasData) {
-                                categories = snapshot.data!.docs
-                                    .map((doc) => (doc.data() as Map<String, dynamic>)['name'] as String? ?? '')
-                                    .where((name) => name.isNotEmpty)
-                                    .toSet() // Remove duplicates
-                                    .toList();
-                                if (categories.isEmpty) categories = ['General'];
-                              }
-                              
-                              // Ensure selectedCategory is in the list
-                              if (!categories.contains(selectedCategory) && categories.isNotEmpty) {
-                                // Defer update to avoid build conflict? Or just select first.
-                                // simpler: selectedCategory = categories.first;
-                                // But we can't update state during build easily without potential loops.
-                                // Instead, use logic:
-                                // value: categories.contains(selectedCategory) ? selectedCategory : categories.first
-                              }
-
-                              return DropdownButtonFormField<String>(
-                                isExpanded: true,
-                                menuMaxHeight: 300, // Enable scrolling for long lists
-                                value: categories.contains(selectedCategory) ? selectedCategory : categories.firstOrNull,
-                                decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                                items: categories.map((cat) => DropdownMenuItem(value: cat, child: Text(cat))).toList(),
-                                onChanged: (val) {
-                                  if (val != null) setState(() => selectedCategory = val);
-                                }
-                              );
-                            }
-                          )
+                          child: TextFormField(
+                            controller: servicePincodeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Service Area Pincode *',
+                              border: OutlineInputBorder(),
+                              hintText: 'e.g. 110001',
+                              counterText: '', // Hide character counter for better alignment
+                            ),
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return 'Required';
+                              if (v.length != 6) return 'Must be 6 digits';
+                              if (!RegExp(r'^\d{6}$').hasMatch(v)) return 'Invalid pincode';
+                              return null;
+                            },
+                          ),
                         )
                       ]
                     ),
                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: ratePerKmController,
-                      decoration: const InputDecoration(labelText: 'Rate per Km (₹/km)', border: OutlineInputBorder(), helperText: 'Set 0 for fixed price services'),
-                      keyboardType: TextInputType.number,
-                      validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
+                    
+                    // Rate per Km - Only for Vehicle/Transport services
+                    if (!CategoryHelpers.isMultiServiceCategory(selectedCategory)) ...[
+                      TextFormField(
+                        controller: ratePerKmController,
+                        decoration: const InputDecoration(
+                          labelText: 'Rate per Km (₹/km)', 
+                          border: OutlineInputBorder(), 
+                          helperText: 'Set 0 for fixed price services'
+                        ),
+                        keyboardType: TextInputType.number,
+                        validator: (v) => v?.isEmpty == true ? 'Required' : null,
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+                    
                     TextFormField(
                       controller: preBookingAmountController,
-                      decoration: const InputDecoration(labelText: 'Pre-booking Amount (₹)', border: OutlineInputBorder(), helperText: 'Amount to pay in advance (set 0 if not required)'),
+                      decoration: const InputDecoration(
+                        labelText: 'Pre-booking Amount (₹)', 
+                        border: OutlineInputBorder(), 
+                        helperText: 'Amount to pay in advance (set 0 if not required)'
+                      ),
                       keyboardType: TextInputType.number,
                       validator: (v) => v?.isEmpty == true ? 'Required' : null,
                     ),
-                    if (basePriceController.text.isNotEmpty)
+                    if (basePriceController.text.isNotEmpty || servicesList.isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 12.0),
                         child: Container(
@@ -1458,6 +1581,30 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           ),
                         ),
                       ),
+                    
+                    // Services List Manager - Only for Barber/Napit/Salon
+                    if (CategoryHelpers.isMultiServiceCategory(selectedCategory)) ...[
+                      const SizedBox(height: 16),
+                      const Divider(thickness: 2),
+                      const SizedBox(height: 16),
+                      ServicesListManager(
+                        initialServices: servicesList,
+                        platformFeePercentage: platformFeePercentage,
+                        category: selectedCategory, // Pass category
+                        onServicesChanged: (services) {
+                          setState(() {
+                            servicesList = services;
+                            // Recalculate earnings based on services list total
+                            if (services.isNotEmpty) {
+                              final servicesTotal = services.fold<double>(0, (sum, service) => sum + service.price);
+                              listingPrice = servicesTotal * (1 - platformFeePercentage / 100);
+                            }
+                          });
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      const Divider(thickness: 2),
+                    ],
                   ],
                 ),
               ),
@@ -1495,7 +1642,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                   final inputPrice = double.parse(basePriceController.text); // Listing Price
                   final earnings = inputPrice / (1 + platformFeePercentage / 100); // Base Price
 
-                  await FirebaseFirestore.instance.collection('services').doc(serviceId).set({
+                  final serviceData = {
                     'id': serviceId,
                     'providerId': user.uid,
                     'providerName': providerName,
@@ -1508,27 +1655,38 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     'price': inputPrice,
                     'ratePerKm': double.tryParse(ratePerKmController.text) ?? 0,
                     'preBookingAmount': double.tryParse(preBookingAmountController.text) ?? 0,
-                    'category': selectedCategory,
+                    'category': selectedCategory, // From partner registration
+                    'servicePincode': servicePincodeController.text.trim(), // Service area pincode
                     'imageUrl': imageUrls.first,
                     'imageUrls': imageUrls,
                     'createdAt': FieldValue.serverTimestamp(),
                     'rating': 0.0,
                     'reviewCount': 0
-                  });
+                  };
+                  
+                  // Add servicesList for Barber/Napit/Salon categories
+                  if (CategoryHelpers.isMultiServiceCategory(selectedCategory)) {
+                    serviceData['servicesList'] = servicesList.map((s) => s.toMap()).toList();
+                  }
+
+                  await FirebaseFirestore.instance.collection('services').doc(serviceId).set(serviceData);
                   
                   if (context.mounted) {
                     Navigator.pop(ctx);
+                    isLoading = false; // Mark loading as false before pop if we want, but dialog is gone
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('Service added! Earnings: ₹${earnings.toStringAsFixed(2)} (Fee: $platformFeePercentage%)'), 
                         backgroundColor: Colors.green
                       )
                     );
+                    return; // Exit function so finally block doesn't set state on unmounted dialog
                   }
                 } catch (e) {
                   setState(() => errorMessage = e.toString());
+                  if (ctx.mounted) setState(() => isLoading = false);
                 } finally {
-                  if (mounted) setState(() => isLoading = false);
+                  // Removed finally block as we handle isLoading reset in catch and success
                 }
               },
               child: isLoading

@@ -73,6 +73,19 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
     }
   }
 
+  final List<String> _indianStates = [
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+    'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+    'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+    'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+    'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+    'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands',
+    'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+  ];
+
+  String? _selectedState;
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -126,6 +139,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         'phone': _phoneController.text.trim(),
         'email': _emailController.text.trim(),
         'password': _passwordController.text.trim(),
+        'state': _selectedState, // Added State
         'district': _districtController.text.trim(), // Acts as 'address' for Delivery Partner
         'address': _districtController.text.trim(), // Saving as address too for clarity
         'pincode': _pincodeController.text.trim(),
@@ -144,11 +158,13 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         });
       } else {
         // Sellers & Service Providers
-        requestData.addAll({
-          'minCharge': double.parse(_minChargeController.text.trim()),
-        });
-
+        
+        // Add Min Charge ONLY for Service Providers
         if (_role == 'Service Provider') {
+           requestData.addAll({
+             'minCharge': double.parse(_minChargeController.text.trim()),
+           });
+           
            if (_selectedServiceCategoryId != null) {
              try {
                final catDoc = await FirebaseFirestore.instance
@@ -169,6 +185,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         } else {
           // Seller
           requestData['businessName'] = _businessController.text.trim();
+          requestData['minCharge'] = 0.0; // Default for Seller
         }
       }
 
@@ -208,6 +225,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
   @override
   Widget build(BuildContext context) {
     final isDeliveryPartner = _role == 'Delivery Partner';
+    final isServiceProvider = _role == 'Service Provider'; // Helper
 
     return Scaffold(
       appBar: AppBar(title: const Text('Join as Partner'), centerTitle: true),
@@ -388,13 +406,27 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                     TextFormField(
                       controller: _districtController,
                       decoration: InputDecoration(
-                        labelText: isDeliveryPartner ? 'Full Address' : 'District',
+                        labelText: isDeliveryPartner ? 'Full Address' : 'District/City',
                         border: const OutlineInputBorder(),
                       ),
                       maxLines: isDeliveryPartner ? 3 : 1,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Please enter details'
                           : null,
+                    ),
+                    const SizedBox(height: 12),
+                    // State Dropdown
+                    DropdownButtonFormField<String>(
+                      value: _selectedState,
+                      decoration: const InputDecoration(
+                        labelText: 'State',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: _indianStates.map((state) {
+                        return DropdownMenuItem(value: state, child: Text(state));
+                      }).toList(),
+                      onChanged: (val) => setState(() => _selectedState = val),
+                      validator: (val) => val == null ? 'Please select a state' : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -537,7 +569,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                       },
                     ),
 
-                    if (!isDeliveryPartner) ...[
+                    if (isServiceProvider) ...[
                       const SizedBox(height: 12),
                       TextFormField(
                         controller: _minChargeController,

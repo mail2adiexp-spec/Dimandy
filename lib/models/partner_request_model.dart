@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class PartnerRequest {
   final String id;
   final String role; // 'Seller' or 'Service Provider'
@@ -14,6 +16,7 @@ class PartnerRequest {
   final String? profilePicUrl;
   final String status; // 'pending', 'approved', 'rejected'
   final DateTime createdAt;
+  final String? state; // Added State field
 
   PartnerRequest({
     required this.id,
@@ -31,6 +34,7 @@ class PartnerRequest {
     this.profilePicUrl,
     required this.status,
     required this.createdAt,
+    this.state,
   });
 
   Map<String, dynamic> toMap() {
@@ -50,6 +54,7 @@ class PartnerRequest {
       'profilePicUrl': profilePicUrl,
       'status': status,
       'createdAt': createdAt.toIso8601String(),
+      'state': state,
     };
   }
 
@@ -63,6 +68,13 @@ class PartnerRequest {
         return double.tryParse(value) ?? 0.0;
       }
       return 0.0;
+    }
+
+    // Handle createdAt being String or Timestamp
+    DateTime parseCreatedAt(dynamic value) {
+       if (value is Timestamp) return value.toDate();
+       if (value is String) return DateTime.parse(value);
+       return DateTime.now();
     }
 
     return PartnerRequest(
@@ -80,9 +92,8 @@ class PartnerRequest {
       minCharge: parseMinCharge(map['minCharge']),
       profilePicUrl: map['profilePicUrl'],
       status: map['status'] ?? 'pending',
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'])
-          : DateTime.now(),
+      createdAt: parseCreatedAt(map['createdAt']),
+      state: map['state'],
     );
   }
 }

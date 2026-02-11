@@ -4,6 +4,7 @@ import '../providers/cart_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/order_provider.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/order_model.dart';
 import '../utils/currency.dart';
 import '../models/address_model.dart';
@@ -27,6 +28,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _postalCodeController = TextEditingController();
   final _phoneController = TextEditingController();
 
+  String? _selectedState;
   String _selectedPaymentMethod = 'COD'; // COD or Online
   bool _isPlacingOrder = false;
   bool _saveAddress = true;
@@ -95,19 +97,119 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ),
                         ),
                         const Divider(),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Items: ${cart.itemCount}'),
-                            Text(
-                              formatINR(cart.totalAmount),
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
+                        
+                        // Calculate pre-booking amount from cart items
+                        Builder(
+                          builder: (context) {
+                            double totalPreBooking = 0.0;
+                            for (var item in cart.items) {
+                              if (item.metadata != null && item.metadata!['preBookingAmount'] != null) {
+                                totalPreBooking += (item.metadata!['preBookingAmount'] as num).toDouble();
+                              }
+                            }
+                            
+                            final hasPreBooking = totalPreBooking > 0;
+                            double remainingAmount = 0.0;
+                            try {
+                              for (var item in cart.items) {
+                                if (item.metadata != null && item.metadata!['remainingAmount'] != null) {
+                                  remainingAmount += (item.metadata!['remainingAmount'] as num).toDouble();
+                                }
+                              }
+                            } catch (e) {
+                              debugPrint('Error calculating remaining amount: $e');
+                            }
+                            
+                            return Column(
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Items: ${cart.itemCount}'),
+                                    Text(
+                                      formatINR(cart.totalAmount),
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                
+                                // Show pre-booking breakdown if applicable
+                                if (hasPreBooking) ...[
+                                  const SizedBox(height: 12),
+                                  const Divider(),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Pre-booking Amount:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      Text(
+                                        formatINR(totalPreBooking),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.blue,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      const Text(
+                                        'Remaining Amount:',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                      Text(
+                                        formatINR(remainingAmount),
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          color: Colors.orange,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.all(8),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                    ),
+                                    child: const Row(
+                                      children: [
+                                        Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                                        SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            'Pay remaining amount on service completion',
+                                            style: TextStyle(fontSize: 12, color: Colors.blue),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            );
+                          },
                         ),
                       ],
                     ),
@@ -187,6 +289,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   },
                 ),
                 const SizedBox(height: 12),
+                const SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -222,6 +325,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                       ),
                     ),
                   ],
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _selectedState,
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'State',
+                  ),
+                  items: [
+                   'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar', 'Chhattisgarh',
+                   'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh', 'Jharkhand',
+                   'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra', 'Manipur',
+                   'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+                   'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+                   'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands',
+                   'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+                   'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
+                  ].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                  onChanged: (val) => setState(() => _selectedState = val),
+                  validator: (v) => v == null ? 'Please select state' : null,
                 ),
                 const SizedBox(height: 12),
                 CheckboxListTile(
@@ -356,7 +479,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final fullAddress =
-          '${_addressController.text}, ${_cityController.text}, ${_postalCodeController.text}';
+          '${_addressController.text}, ${_cityController.text}, ${_selectedState!}, ${_postalCodeController.text}';
 
       // Convert cart items to order items
       final orderItems = cart.items.map((cartItem) {
@@ -385,6 +508,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             city: _cityController.text,
             postalCode: _postalCodeController.text,
             isDefault: addrProvider.defaultAddress == null,
+            // TODO: Add 'state' to AddressModel to save it properly next time
           ),
         );
       }
@@ -394,6 +518,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         totalAmount: cart.totalAmount,
         deliveryAddress: fullAddress,
         phoneNumber: _phoneController.text,
+        state: _selectedState!,
       );
 
       debugPrint('Checkout: Order ID received: $orderId');
@@ -431,6 +556,76 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         }
       } catch (e) {
         debugPrint('Error sending notifications: $e');
+      }
+
+      // Create bookings for service items
+      try {
+        for (var item in orderItems) {
+          // Check if this is a service item (has metadata with providerId)
+          if (item.metadata != null && item.metadata!['providerId'] != null) {
+            final bookingId = FirebaseFirestore.instance.collection('bookings').doc().id;
+            
+            // Calculate platform fee on actual service amount, not customer payment
+            final serviceAmount = (item.metadata!['serviceAmount'] as num?)?.toDouble() ?? item.price;
+            final platformFeePercentage = (item.metadata!['platformFeePercentage'] as num?)?.toDouble() ?? 10.0;
+            final platformFeeAmount = serviceAmount * (platformFeePercentage / 100);
+            final providerEarnings = item.price - platformFeeAmount; // Customer payment - platform fee
+            
+            // Calculate remaining amount
+            final customerPayment = item.price;
+            final remainingAmount = (serviceAmount > customerPayment) 
+                ? (serviceAmount - customerPayment) 
+                : 0.0;
+            
+            await FirebaseFirestore.instance.collection('bookings').doc(bookingId).set({
+              'id': bookingId,
+              'orderId': orderId,
+              'providerId': item.metadata!['providerId'],
+              'providerName': item.metadata!['providerName'] ?? 'Unknown',
+              'customerId': auth.currentUser!.uid,
+              'customerName': auth.currentUser!.name,
+              'customerPhone': _phoneController.text,
+              'serviceName': item.productName,
+              'customerPayment': customerPayment, // What customer paid
+              'serviceAmount': serviceAmount, // Actual service value
+              'remainingAmount': remainingAmount, // Amount to be paid later
+              'platformFeePercentage': platformFeePercentage,
+              'platformFeeAmount': platformFeeAmount, // Fee calculated on service amount
+              'providerEarnings': providerEarnings, // What provider will receive
+              'deliveryAddress': fullAddress,
+              'status': 'pending', // pending, confirmed, completed, cancelled
+              'paymentMethod': _selectedPaymentMethod,
+              'createdAt': FieldValue.serverTimestamp(),
+              'bookingDate': item.metadata!['bookingDate'],
+              'bookingTime': item.metadata!['bookingTime'],
+              // Include all service metadata
+              'metadata': item.metadata,
+            });
+            
+            debugPrint('✅ Created booking $bookingId for provider ${item.metadata!['providerId']}');
+            debugPrint('   💰 Customer Payment: ₹$customerPayment');
+            debugPrint('   📊 Service Amount: ₹$serviceAmount');
+            debugPrint('   💵 Remaining Amount: ₹$remainingAmount');
+            debugPrint('   💳 Platform Fee ($platformFeePercentage%): ₹$platformFeeAmount');
+            debugPrint('   👤 Provider Earnings: ₹$providerEarnings');
+            
+            // Send notification to service provider
+            try {
+              final notificationService = NotificationService();
+              await notificationService.sendNotification(
+                toUserId: item.metadata!['providerId'],
+                title: 'New Booking Received',
+                body: 'You have a new booking for ${item.productName}',
+                type: 'booking_new',
+                relatedId: bookingId,
+              );
+            } catch (e) {
+              debugPrint('Error sending booking notification: $e');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('Error creating bookings: $e');
       }
 
       debugPrint('Checkout: Order created successfully, clearing cart');

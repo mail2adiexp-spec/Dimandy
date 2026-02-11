@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/cart_provider.dart';
 import '../models/product_model.dart';
 import '../models/product_model.dart';
 import 'cart_screen.dart';
 import '../utils/locations_data.dart';
+import '../utils/locations_data.dart';
 import '../widgets/location_autocomplete.dart';
+import 'checkout_screen.dart';
 
 class BookServiceScreen extends StatefulWidget {
   static const routeName = '/book-service';
@@ -46,6 +49,9 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   
   City? _pickupCity;
   City? _dropCity;
+  
+  // Platform fee percentage from admin settings
+  double _platformFeePercentage = 10.0; // Default 10%
 
   void _calculateDistance() {
     if (_pickupCity != null && _dropCity != null) {
@@ -71,18 +77,50 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   void initState() {
     super.initState();
     print('DEBUG BOOKING SCREEN: ratePerKm=${widget.ratePerKm}, minBookingAmount=${widget.minBookingAmount}, preBookingAmount=${widget.preBookingAmount}');
+    _fetchPlatformFee();
+  }
+  
+  Future<void> _fetchPlatformFee() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('app_settings')
+          .doc('general')
+          .get();
+      
+      if (doc.exists && doc.data() != null) {
+        final data = doc.data()!;
+        setState(() {
+          _platformFeePercentage = (data['servicePlatformFeePercentage'] as num?)?.toDouble() ?? 10.0;
+        });
+        debugPrint('✅ Platform fee loaded: $_platformFeePercentage%');
+      }
+    } catch (e) {
+      debugPrint('Error fetching platform fee: $e');
+      // Keep default 10%
+    }
+  }
+  
+  // Raw service amount without minimum enforcement (for platform fee calculation)
+  double get _rawServiceAmount {
+    // For non-vehicle services or fixed price, use the base price (minBookingAmount)
+    if (!_isVehicleService || widget.ratePerKm <= 0) {
+      return widget.minBookingAmount;
+    }
+    
+    final dist = double.tryParse(_distanceController.text) ?? 0;
+    final calculated = widget.ratePerKm * dist;
+    return calculated > 0 ? calculated : widget.minBookingAmount;
   }
   
   double get _calculatedTotal {
     // For vehicle services: Rate × Distance, with minimum check
     print('DEBUG CALC: ratePerKm=${widget.ratePerKm}, distance=${_distanceController.text}, minBookingAmount=${widget.minBookingAmount}');
-    final dist = double.tryParse(_distanceController.text) ?? 0;
-    final calculated = widget.ratePerKm * dist;
+    final rawAmount = _rawServiceAmount;
     // Apply minimum if set, otherwise use calculated amount
     final total = widget.minBookingAmount > 0 
-        ? (calculated > widget.minBookingAmount ? calculated : widget.minBookingAmount)
-        : calculated;
-    print('DEBUG CALC: total = $total (max of $calculated or minimum ${widget.minBookingAmount})');
+        ? (rawAmount > widget.minBookingAmount ? rawAmount : widget.minBookingAmount)
+        : rawAmount;
+    print('DEBUG CALC: total = $total (max of $rawAmount or minimum ${widget.minBookingAmount})');
     return total;
   }
 
@@ -109,10 +147,13 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   }
 
   Future<void> _selectDate() async {
+    final now = DateTime.now();
+    final firstDate = DateTime(now.year, now.month, now.day);
+    
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime.now(),
+      initialDate: _selectedDate ?? firstDate,
+      firstDate: firstDate,
       lastDate: DateTime.now().add(const Duration(days: 90)),
       builder: (context, child) {
         return Theme(
@@ -129,11 +170,22 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
+        _selectedTime = null; // Reset time when date changes
       });
     }
   }
 
   Future<void> _selectTime() async {
+    if (_selectedDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select a date first'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final TimeOfDay? picked = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.now(),
@@ -149,7 +201,26 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
       },
     );
 
-    if (picked != null && picked != _selectedTime) {
+    if (picked != null) {
+      final now = DateTime.now();
+      final selectedDateTime = DateTime(
+        _selectedDate!.year,
+        _selectedDate!.month,
+        _selectedDate!.day,
+        picked.hour,
+        picked.minute,
+      );
+
+      if (selectedDateTime.isBefore(now)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please select a future time'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
       setState(() {
         _selectedTime = picked;
       });
@@ -252,6 +323,10 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
 
     // Collect booking metadata
     final metadata = {
+      'providerId': widget.providerId,
+      'providerName': widget.providerName,
+      'serviceAmount': _calculatedTotal, // Actual service value enforcing minimums
+      'platformFeePercentage': _platformFeePercentage, // From admin settings
       'bookingDate': _selectedDate!.toIso8601String(),
       'bookingTime': '${_selectedTime!.hour}:${_selectedTime!.minute}',
       'formattedDate': _formatDate(_selectedDate!),
@@ -273,20 +348,21 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
           : 0.0,
     };
 
+    // Clear any existing items to treat this as a direct 'Buy Now'
+    context.read<CartProvider>().clear();
     context.read<CartProvider>().addProduct(product, metadata: metadata);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _paymentMethod == 'prebooking'
-              ? 'Added to cart: Pre-booking ₹${amountToCharge.toStringAsFixed(0)} (Remaining: ₹${(finalCharge - amountToCharge).toStringAsFixed(0)} - Pay on Trip)'
-              : 'Added to cart: Full amount ₹${finalCharge.toStringAsFixed(0)}',
+          'Service added! Proceeding to checkout...',
         ),
+        duration: const Duration(seconds: 1),
       ),
     );
 
-    // Navigate to cart
-    Navigator.pushReplacementNamed(context, CartScreen.routeName);
+    // Direct navigation to checkout
+    Navigator.of(context).pushNamed(CheckoutScreen.routeName);
   }
 
   @override
@@ -553,8 +629,8 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Payment Method Selection (only for vehicle services with pre-booking)
-            if (_isVehicleService && widget.preBookingAmount > 0) ...[
+            // Payment Method Selection (for services with pre-booking amount)
+            if (widget.preBookingAmount > 0) ...[
               Text(
                 'Payment Method',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
@@ -573,7 +649,7 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        'Pay ₹${widget.preBookingAmount.toStringAsFixed(0)} now\nRemaining amount: Pay on Trip Completion',
+                        'Pay ₹${widget.preBookingAmount.toStringAsFixed(0)} now\nRemaining amount: Pay on ${_isVehicleService ? "Trip Completion" : "Service Completion"}',
                         style: const TextStyle(fontSize: 12, color: Colors.green),
                       ),
                       value: 'prebooking',
@@ -588,11 +664,13 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
                     const Divider(height: 1),
                     RadioListTile<String>(
                       title: const Text(
-                        'Full Payment',
+                        'Full Payment Now',
                         style: TextStyle(fontWeight: FontWeight.w600),
                       ),
                       subtitle: Text(
-                        'Pay full amount ₹${_calculatedTotal.toStringAsFixed(0)} now',
+                        _isVehicleService
+                            ? 'Pay full amount ₹${_calculatedTotal.toStringAsFixed(0)} now'
+                            : 'Pay full amount now (No advance payment)',
                         style: const TextStyle(fontSize: 12),
                       ),
                       value: 'full',

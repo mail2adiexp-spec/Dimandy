@@ -6,6 +6,8 @@ import '../providers/theme_provider.dart';
 import '../providers/cart_provider.dart';
 import '../screens/cart_screen.dart';
 import '../screens/book_service_screen.dart';
+import '../utils/category_helpers.dart';
+import '../providers/address_provider.dart';
 
 class CategoryServiceProvidersScreen extends StatefulWidget {
   static const routeName = '/category-service-providers';
@@ -25,6 +27,11 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
   @override
   void initState() {
     super.initState();
+    // Fetch addresses to get pincode for filtering
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<AddressProvider>(context, listen: false).fetch();
+    });
+
     _searchController = TextEditingController()
       ..addListener(() {
         if (mounted) {
@@ -131,77 +138,144 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
               ),
             ),
           ),
-          // Services List (Querying 'services' collection instead of 'users')
+          // Services List with Pincode Filtering
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('services')
-                  .where('category', isEqualTo: widget.category.name)
-                  .orderBy('createdAt', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
+            child: Consumer<AddressProvider>(
+              builder: (context, addressProvider, _) {
+                final profilePincode = addressProvider.authProvider.currentUser?.pincode;
+                final userPincode = addressProvider.defaultAddress?.postalCode ?? profilePincode;
 
-                if (snapshot.hasError) {
-                  return Center(
-                    child: SelectableText(
-                      'Error loading services: ${snapshot.error}',
-                      style: TextStyle(color: Colors.red[700]),
-                      textAlign: TextAlign.center,
-                    ),
-                  );
-                }
-
-                final services = snapshot.data?.docs ?? [];
-                
-                // Filter locally
-                final filteredServices = _searchQuery.isEmpty 
-                    ? services 
-                    : services.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final name = (data['name'] ?? '').toString().toLowerCase();
-                        final providerName = (data['providerName'] ?? '').toString().toLowerCase();
-                        final description = (data['description'] ?? '').toString().toLowerCase();
-                        return name.contains(_searchQuery) ||
-                               providerName.contains(_searchQuery) ||
-                               description.contains(_searchQuery);
-                      }).toList();
-
-                if (filteredServices.isEmpty) {
+                if (userPincode == null || userPincode.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.design_services_outlined,
-                          size: 64,
-                          color: Colors.grey[400],
+                        Icon(Icons.location_off, size: 64, color: Colors.grey[400]),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'No address or pincode found.\nPlease set a default address or update your profile pincode.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.grey),
                         ),
                         const SizedBox(height: 16),
-                        Text(
-                          _searchQuery.isEmpty 
-                              ? 'No services found in ${widget.category.name}'
-                              : 'No matches found',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: Colors.grey[600],
-                            fontWeight: FontWeight.w500,
-                          ),
+                        ElevatedButton(
+                          onPressed: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Go to Profile > Addresses to set a default address')),
+                            );
+                          },
+                          child: const Text('Set Address'),
                         ),
                       ],
                     ),
                   );
                 }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
-                  itemCount: filteredServices.length,
-                  itemBuilder: (context, index) {
-                    final data = filteredServices[index].data() as Map<String, dynamic>;
-                    final serviceId = filteredServices[index].id;
-                    return _buildServiceCard(context, data, serviceId);
+                // 1. Fetch Providers who serve this Pincode
+                return StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('users')
+                      .where('role', isEqualTo: 'service_provider')
+                      .where('servicePincodes', arrayContains: userPincode)
+                      .snapshots(),
+                  builder: (context, providerSnapshot) {
+                    if (providerSnapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+
+                    // Providers serving this area
+                    final validProviderIds = providerSnapshot.data?.docs
+                            .map((doc) => doc.id)
+                            .toSet() ??
+                        {};
+
+                    if (validProviderIds.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No service providers found for pincode $userPincode',
+                          style: TextStyle(color: Colors.grey[600]),
+                          textAlign: TextAlign.center,
+                        ),
+                      );
+                    }
+
+                    // 2. Fetch Services and Filter by Valid Provider IDs
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('services')
+                          .where('category', isEqualTo: widget.category.name)
+                          .orderBy('createdAt', descending: true)
+                          .snapshots(),
+                      builder: (context, serviceSnapshot) {
+                        if (serviceSnapshot.connectionState == ConnectionState.waiting) {
+                          return const Center(child: CircularProgressIndicator());
+                        }
+
+                        final services = serviceSnapshot.data?.docs ?? [];
+                        
+                        // Filter services: Provider ID must be in validProviderIds
+                        final filteredServices = services.where((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          final providerId = data['providerId'];
+                          
+                          // Core filtering logic
+                          if (providerId == null || !validProviderIds.contains(providerId)) {
+                            return false;
+                          }
+
+                          // Also apply local search query
+                          if (_searchQuery.isNotEmpty) {
+                            final name = (data['name'] ?? '').toString().toLowerCase();
+                            final providerName = (data['providerName'] ?? '').toString().toLowerCase();
+                            final description = (data['description'] ?? '').toString().toLowerCase();
+                            return name.contains(_searchQuery) ||
+                                   providerName.contains(_searchQuery) ||
+                                   description.contains(_searchQuery);
+                          }
+                          return true;
+                        }).toList();
+
+                        if (filteredServices.isEmpty) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.design_services_outlined,
+                                  size: 64,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No services found in your area ($userPincode)',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: Colors.grey[600],
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return GridView.builder(
+                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 100),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: MediaQuery.of(context).size.width > 800 ? 4 : 2,
+                            childAspectRatio: 0.75,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                          ),
+                          itemCount: filteredServices.length,
+                          itemBuilder: (context, index) {
+                            final data = filteredServices[index].data() as Map<String, dynamic>;
+                            final serviceId = filteredServices[index].id;
+                            return _buildServiceCard(context, data, serviceId);
+                          },
+                        );
+                      },
+                    );
                   },
                 );
               },
@@ -220,112 +294,109 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
     final imageUrl = data['imageUrl'] as String?;
     final providerImage = data['providerImage'] as String?;
     final providerId = data['providerId'] ?? '';
+    final preBookingAmount = (data['preBookingAmount'] ?? 0).toDouble();
+    final rating = (data['rating'] ?? 4.0).toDouble(); // Default 4.0 if no rating
 
     return Card(
       elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () {
+          // Navigate to provider details screen
+          Navigator.pushNamed(
+            context,
+            '/provider-details',
+            arguments: {
+              'providerId': serviceId,
+              'providerName': providerName,
+              'providerImage': providerImage,
+              'category': widget.category.name,
+            },
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Service Image
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Container(
-                width: 80,
-                height: 80,
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                child: imageUrl != null && imageUrl.isNotEmpty
-                    ? Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Icon(
-                          Icons.build_circle,
-                          size: 40,
+            // Provider Image
+            Expanded(
+              flex: 4, // Increased from 3 for larger image
+              child: ClipRRect(
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                child: Container(
+                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  child: providerImage != null && providerImage.isNotEmpty
+                      ? Image.network(
+                          providerImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.person,
+                            size: 48,
+                            color: Theme.of(context).primaryColor,
+                          ),
+                        )
+                      : Icon(
+                          Icons.person,
+                          size: 48,
                           color: Theme.of(context).primaryColor,
                         ),
-                      )
-                    : Icon(
-                        Icons.build_circle,
-                        size: 40,
-                        color: Theme.of(context).primaryColor,
-                      ),
+                ),
               ),
             ),
-            const SizedBox(width: 16),
-            // Info
-            Expanded(
+            
+            // Provider Info
+            Padding(
+              padding: const EdgeInsets.all(8.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min, // Minimize vertical space
                 children: [
-                  // 1. Service Name (Hide if redundant or specific 'vehical' typo)
-                  if (!widget.category.name.toLowerCase().contains(serviceName.toLowerCase()) && 
-                      !serviceName.toLowerCase().contains(widget.category.name.toLowerCase()) &&
-                      serviceName.toLowerCase() != 'vehical' &&
-                      serviceName.toLowerCase() != 'vehicle')
-                    Text(
-                      serviceName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  // Provider Name
+                  Text(
+                    providerName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
                     ),
-                  
-                  const SizedBox(height: 4),
-                  
-                  // 2. Provider Name
-                  ProviderNameWidget(
-                    providerId: providerId,
-                    cachedName: providerName,
-                    providerImage: providerImage,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2), // Minimal spacing
                   
-                  if (description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 8.0),
-                      child: Text(
-                         description,
-                         maxLines: 2,
-                         overflow: TextOverflow.ellipsis,
-                         style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ),
-                  
-                  // 3. Pre-booking Amount (Green text only, no box)
+                  // Rating Stars
                   Row(
-                    children: [
-                      const Text(
-                        'Pre-booking: ', 
-                        style: TextStyle(
-                          fontSize: 12, 
-                          color: Colors.green,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        '₹${((data['preBookingAmount'] ?? 0).toDouble()).toStringAsFixed(0)}', 
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold, 
-                          fontSize: 14, 
-                          color: Colors.green,
-                        ),
-                      ),
-                    ],
-                  )
+                    children: List.generate(5, (index) {
+                      return Icon(
+                        index < rating.floor() ? Icons.star : Icons.star_border,
+                        size: 14,
+                        color: Colors.amber,
+                      );
+                    }),
+                  ),
                 ],
               ),
             ),
+            
             // Book Button
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(height: 20),
-                ElevatedButton(
-                  onPressed: () {
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+              child: ElevatedButton(
+                onPressed: () {
+                  // For multi-service categories, navigate to Select Services
+                  if (CategoryHelpers.isMultiServiceCategory(widget.category.name)) {
+                    Navigator.pushNamed(
+                      context,
+                      '/select-services',
+                      arguments: {
+                        'providerId': serviceId,
+                        'providerName': providerName,
+                        'providerImage': providerImage,
+                        'category': widget.category.name,
+                      },
+                    );
+                  } else {
+                    // For other categories, use direct booking
                     Navigator.pushNamed(
                       context,
                       BookServiceScreen.routeName,
@@ -335,19 +406,22 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
                         'providerId': providerId,
                         'providerImage': providerImage,
                         'ratePerKm': (data['ratePerKm'] ?? 0).toDouble(),
-                        'minBookingAmount': (data['price'] ?? 0).toDouble(), // Use customer billable price
+                        'minBookingAmount': (data['price'] ?? 0).toDouble(),
                         'preBookingAmount': (data['preBookingAmount'] ?? 0).toDouble(),
                       },
                     );
-                    print('DEBUG BOOK: ratePerKm=${data['ratePerKm']}, minBooking=${data['price']}, prebook=${data['preBookingAmount']}');
-                  },
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                    visualDensity: VisualDensity.compact,
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green, // Green background
+                  foregroundColor: Colors.white, // White text
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text('Book'),
                 ),
-              ],
+                child: const Text('Book Now'),
+              ),
             ),
           ],
         ),

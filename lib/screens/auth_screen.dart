@@ -6,6 +6,7 @@ import '../utils/error_display.dart';
 import '../utils/password_validator.dart';
 import '../utils/password_validator.dart';
 import 'join_partner_screen.dart';
+import '../utils/locations_data.dart';
 
 class AuthScreen extends StatefulWidget {
   static const routeName = '/auth';
@@ -154,14 +155,55 @@ class _SignInFormState extends State<_SignInForm> {
                     : null,
               ),
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const CircularProgressIndicator()
-                      : const Text('Sign In'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _submit,
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Sign In'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading
+                          ? null
+                          : () async {
+                              setState(() => _loading = true);
+                              try {
+                                await context.read<AuthProvider>().signInWithGoogle();
+                                widget.onSuccess();
+                              } catch (e) {
+                                if (mounted) {
+                                  ErrorDisplay.showError(
+                                    context,
+                                    e.toString().replaceFirst('Exception: ', ''),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => _loading = false);
+                              }
+                            },
+                      icon: Image.network(
+                        'https://cdn1.iconfinder.com/data/icons/google-s-logo/150/Google_Icons-09-512.png',
+                        height: 20,
+                        width: 20,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.public, size: 20),
+                      ),
+                      label: const Text('Google'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               Align(
@@ -174,23 +216,23 @@ class _SignInFormState extends State<_SignInForm> {
                   ),
                 ),
               ),
-              const Divider(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.of(context).pushNamed(
-                      JoinPartnerScreen.routeName,
-                    );
-                  },
-                  icon: const Icon(Icons.store),
-                  label: const Text('Join as Partner'),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: BorderSide(color: Theme.of(context).primaryColor),
-                  ),
-                ),
-              ),
+              // const Divider(height: 32),
+              // SizedBox(
+              //   width: double.infinity,
+              //   child: OutlinedButton.icon(
+              //     onPressed: () {
+              //       Navigator.of(context).pushNamed(
+              //         JoinPartnerScreen.routeName,
+              //       );
+              //     },
+              //     icon: const Icon(Icons.store),
+              //     label: const Text('Join as Partner'),
+              //     style: OutlinedButton.styleFrom(
+              //       padding: const EdgeInsets.symmetric(vertical: 12),
+              //       side: BorderSide(color: Theme.of(context).primaryColor),
+              //     ),
+              //   ),
+              // ),
             ],
           ),
         ),
@@ -288,16 +330,21 @@ class _SignUpFormState extends State<_SignUpForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _pincodeCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
   bool _loading = false;
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
+  
+  String? _selectedState;
+  final List<String> _availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
   @override
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
+    _pincodeCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
     super.dispose();
@@ -311,6 +358,8 @@ class _SignUpFormState extends State<_SignUpForm> {
         name: _nameCtrl.text,
         email: _emailCtrl.text,
         password: _passCtrl.text,
+        state: _selectedState,
+        pincode: _pincodeCtrl.text,
       );
       widget.onSuccess();
     } catch (e) {
@@ -341,6 +390,7 @@ class _SignUpFormState extends State<_SignUpForm> {
                     (v == null || v.isEmpty) ? 'Enter your name' : null,
               ),
               const SizedBox(height: 12),
+              const SizedBox(height: 12),
               TextFormField(
                 controller: _emailCtrl,
                 decoration: const InputDecoration(labelText: 'Email'),
@@ -348,6 +398,29 @@ class _SignUpFormState extends State<_SignUpForm> {
                 validator: (v) => (v == null || v.isEmpty || !v.contains('@'))
                     ? 'Enter a valid email'
                     : null,
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedState,
+                decoration: const InputDecoration(labelText: 'Select State'),
+                items: _availableStates.map((state) {
+                  return DropdownMenuItem(value: state, child: Text(state));
+                }).toList(),
+                onChanged: (val) => setState(() => _selectedState = val),
+                 validator: (v) => v == null ? 'Please select your state' : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _pincodeCtrl,
+                decoration: const InputDecoration(labelText: 'PIN Code'),
+                keyboardType: TextInputType.number,
+                maxLength: 6,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Enter PIN code';
+                  if (v.length != 6) return 'PIN code must be 6 digits';
+                  if (!RegExp(r'^[0-9]+$').hasMatch(v)) return 'Only numbers allowed';
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -391,14 +464,55 @@ class _SignUpFormState extends State<_SignUpForm> {
                     (v != _passCtrl.text) ? 'Passwords do not match' : null,
               ),
               const SizedBox(height: 20),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _loading ? null : _submit,
-                  child: _loading
-                      ? const CircularProgressIndicator()
-                      : const Text('Create Account'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _submit,
+                      child: _loading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Text('Sign Up'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _loading
+                          ? null
+                          : () async {
+                              setState(() => _loading = true);
+                              try {
+                                await context.read<AuthProvider>().signInWithGoogle();
+                                widget.onSuccess();
+                              } catch (e) {
+                                if (mounted) {
+                                  ErrorDisplay.showError(
+                                    context,
+                                    e.toString().replaceFirst('Exception: ', ''),
+                                  );
+                                }
+                              } finally {
+                                if (mounted) setState(() => _loading = false);
+                              }
+                            },
+                      icon: Image.network(
+                        'https://cdn1.iconfinder.com/data/icons/google-s-logo/150/Google_Icons-09-512.png',
+                        height: 20,
+                        width: 20,
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(Icons.public, size: 20),
+                      ),
+                      label: const Text('Google'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

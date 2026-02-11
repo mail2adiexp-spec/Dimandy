@@ -21,6 +21,8 @@ import 'package:ecommerce_app/screens/delivery_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/core_staff_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/store_manager_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
+import 'package:ecommerce_app/screens/provider_details_screen.dart';
+import 'package:ecommerce_app/screens/select_services_screen.dart';
 import 'package:ecommerce_app/screens/static_pages.dart';
 import 'package:ecommerce_app/models/service_category_model.dart';
 
@@ -157,6 +159,7 @@ class MyApp extends StatelessWidget {
                   overlayColor: WidgetStatePropertyAll(Colors.transparent),
                 ),
               ),
+              fontFamily: 'NotoSans',
             ),
             darkTheme: ThemeData(
               colorScheme: ColorScheme.fromSeed(
@@ -173,6 +176,7 @@ class MyApp extends StatelessWidget {
                   overlayColor: WidgetStatePropertyAll(Colors.transparent),
                 ),
               ),
+              fontFamily: 'NotoSans',
             ),
             home: const MainNavigationScreen(),
             routes: {
@@ -251,6 +255,25 @@ class MyApp extends StatelessWidget {
                   builder: (_) => CategoryServiceProvidersScreen(category: category),
                 );
               }
+              if (settings.name == ProviderDetailsScreen.routeName) {
+                final args = settings.arguments as Map<String, dynamic>;
+                return MaterialPageRoute(
+                  builder: (_) => ProviderDetailsScreen(
+                    providerId: args['providerId'] as String,
+                    providerName: args['providerName'] as String,
+                    providerImage: args['providerImage'] as String?,
+                    category: args['category'] as String,
+                  ),
+                );
+              }
+              if (settings.name == SelectServicesScreen.routeName) {
+                // Arguments are passed from ProviderDetailsScreen
+                // No need to extract them here, SelectServicesScreen will get them from ModalRoute
+                return MaterialPageRoute(
+                  builder: (_) => const SelectServicesScreen(),
+                  settings: settings, // Pass settings to preserve arguments
+                );
+              }
               return null;
             },
           );
@@ -275,7 +298,7 @@ class _AdminPanelGuard extends StatelessWidget {
     }
 
     // Logged in but not admin: block access
-    if (!auth.isAdmin) {
+    if (!auth.hasAdminAccess) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

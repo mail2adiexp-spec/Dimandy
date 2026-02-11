@@ -22,21 +22,22 @@ service firebase.storage {
     function isSeller() {
       return request.auth != null && 
              getUserData() != null && 
-             getUserData().role == 'seller';
+             (getUserData().role == 'seller' || getUserData().role == 'Seller');
     }
     
     // Helper function to check if user is service provider
     function isServiceProvider() {
       return request.auth != null && 
              getUserData() != null && 
-             getUserData().role in ['seller', 'service_provider'];
+             (getUserData().role in ['seller', 'service_provider'] || 
+              getUserData().role in ['Seller', 'Service Provider']);
     }
     
     // Helper function to check if user is core staff
     function isCoreStaff() {
       return request.auth != null && 
              getUserData() != null && 
-             getUserData().role == 'core_staff';
+             (getUserData().role == 'core_staff' || getUserData().role == 'Core Staff');
     }
     
     // Helper function to validate image size (max 3MB)
@@ -81,11 +82,11 @@ service firebase.storage {
                      isValidImageSize() &&
                      isValidImageType() && (
                        isAdmin() ||
-                       (getUserData() != null && getUserData().role in ['seller', 'store_manager', 'core_staff'])
+                       (getUserData() != null && getUserData().role in ['seller', 'Seller', 'store_manager', 'Store Manager', 'core_staff', 'Core Staff'])
                      );
       allow delete: if request.auth != null && (
                        isAdmin() ||
-                       (getUserData() != null && getUserData().role in ['seller', 'store_manager', 'core_staff'])
+                       (getUserData() != null && getUserData().role in ['seller', 'Seller', 'store_manager', 'Store Manager', 'core_staff', 'Core Staff'])
                     );
     }
     
