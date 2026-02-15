@@ -38,6 +38,16 @@ class OrderProvider extends ChangeNotifier {
       debugPrint('OrderProvider: Found ${snapshot.docs.length} orders');
       _orders = snapshot.docs
           .map((doc) => OrderModel.fromMap(doc.data(), doc.id))
+          .where((order) {
+            // Filter out orders that contain ONLY service items
+            // A service item is identified by 'svc_' prefix OR having 'bookingDate' in metadata
+            final isServiceOrder = order.items.every((item) {
+              final isService = item.productId.startsWith('svc_') || 
+                               (item.metadata != null && item.metadata!.containsKey('bookingDate'));
+              return isService;
+            });
+            return !isServiceOrder;
+          })
           .toList();
 
       // Sort orders by date in memory (temporary until Firebase index is created)

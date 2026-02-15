@@ -5,6 +5,7 @@ class Address {
   final String addressLine;
   final String city;
   final String postalCode;
+  final String? state;
   final bool isDefault;
   final DateTime updatedAt;
 
@@ -15,6 +16,7 @@ class Address {
     required this.addressLine,
     required this.city,
     required this.postalCode,
+    this.state,
     this.isDefault = false,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
@@ -43,6 +45,7 @@ class Address {
       addressLine: map['addressLine'] ?? '',
       city: map['city'] ?? '',
       postalCode: map['postalCode'] ?? '',
+      state: map['state'],
       isDefault: map['isDefault'] ?? false,
       updatedAt: parseDate(map['updatedAt']),
     );
@@ -55,8 +58,10 @@ class Address {
       'addressLine': addressLine,
       'city': city,
       'postalCode': postalCode,
+      'state': state,
       'isDefault': isDefault,
       'updatedAt': updatedAt.toIso8601String(),
     };
   }
 }
+

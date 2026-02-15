@@ -65,7 +65,7 @@ class _ServicesListManagerState extends State<ServicesListManager> {
         return StatefulBuilder( // Use StatefulBuilder to update dropdown
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('Add Service'),
+              title: const Text('Add Service Item'),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -545,7 +545,7 @@ class _ServicesListManagerState extends State<ServicesListManager> {
             ElevatedButton.icon(
               onPressed: _addService,
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Service'),
+              label: const Text('Add Item'),
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
@@ -562,7 +562,7 @@ class _ServicesListManagerState extends State<ServicesListManager> {
             ),
             child: const Center(
               child: Text(
-                'No services added yet. Click "Add Service" to start.',
+                'No services added yet. Click "Add Item" to start.',
                 style: TextStyle(color: Colors.grey),
               ),
             ),

@@ -4,9 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/cart_provider.dart';
 import '../models/product_model.dart';
-import '../models/product_model.dart';
 import 'cart_screen.dart';
-import '../utils/locations_data.dart';
 import '../utils/locations_data.dart';
 import '../widgets/location_autocomplete.dart';
 import 'checkout_screen.dart';
@@ -49,6 +47,11 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   
   City? _pickupCity;
   City? _dropCity;
+
+  // Round trip
+  bool _isRoundTrip = false;
+  DateTime? _returnDate;
+  TimeOfDay? _returnTime;
   
   // Platform fee percentage from admin settings
   double _platformFeePercentage = 10.0; // Default 10%
@@ -76,8 +79,11 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
   @override
   void initState() {
     super.initState();
-    print('DEBUG BOOKING SCREEN: ratePerKm=${widget.ratePerKm}, minBookingAmount=${widget.minBookingAmount}, preBookingAmount=${widget.preBookingAmount}');
     _fetchPlatformFee();
+    // Listen to distance changes to update total price dynamically
+    _distanceController.addListener(() {
+      setState(() {});
+    });
   }
   
   Future<void> _fetchPlatformFee() async {
@@ -108,24 +114,52 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
     }
     
     final dist = double.tryParse(_distanceController.text) ?? 0;
-    final calculated = widget.ratePerKm * dist;
+    // Double distance for round trip
+    final effectiveDist = _isRoundTrip ? dist * 2 : dist;
+    final calculated = widget.ratePerKm * effectiveDist;
     return calculated > 0 ? calculated : widget.minBookingAmount;
   }
   
   double get _calculatedTotal {
     // For vehicle services: Rate × Distance, with minimum check
-    print('DEBUG CALC: ratePerKm=${widget.ratePerKm}, distance=${_distanceController.text}, minBookingAmount=${widget.minBookingAmount}');
     final rawAmount = _rawServiceAmount;
     // Apply minimum if set, otherwise use calculated amount
     final total = widget.minBookingAmount > 0 
         ? (rawAmount > widget.minBookingAmount ? rawAmount : widget.minBookingAmount)
         : rawAmount;
-    print('DEBUG CALC: total = $total (max of $rawAmount or minimum ${widget.minBookingAmount})');
     return total;
   }
 
+  Future<void> _selectReturnDate() async {
+    final minDate = _selectedDate ?? DateTime.now();
+    final date = await showDatePicker(
+      context: context,
+      initialDate: _returnDate ?? minDate,
+      firstDate: minDate,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (date != null) {
+      setState(() => _returnDate = date);
+    }
+  }
+
+  Future<void> _selectReturnTime() async {
+    final time = await showTimePicker(
+      context: context,
+      initialTime: _returnTime ?? TimeOfDay.now(),
+    );
+    if (time != null) {
+      setState(() => _returnTime = time);
+    }
+  }
+
   bool get _isVehicleService {
+    // If rate per km is set (> 0), it is definitely a distance-based service
+    if (widget.ratePerKm > 0) return true;
+
     final serviceLower = widget.serviceName.toLowerCase();
+    
+    // Check common keywords for vehicle/transport services
     return serviceLower.contains('car') ||
         serviceLower.contains('bike') ||
         serviceLower.contains('auto') ||
@@ -133,7 +167,15 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
         serviceLower.contains('cab') ||
         serviceLower.contains('vehicle') ||
         serviceLower.contains('vehical') || // Handle common typo
-        serviceLower.contains('transport');
+        serviceLower.contains('transport') ||
+        serviceLower.contains('delivery') ||
+        serviceLower.contains('logistics') ||
+        serviceLower.contains('driver') ||
+        serviceLower.contains('ambulance') ||
+        serviceLower.contains('truck') ||
+        serviceLower.contains('tempo') ||
+        serviceLower.contains('pickup') ||
+        serviceLower.contains('drop');
   }
 
   @override
@@ -258,6 +300,22 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
       return;
     }
 
+    // Round trip validation
+    if (_isRoundTrip) {
+      if (_returnDate == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select return date'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+      if (_returnTime == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select return time'), backgroundColor: Colors.red),
+        );
+        return;
+      }
+    }
+
     // Vehicle service validation
     if (_isVehicleService) {
       if (_pickupLocationController.text.trim().isEmpty) {
@@ -298,6 +356,14 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
         );
         return;
       }
+    }
+
+    // Save custom locations for future use
+    if (_isVehicleService) {
+      final pickup = _pickupLocationController.text.trim();
+      final drop = _dropLocationController.text.trim();
+      if (pickup.isNotEmpty) LocationsData.addCustomLocation(pickup);
+      if (drop.isNotEmpty) LocationsData.addCustomLocation(drop);
     }
 
     // Add calculated amount to cart based on payment method
@@ -346,6 +412,13 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
       'remainingAmount': _paymentMethod == 'prebooking' 
           ? finalCharge - widget.preBookingAmount 
           : 0.0,
+      'isRoundTrip': _isRoundTrip,
+      if (_isRoundTrip) ...{
+        'returnDate': _returnDate!.toIso8601String(),
+        'returnTime': '${_returnTime!.hour}:${_returnTime!.minute}',
+        'formattedReturnDate': _formatDate(_returnDate!),
+        'formattedReturnTime': _formatTime(_returnTime!),
+      },
     };
 
     // Clear any existing items to treat this as a direct 'Buy Now'
@@ -367,7 +440,6 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
 
   @override
   Widget build(BuildContext context) {
-    print('DEBUG: BookServiceScreen build. Service: ${widget.serviceName}, RatePerKm: ${widget.ratePerKm}'); // DEBUG PRINT
     return Scaffold(
       appBar: AppBar(title: const Text('Book Service'), elevation: 2),
       body: SingleChildScrollView(
@@ -510,6 +582,76 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // Round Trip Toggle (only for vehicle services)
+            if (_isVehicleService) ...[
+              Card(
+                color: _isRoundTrip ? Colors.green[50] : null,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                child: SwitchListTile(
+                  title: const Text('Round Trip', style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(_isRoundTrip ? 'Return trip included (distance x2)' : 'One way trip'),
+                  secondary: Icon(_isRoundTrip ? Icons.swap_horiz : Icons.arrow_forward, color: _isRoundTrip ? Colors.green : Colors.grey),
+                  value: _isRoundTrip,
+                  activeColor: Colors.green,
+                  onChanged: (val) => setState(() {
+                    _isRoundTrip = val;
+                    if (!val) { _returnDate = null; _returnTime = null; }
+                  }),
+                ),
+              ),
+              const SizedBox(height: 8),
+
+              // Return Date & Time (only shown when round trip is ON)
+              if (_isRoundTrip) ...[
+                Text('Return Date', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: _selectReturnDate,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.green[300]!),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.green[50],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.calendar_today, color: Colors.green[700]),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(_returnDate != null ? _formatDate(_returnDate!) : 'Select return date', style: TextStyle(fontSize: 16, color: _returnDate != null ? Colors.black : Colors.grey))),
+                        const Icon(Icons.arrow_forward_ios, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('Return Time', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                InkWell(
+                  onTap: _selectReturnTime,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.green[300]!),
+                      borderRadius: BorderRadius.circular(12),
+                      color: Colors.green[50],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.access_time, color: Colors.green[700]),
+                        const SizedBox(width: 12),
+                        Expanded(child: Text(_returnTime != null ? _formatTime(_returnTime!) : 'Select return time', style: TextStyle(fontSize: 16, color: _returnTime != null ? Colors.black : Colors.grey))),
+                        const Icon(Icons.arrow_forward_ios, size: 16),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+            ],
 
             // Conditional fields based on service type
             if (_isVehicleService) ...[

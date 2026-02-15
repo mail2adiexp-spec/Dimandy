@@ -117,7 +117,7 @@ class _CheckPartnerStatusScreenState extends State<CheckPartnerStatusScreen> {
         centerTitle: true,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16, top: 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

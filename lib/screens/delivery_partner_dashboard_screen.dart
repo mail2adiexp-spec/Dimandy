@@ -165,46 +165,48 @@ class _DeliveryPartnerDashboardScreenState
           bottom: TabBar(
             tabs: [
               Tab(text: 'Overview', icon: Icon(Icons.dashboard)),
-              Tab(
-                child: StreamBuilder<QuerySnapshot>(
+                StreamBuilder<QuerySnapshot>(
                   stream: _availableOrdersStream,
                   builder: (context, snapshot) {
+                    int count = 0;
                     if (snapshot.hasData) {
                       final allDocs = snapshot.data!.docs;
-                      // print('DEBUG Delivery Badge: Total Orders: ${allDocs.length}');
-                      
-                      final availableDocs = allDocs.where((doc) {
+                      count = allDocs.where((doc) {
                         final data = doc.data() as Map<String, dynamic>;
                         final status = data['status'] as String?;
                         final deliveryPartnerId = data['deliveryPartnerId'];
                         final isUnassigned = deliveryPartnerId == null || deliveryPartnerId == '';
                         final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
-                        // print('DEBUG Delivery Badge: Order ${doc.id} status: $status, assigned: ${!isUnassigned}');
                         return isUnassigned && isValidStatus;
-                      }).toList();
-                      
-                      // print('DEBUG Delivery Badge: Count: ${availableDocs.length}');
-
-                      if (availableDocs.isNotEmpty) {
-                        return Row(
-                          children: [
-                            const Icon(Icons.notifications_active),
-                            const SizedBox(width: 8),
-                             const Text('Available Orders'),
-                            const SizedBox(width: 4),
-                            Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                              child: Text('${availableDocs.length}', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        );
-                      }
+                      }).length;
                     }
-                    return const Row(children: [Icon(Icons.notifications_active), SizedBox(width: 8), Text('Available Orders')]);
+                    
+                    return Tab(
+                      icon: Stack(
+                        clipBehavior: Clip.none,
+                        children: [
+                          const Icon(Icons.notifications_active),
+                          if (count > 0)
+                            Positioned(
+                              right: -8,
+                              top: -8,
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                                child: Text(
+                                  '$count',
+                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      text: 'Available',
+                    );
                   },
                 ),
-              ),
               Tab(text: 'My Deliveries', icon: Icon(Icons.local_shipping)),
               Tab(text: 'Returns', icon: Icon(Icons.assignment_return)),
             ],

@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/service_category_provider.dart';
+import '../providers/auth_provider.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:typed_data';
 
@@ -149,6 +150,12 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
       };
+      
+      // Add userId if logged in
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      if (authProvider.currentUser != null) {
+        requestData['userId'] = authProvider.currentUser!.uid;
+      }
 
       if (_role == 'Delivery Partner') {
         requestData.addAll({
@@ -231,7 +238,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
       appBar: AppBar(title: const Text('Join as Partner'), centerTitle: true),
       body: SingleChildScrollView(
         // Add bottom padding to prevent content from being hidden behind bottom bar
-        padding: const EdgeInsets.only(top: 16, bottom: 100),
+        padding: const EdgeInsets.only(top: 16, bottom: 120),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -418,12 +425,19 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                     // State Dropdown
                     DropdownButtonFormField<String>(
                       value: _selectedState,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'State',
                         border: OutlineInputBorder(),
                       ),
                       items: _indianStates.map((state) {
-                        return DropdownMenuItem(value: state, child: Text(state));
+                        return DropdownMenuItem(
+                          value: state,
+                          child: Text(
+                            state,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
                       }).toList(),
                       onChanged: (val) => setState(() => _selectedState = val),
                       validator: (val) => val == null ? 'Please select a state' : null,
@@ -486,6 +500,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                               final categories = provider.serviceCategories;
                               return DropdownButtonFormField<String>(
                                 value: _selectedServiceCategoryId,
+                                isExpanded: true,
                                 decoration: const InputDecoration(
                                   labelText: 'Service Category',
                                   border: OutlineInputBorder(),
@@ -494,7 +509,10 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                                     .map(
                                       (c) => DropdownMenuItem(
                                         value: c.id,
-                                        child: Text(c.name),
+                                        child: Text(
+                                          c.name,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     )
                                     .toList(),

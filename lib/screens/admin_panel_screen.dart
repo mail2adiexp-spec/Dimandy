@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/clickable_error_text.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
 import 'dart:typed_data';
@@ -144,6 +145,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     Query cancelledOrdersQuery = FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'cancelled');
     Query returnedOrdersQuery = FirebaseFirestore.instance.collection('orders').where('status', isEqualTo: 'returned');
     Query messagesQuery = FirebaseFirestore.instance.collection('contact_messages').orderBy('timestamp', descending: true);
+    // State admin filter for messages (if messages have 'state' field)
+    if (isStateAdmin && assignedState != null) {
+      messagesQuery = messagesQuery.where('state', isEqualTo: assignedState);
+    }
     Query recentOrdersQuery = FirebaseFirestore.instance.collection('orders').orderBy('orderDate', descending: true).limit(10);
     Query topSellingQuery = FirebaseFirestore.instance.collection('orders');
     Query topServicesQuery = FirebaseFirestore.instance.collection('service_categories'); // Global, no filter needed usually
@@ -275,6 +280,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               ? Drawer(
                   width: 280,
                   child: _buildSidebarContent(isMobile: true),
+                )
+              : null,
+          floatingActionButton: _currentStackIndex == 6
+              ? FloatingActionButton.extended(
+                  onPressed: _migrateUserIds,
+                  label: const Text('Migrate IDs'),
+                  icon: const Icon(Icons.confirmation_number),
+                  backgroundColor: Colors.orange,
                 )
               : null,
           body: SizedBox.expand(
@@ -819,7 +832,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     return StreamBuilder<QuerySnapshot>(
       stream: _messagesStream,
       builder: (context, snapshot) {
-        if (snapshot.hasError) return Text('Error: ${snapshot.error}');
+        if (snapshot.hasError) return ClickableErrorWidget(errorText: '${snapshot.error}');
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         }
@@ -997,9 +1010,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(
-            child: Text('Failed to load orders: ${snapshot.error}'),
-          );
+          return ClickableErrorWidget(errorText: '${snapshot.error}', prefix: 'Failed to load orders: ');
         }
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) {
@@ -1103,7 +1114,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return ClickableErrorWidget(errorText: '${snapshot.error}');
         }
 
         // Count products from orders
@@ -1190,7 +1201,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           return const Center(child: CircularProgressIndicator());
         }
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return ClickableErrorWidget(errorText: '${snapshot.error}');
         }
 
         final services = snapshot.data?.docs ?? [];
@@ -1305,12 +1316,33 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             );
                           }
                           if (snapshot.hasError) {
-                            return Tooltip(
-                              message: 'Error: ${snapshot.error}',
-                              child: const Icon(
-                                Icons.error_outline,
-                                color: Colors.white,
-                                size: 32,
+                            return GestureDetector(
+                              onTap: () {
+                                final errorStr = snapshot.error.toString();
+                                final urlMatch = RegExp(r'https?://[^\s\]]+').firstMatch(errorStr);
+                                if (urlMatch != null) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Index Required'),
+                                      content: ClickableErrorText(errorText: errorStr),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(ctx),
+                                          child: const Text('Close'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                }
+                              },
+                              child: const Tooltip(
+                                message: 'Tap to see error & create index',
+                                child: Icon(
+                                  Icons.error_outline,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
                               ),
                             );
                           }
@@ -2596,15 +2628,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(category.description),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Base Price: ₹${category.basePrice.toStringAsFixed(0)}',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                              ],
+                                ],
                             ),
                             trailing: PopupMenuButton<String>(
                               onSelected: (value) {
@@ -2887,39 +2911,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                   ),
                   const SizedBox(height: 16),
-                  const Text(
-                    'Select Color:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: availableColors.entries.map((entry) {
-                      final isSelected = selectedColor == entry.key;
-                      return InkWell(
-                        onTap: () {
-                          setState(() => selectedColor = entry.key);
-                        },
-                        child: Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            color: Color(
-                              int.parse(entry.key.replaceFirst('#', '0xFF')),
-                            ),
-                            shape: BoxShape.circle,
-                            border: isSelected
-                                ? Border.all(color: Colors.black, width: 3)
-                                : null,
-                          ),
-                          child: isSelected
-                              ? const Icon(Icons.check, color: Colors.white)
-                              : null,
-                        ),
-                      );
-                    }).toList(),
-                  ),
                 ],
               ),
             ),
@@ -5476,6 +5467,63 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  Future<void> _migrateUserIds() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('Starting user ID migration...')),
+    );
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      
+      // 1. Get current counter or initialize
+      final counterRef = firestore.doc('stats/user_counters');
+      int currentId = 10000;
+      
+      await firestore.runTransaction((transaction) async {
+        final snapshot = await transaction.get(counterRef);
+        if (snapshot.exists) {
+          currentId = snapshot.data()?['currentId'] ?? 10000;
+        } else {
+          transaction.set(counterRef, {'currentId': 10000});
+        }
+      });
+
+      // 2. Fetch all users without displayId
+      final usersSnapshot = await firestore.collection('users').orderBy('createdAt').get();
+      
+      int migratedCount = 0;
+      final batch = firestore.batch();
+      
+      for (final doc in usersSnapshot.docs) {
+        final data = doc.data();
+        if (data['displayId'] == null) {
+          currentId++;
+          batch.update(doc.reference, {'displayId': currentId.toString()});
+          migratedCount++;
+        }
+      }
+
+      // 3. Update counter and commit batch
+      if (migratedCount > 0) {
+        batch.set(counterRef, {'currentId': currentId}, SetOptions(merge: true));
+        await batch.commit();
+        
+        scaffoldMessenger.showSnackBar(
+          SnackBar(content: Text('Migration complete! Updated $migratedCount users.')),
+        );
+      } else {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('No users needed migration.')),
+        );
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Migration failed: $e')),
+      );
+    }
+  }
+
   void _showSellerDashboard(String sellerId, Map<String, dynamic> sellerData) {
     showDialog(
       context: context,
@@ -5528,7 +5576,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               ),
                             ),
                             Text(
-                              'Seller ID: $sellerId',
+                              'Seller ID: ${sellerData['displayId'] ?? sellerId.substring(0, 8)}',
                               style: TextStyle(color: Colors.grey.shade600),
                             ),
                           ],
@@ -5573,6 +5621,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildInfoRow('Full Name', sellerData['name'] ?? '-'),
                             _buildInfoRow('Email', sellerData['email'] ?? '-'),
                             _buildInfoRow('Phone', sellerData['phone'] ?? '-'),
+                            _buildInfoRow('User ID', sellerData['displayId'] ?? sellerId),
                           ],
                         ),
                       ),
@@ -5648,7 +5697,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               ),
                             ),
                             Text(
-                              'Provider ID: $providerId',
+                              'Provider ID: ${providerData['displayId'] ?? providerId.substring(0, 8)}',
                               style: TextStyle(color: Colors.grey.shade600),
                             ),
                           ],
@@ -5692,6 +5741,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildInfoRow('Full Name', providerData['name'] ?? '-'),
                             _buildInfoRow('Email', providerData['email'] ?? '-'),
                             _buildInfoRow('Phone', providerData['phone'] ?? '-'),
+                            _buildInfoRow('User ID', providerData['displayId'] ?? providerId),
                           ],
                         ),
                       ),
@@ -5766,7 +5816,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               ),
                             ),
                             Text(
-                              'Partner ID: $partnerId',
+                              'Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
                               style: TextStyle(color: Colors.grey.shade600),
                             ),
                           ],
@@ -5809,6 +5859,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildInfoRow('Full Name', partnerData['name'] ?? '-'),
                             _buildInfoRow('Email', partnerData['email'] ?? '-'),
                             _buildInfoRow('Phone', partnerData['phone'] ?? '-'),
+                            _buildInfoRow('User ID', partnerData['displayId'] ?? partnerId),
                             _buildInfoRow(
                               'Service Pincodes',
                               (partnerData['servicePincodes'] as List?)?.join(', ') ?? '-',

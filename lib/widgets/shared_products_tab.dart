@@ -961,16 +961,15 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: selectedUnit,
-                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) => setState(() => selectedUnit = v!),
-                          ),
-                        ),
                       ],
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedUnit,
+                      decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
+                      isExpanded: true,
+                      items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                      onChanged: (v) => setState(() => selectedUnit = v!),
                     ),
                     const SizedBox(height: 8),
                     // Platform Fee & Listing Price Preview
@@ -1357,14 +1356,15 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           )),
                           const SizedBox(width: 16),
                           Expanded(child: TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => int.tryParse(v ?? '') != null ? null : 'Invalid')),
-                          const SizedBox(width: 16),
-                          Expanded(child: DropdownButtonFormField(
-                            initialValue: selectedUnit,
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                            onChanged: (v) => setState(() => selectedUnit = v!),
-                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder())
-                          )),
                         ],
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: selectedUnit,
+                        items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                        onChanged: (v) => setState(() => selectedUnit = v!),
+                        isExpanded: true,
+                        decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
                       ),
                     const SizedBox(height: 8),
                     // Platform Fee & Listing Price Preview

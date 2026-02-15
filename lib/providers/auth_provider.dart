@@ -63,7 +63,7 @@ class AuthProvider extends ChangeNotifier {
   bool _isAdmin = false;
 
   // Simple fallback allowlist for admin emails (requested)
-  static const Set<String> _adminEmails = {'mail2adiexp@gmail.com'};
+  static const Set<String> _adminEmails = {'mail2adiexp@gmail.com', 'rfnindrajit@gmail.com'};
 
   AuthProvider() {
     _auth.authStateChanges().listen(_onAuthStateChanged);
@@ -216,6 +216,7 @@ class AuthProvider extends ChangeNotifier {
           'mail2adiexp@gmail.com', // Master Admin
           'sounak@bongbazar.com',
           'admin@bongbazar.com',
+          'rfnindrajit@gmail.com',
         ];
         bool isAllowedEmail = allowedEmails.contains(firebaseUser.email);
 
@@ -232,13 +233,34 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+   // Helper to generate numeric ID
+  Future<String> _generateNextUserId() async {
+    final firestore = FirebaseFirestore.instance;
+    final counterRef = firestore.doc('stats/user_counters');
+
+    return firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(counterRef);
+      
+      int currentId = 10000; // Start from 10000
+      if (snapshot.exists) {
+        currentId = snapshot.data()?['currentId'] ?? 10000;
+      }
+
+      final nextId = currentId + 1;
+      transaction.set(counterRef, {'currentId': nextId}, SetOptions(merge: true));
+
+      return nextId.toString();
+    });
+  }
+
   Future<void> signUp({
     required String name,
     required String email,
     required String password,
-    String role = 'user', // Default role should be plain user until approved
-    String? state, // Added state parameter
-    String? pincode, // Added pincode parameter
+    required String phoneNumber, // Make phone number mandatory
+    String role = 'user',
+    String? state,
+    String? pincode,
   }) async {
     try {
       final credential = await _auth.createUserWithEmailAndPassword(
@@ -251,18 +273,24 @@ class AuthProvider extends ChangeNotifier {
       // Save user to Firestore with role (default user)
       if (credential.user != null) {
         final firestore = FirebaseFirestore.instance;
+        
+        // Generate Numeric ID
+        final displayId = await _generateNextUserId();
+
         await firestore.collection('users').doc(credential.user!.uid).set({
           'id': credential.user!.uid,
+          'displayId': displayId, // Added displayId
           'email': email.trim(),
           'name': name.trim(),
+          'phoneNumber': phoneNumber.trim(), // Save Phone Number
           'role': role,
           'state': state,
-          'pincode': pincode, // Save pincode
+          'pincode': pincode,
           'createdAt': FieldValue.serverTimestamp(),
           'photoURL': null,
-          'phoneNumber': null,
+          'lastLogin': FieldValue.serverTimestamp(),
         });
-        print('✅ User created in Firestore with role: $role');
+        print('✅ User created in Firestore with role: $role and ID: $displayId');
         print('🔍 Saved state: $state, pincode: $pincode');
         
         // Force reload to ensure AppUser gets fresh Firestore data immediately
@@ -354,9 +382,13 @@ class AuthProvider extends ChangeNotifier {
         final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         
         if (!userDoc.exists) {
+          // Generate Numeric ID
+          final displayId = await _generateNextUserId();
+
           // Create new user
           await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
             'id': user.uid,
+            'displayId': displayId, // Added displayId
             'email': user.email ?? googleUser.email,
             'name': user.displayName ?? googleUser.displayName ?? 'Google User',
             'role': 'user', // Default role
@@ -364,7 +396,7 @@ class AuthProvider extends ChangeNotifier {
             'createdAt': FieldValue.serverTimestamp(),
             'lastLogin': FieldValue.serverTimestamp(),
           });
-          print('✅ New Google user created in Firestore');
+          print('✅ New Google user created in Firestore with ID: $displayId');
         } else {
           // Update existing user's last login and photo URL if changed
            await FirebaseFirestore.instance.collection('users').doc(user.uid).update({

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/transaction_model.dart';
 
 class TransactionService {
@@ -9,7 +10,7 @@ class TransactionService {
     try {
       await _firestore.collection('transactions').add(transaction.toMap());
     } catch (e) {
-      print('Error recording transaction: $e');
+      debugPrint('Error recording transaction: $e');
       rethrow;
     }
   }
@@ -51,7 +52,7 @@ class TransactionService {
       }
       return balance;
     } catch (e) {
-      print('Error calculating balance: $e');
+      debugPrint('Error calculating balance: $e');
       return 0.0;
     }
   }

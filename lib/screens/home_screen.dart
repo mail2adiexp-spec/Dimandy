@@ -47,6 +47,7 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       });
     _loadRecommendations();
+    _scrollController.addListener(_onScroll);
     
     // Show app download notification popup on web after first frame
     if (kIsWeb) {
@@ -81,6 +82,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleRefresh() async {
     // Reload recommendations (products and categories auto-update via realtime listeners)
     await _loadRecommendations();
+    // Reset product pagination
+    await context.read<ProductProvider>().fetchProducts(refresh: true);
     
     // Show a success message
     if (mounted) {
@@ -97,6 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -152,6 +156,16 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
   }
+
+  // Pagination Logic
+  final ScrollController _scrollController = ScrollController();
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.9) {
+      context.read<ProductProvider>().fetchProducts();
+    }
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -435,6 +449,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: RefreshIndicator(
                     onRefresh: _handleRefresh,
                     child: CustomScrollView(
+                      controller: _scrollController,
                       slivers: [
                       if (isSearching)
                         SearchResults(
@@ -790,82 +805,83 @@ class _HomeScreenState extends State<HomeScreen> {
                                 .toList(),
                           ),
                         ),
-                        // Products grid
-                        filteredProducts.isEmpty
-                            ? SliverFillRemaining(
+                        
+                        // Products grid or Empty State
+                        if (filteredProducts.isEmpty)
+                            SliverFillRemaining(
+                                hasScrollBody: false,
                                 child: Center(
-                              child: SingleChildScrollView(
-                                padding: const EdgeInsets.all(24),
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  children: [
-                                    Container(
-                                      padding: const EdgeInsets.all(24),
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[100],
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: Icon(
-                                        Icons.travel_explore,
-                                        size: 64,
-                                        color: Colors.grey[400],
-                                      ),
-                                    ),
-                                    const SizedBox(height: 24),
-                                    Text(
-                                       _selectedCategory == null &&
-                                                _searchQuery.isEmpty
-                                            ? 'No products yet'
-                                            : 'No matching products found',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.grey[800],
-                                        letterSpacing: 0.5,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Try checking your spelling or use different keywords.',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        color: Colors.grey[600],
-                                        height: 1.5,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                    const SizedBox(height: 32),
-                                    if (_searchQuery.isNotEmpty)
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: OutlinedButton.icon(
-                                          onPressed: () =>
-                                              _searchController.clear(),
-                                          icon: const Icon(Icons.refresh),
-                                          label: const Text('Clear Search'),
-                                          style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(vertical: 16),
-                                            side: BorderSide(color: Colors.grey[300]!),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(12),
-                                            ),
+                                  child: SingleChildScrollView(
+                                    padding: const EdgeInsets.all(24),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.all(24),
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[100],
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Icon(
+                                            Icons.travel_explore,
+                                            size: 64,
+                                            color: Colors.grey[400],
                                           ),
                                         ),
-                                      ),
-                                  ],
-                                ),
-                              ),
+                                        const SizedBox(height: 24),
+                                        Text(
+                                           _selectedCategory == null &&
+                                                    _searchQuery.isEmpty
+                                                ? 'No products yet'
+                                                : 'No matching products found',
+                                          style: TextStyle(
+                                            fontSize: 18,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.grey[800],
+                                            letterSpacing: 0.5,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          'Try checking your spelling or use different keywords.',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Colors.grey[600],
+                                            height: 1.5,
+                                          ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 32),
+                                        if (_searchQuery.isNotEmpty)
+                                          SizedBox(
+                                            width: double.infinity,
+                                            child: OutlinedButton.icon(
+                                              onPressed: () =>
+                                                  _searchController.clear(),
+                                              icon: const Icon(Icons.refresh),
+                                              label: const Text('Clear Search'),
+                                              style: OutlinedButton.styleFrom(
+                                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                                side: BorderSide(color: Colors.grey[300]!),
+                                                shape: RoundedRectangleBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
                               )
-                            : SliverPadding(
+                        else
+                            SliverPadding(
                                 padding: const EdgeInsets.all(10.0),
                                 sliver: SliverGrid(
                                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                                         crossAxisCount: 2,
-                                        childAspectRatio: 0.75, // Ajusted to prevent cropping/overflow
+                                        childAspectRatio: 0.72, 
                                         crossAxisSpacing: 10,
                                         mainAxisSpacing: 10,
                                       ),
@@ -877,11 +893,29 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                 ),
                               ),
+                        
+                        // Bottom Loading Indicator
+                        if (productProvider.isFetchingMore)
+                          const SliverToBoxAdapter(
+                            child: Padding(
+                              padding: EdgeInsets.all(16.0),
+                              child: Center(child: CircularProgressIndicator()),
+                            ),
+                          ),
+                        if (!productProvider.hasMore && filteredProducts.isNotEmpty && !isSearching)
+                           SliverToBoxAdapter(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Center(
+                                child: Text('No more products', style: TextStyle(color: Colors.grey[500])),
+                              ),
+                            ),
+                          ),
                       ],
-                      ],
-                    ),
+                    ],
                   ),
                 ),
+              ),
               ],
             ),
     );

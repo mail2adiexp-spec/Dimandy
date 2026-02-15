@@ -243,6 +243,16 @@ class _AccountScreenState extends State<AccountScreen> {
                             ),
                             const SizedBox(height: 12),
 
+                            // 2A. My Bookings (New Feature)
+                             _buildProfileCard(
+                              context: context,
+                              icon: Icons.calendar_today_outlined,
+                              title: 'My Bookings',
+                              subtitle: 'Service appointments',
+                              onTap: () => Navigator.pushNamed(context, '/my-bookings'),
+                            ),
+                            const SizedBox(height: 12),
+
                             // 3. DASHBOARDS - Role-based (Medium Priority)
                             // Service Provider Dashboard
                             if (auth.currentUser?.role == 'service_provider')
@@ -643,66 +653,68 @@ class _AccountScreenState extends State<AccountScreen> {
                   ),
                 )
               : Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.account_circle_outlined,
-                          size: 100,
-                          color: Colors.grey[400],
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'You are not signed in',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w500,
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.account_circle_outlined,
+                            size: 100,
+                            color: Colors.grey[400],
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Sign in to access your profile, orders, and more',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey[600]),
-                        ),
-                        const SizedBox(height: 24),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(context, AuthScreen.routeName);
-                          },
-                          icon: const Icon(Icons.login),
-                          label: const Text('Sign In / Sign Up'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 16,
+                          const SizedBox(height: 24),
+                          const Text(
+                            'You are not signed in',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 32),
-                        // Footer Links for SEO
-                        Wrap(
-                          spacing: 16,
-                          runSpacing: 16,
-                          alignment: WrapAlignment.center,
-                          children: [
-                            TextButton(
-                              onPressed: () => Navigator.pushNamed(context, JoinPartnerScreen.routeName), 
-                              child: const Text('Join as Partner')
+                          const SizedBox(height: 8),
+                          Text(
+                            'Sign in to access your profile, orders, and more',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey[600]),
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pushNamed(context, AuthScreen.routeName);
+                            },
+                            icon: const Icon(Icons.login),
+                            label: const Text('Sign In / Sign Up'),
+                            style: ElevatedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 32,
+                                vertical: 16,
+                              ),
                             ),
-                            TextButton(
-                              onPressed: () => Navigator.pushNamed(context, AboutScreen.routeName), 
-                              child: const Text('About Us')
-                            ),
-                            TextButton(
-                              onPressed: () => Navigator.pushNamed(context, ContactScreen.routeName), 
-                              child: const Text('Contact Us')
-                            ),
-                          ],
-                        ),
-                      ],
+                          ),
+                          const SizedBox(height: 32),
+                          // Footer Links for SEO
+                          Wrap(
+                            spacing: 16,
+                            runSpacing: 16,
+                            alignment: WrapAlignment.center,
+                            children: [
+                              TextButton(
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, JoinPartnerScreen.routeName),
+                                  child: const Text('Join as Partner')),
+                              TextButton(
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, AboutScreen.routeName),
+                                  child: const Text('About Us')),
+                              TextButton(
+                                  onPressed: () => Navigator.pushNamed(
+                                      context, ContactScreen.routeName),
+                                  child: const Text('Contact Us')),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),

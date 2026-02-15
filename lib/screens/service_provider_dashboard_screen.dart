@@ -13,6 +13,7 @@ import '../providers/auth_provider.dart';
 import '../models/service_item_model.dart';
 import '../widgets/services_list_manager.dart';
 import '../utils/category_helpers.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 
 class ServiceProviderDashboardScreen extends StatefulWidget {
   static const routeName = '/service-provider-dashboard';
@@ -24,6 +25,11 @@ class ServiceProviderDashboardScreen extends StatefulWidget {
 }
 
 class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboardScreen> {
+  bool _isVehicleService(String category) {
+    final cat = category.toLowerCase();
+    return cat.contains('transport') || cat.contains('travel') || cat.contains('cab') || cat.contains('vehicle') || cat.contains('driver');
+  }
+
   Stream<QuerySnapshot>? _partnerRequestsStream;
   Stream<QuerySnapshot>? _servicesStream;
   Stream<QuerySnapshot>? _bookingsCountStream; // Unordered for count
@@ -617,61 +623,100 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
   Future<void> _showRequestPayoutDialog(String userId) async {
     final amountController = TextEditingController();
-    final detailsController = TextEditingController();
+    final accountNumberController = TextEditingController();
+    final ifscController = TextEditingController();
+    final upiController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     bool isLoading = false;
+    String? errorMessage;
 
     await showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
           title: const Text('Request Payout'),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: amountController,
-                  decoration: const InputDecoration(
-                    labelText: 'Amount',
-                    prefixText: '₹',
-                    border: OutlineInputBorder(),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (errorMessage != null) ...[
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  TextFormField(
+                    controller: amountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: '₹',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter amount';
+                      }
+                      final amount = double.tryParse(value);
+                      if (amount == null || amount <= 0) {
+                        return 'Enter valid amount';
+                      }
+                      return null;
+                    },
                   ),
-                  keyboardType: TextInputType.number,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter amount';
-                    }
-                    final amount = double.tryParse(value);
-                    if (amount == null || amount <= 0) {
-                      return 'Enter valid amount';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: detailsController,
-                  decoration: const InputDecoration(
-                    labelText: 'Payment Details (UPI/Bank)',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., upi@id or Bank Account Details',
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Bank Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
-                  maxLines: 2,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter payment details';
-                    }
-                    return null;
-                  },
-                ),
-                if (isLoading)
-                  const Padding(
-                    padding: EdgeInsets.only(top: 16),
-                    child: CircularProgressIndicator(),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: accountNumberController,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Number',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., 1234567890',
+                      prefixIcon: Icon(Icons.account_balance),
+                    ),
+                    keyboardType: TextInputType.number,
                   ),
-              ],
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: ifscController,
+                    decoration: const InputDecoration(
+                      labelText: 'IFSC Code',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., SBIN0001234',
+                      prefixIcon: Icon(Icons.code),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('OR UPI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: upiController,
+                    decoration: const InputDecoration(
+                      labelText: 'UPI ID',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., name@upi',
+                      prefixIcon: Icon(Icons.payment),
+                    ),
+                  ),
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: CircularProgressIndicator(),
+                    ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -684,13 +729,45 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                   ? null
                   : () async {
                       if (formKey.currentState!.validate()) {
-                        setState(() => isLoading = true);
+                        final accountNo = accountNumberController.text.trim();
+                        final ifsc = ifscController.text.trim();
+                        final upi = upiController.text.trim();
+
+                        // Validate: at least bank (account+ifsc) or UPI must be provided
+                        final hasBankDetails = accountNo.isNotEmpty && ifsc.isNotEmpty;
+                        final hasUpi = upi.isNotEmpty;
+
+                        if (!hasBankDetails && !hasUpi) {
+                          setState(() => errorMessage = 'Please provide Bank Details (Account + IFSC) or UPI ID');
+                          return;
+                        }
+                        if (accountNo.isNotEmpty && ifsc.isEmpty) {
+                          setState(() => errorMessage = 'Please provide IFSC Code with Account Number');
+                          return;
+                        }
+                        if (ifsc.isNotEmpty && accountNo.isEmpty) {
+                          setState(() => errorMessage = 'Please provide Account Number with IFSC Code');
+                          return;
+                        }
+
+                        // Build payment details string
+                        final List<String> parts = [];
+                        if (hasBankDetails) {
+                          parts.add('Account: $accountNo');
+                          parts.add('IFSC: ${ifsc.toUpperCase()}');
+                        }
+                        if (hasUpi) {
+                          parts.add('UPI: $upi');
+                        }
+                        final details = parts.join(' | ');
+
+                        setState(() { isLoading = true; errorMessage = null; });
                         try {
                           final amount = double.parse(amountController.text);
                           await PayoutService().requestPayout(
                             userId,
                             amount,
-                            detailsController.text,
+                            details,
                           );
                           if (mounted) {
                             Navigator.pop(context);
@@ -776,7 +853,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.build_outlined, size: 80, color: Colors.grey[400]), const SizedBox(height: 16), const Text('No services yet', style: TextStyle(fontSize: 18, color: Colors.grey)), const SizedBox(height: 8), ElevatedButton.icon(onPressed: () { Navigator.pop(ctx); _showAddServiceDialog(context, user); }, icon: const Icon(Icons.add), label: const Text('Add Your First Service'))]));
                     }
                     return ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16, top: 16),
                       itemCount: services.length,
                       itemBuilder: (context, index) {
                         final serviceData = services[index].data() as Map<String, dynamic>;
@@ -839,7 +916,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                                                 const Icon(Icons.currency_rupee, size: 14, color: Colors.green),
                                                 Flexible(
                                                   child: Text(
-                                                    '${basePrice.toStringAsFixed(0)}/hr',
+                                                    basePrice.toStringAsFixed(0),
                                                     style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green),
                                                     overflow: TextOverflow.ellipsis,
                                                   ),
@@ -972,18 +1049,21 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
     List<Uint8List> newImagesData = [];
     final ImagePicker picker = ImagePicker();
     
+    String? selectedCategory = data['category'];
     double listingPrice = double.tryParse(basePriceController.text) ?? 0.0;
     
     // Helper to calculate earnings
     double calculateEarnings(double inputPrice) {
-      return inputPrice / (1 + platformFeePercentage / 100);
+      if (_isVehicleService(selectedCategory ?? '')) {
+        return inputPrice > 50 ? inputPrice - 50 : 0;
+      }
+      return inputPrice * (1 - platformFeePercentage / 100);
     }
     double earnings = calculateEarnings(listingPrice);
     
     final ratePerKmController = TextEditingController(text: (data['ratePerKm'] ?? 0).toString());
     final preBookingAmountController = TextEditingController(text: (data['preBookingAmount'] ?? 0).toString());
 
-    String? selectedCategory = data['category'];
     
     // Initialize services list using helper method to avoid type errors
     List<ServiceItem> servicesList = [];
@@ -1197,7 +1277,17 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                              width: double.maxFinite,
                              padding: const EdgeInsets.all(12),
                              decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                             child: Text('Your Earnings: ₹${earnings.toStringAsFixed(2)}', style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold), textAlign: TextAlign.center)
+                             child: Builder(
+                               builder: (context) {
+                                 final isVehicle = _isVehicleService(selectedCategory ?? '');
+                                 final feeText = isVehicle ? '₹50 fixed' : '$platformFeePercentage%';
+                                 return Text(
+                                   'Your Earnings: ₹${earnings.toStringAsFixed(2)} (After $feeText fee)', 
+                                   style: TextStyle(color: Colors.green[800], fontWeight: FontWeight.bold), 
+                                   textAlign: TextAlign.center
+                                 );
+                               }
+                             )
                           ),
                           
                           if (selectedCategory != null && CategoryHelpers.isMultiServiceCategory(selectedCategory!)) ...[
@@ -1237,6 +1327,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                        List<String> finalImages = [...existingImages, ...newUrls];
                        
                        double price = double.parse(basePriceController.text);
+                       final isVehicle = _isVehicleService(selectedCategory ?? '');
                        
                        await FirebaseFirestore.instance.collection('services').doc(serviceId).update({
                           'name': nameController.text.trim(),
@@ -1244,7 +1335,10 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           'price': price,
                           'ratePerKm': double.tryParse(ratePerKmController.text) ?? 0,
                           'preBookingAmount': double.tryParse(preBookingAmountController.text) ?? 0,
-                          'basePrice': price / (1 + platformFeePercentage / 100),
+                          'basePrice': calculateEarnings(price),
+                          'platformFeePercentage': isVehicle ? 0 : platformFeePercentage,
+                          'platformFeeType': isVehicle ? 'fixed' : 'percentage',
+                          'platformFeeValue': isVehicle ? 50 : platformFeePercentage,
                           'category': selectedCategory,
                           'imageUrl': finalImages.first,
                           'imageUrls': finalImages,
@@ -1559,6 +1653,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                               // For Barber/Napit/Salon: Calculate earnings on services list total
                               // For others: Calculate on minimum price
                               final isServiceCategory = CategoryHelpers.isMultiServiceCategory(selectedCategory);
+                              final isVehicle = _isVehicleService(selectedCategory);
                               
                               if (isServiceCategory && servicesList.isNotEmpty) {
                                 // Use services list total
@@ -1568,7 +1663,12 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                               } else {
                                 // Use minimum price
                                 final price = double.tryParse(val) ?? 0.0;
-                                final earnings = price * (1 - platformFeePercentage / 100);
+                                double earnings;
+                                if (isVehicle) {
+                                  earnings = price > 50 ? price - 50 : 0; // Fixed 50 commission
+                                } else {
+                                  earnings = price * (1 - platformFeePercentage / 100);
+                                }
                                 setState(() => listingPrice = earnings); 
                               }
                             },
@@ -1640,10 +1740,16 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(color: Colors.green.withOpacity(0.3))
                           ),
-                          child: Text(
-                            'Your Earnings: ₹${listingPrice.toStringAsFixed(2)}  (After $platformFeePercentage% platform fee)',
-                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800]),
-                            textAlign: TextAlign.center,
+                          child: Builder(
+                            builder: (context) {
+                              final isVehicle = _isVehicleService(selectedCategory);
+                              final feeText = isVehicle ? '₹50 fixed' : '$platformFeePercentage%';
+                              return Text(
+                                'Your Earnings: ₹${listingPrice.toStringAsFixed(2)}  (After $feeText platform fee)',
+                                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.green[800]),
+                                textAlign: TextAlign.center,
+                              );
+                            }
                           ),
                         ),
                       ),
@@ -1706,7 +1812,14 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                   final providerImage = userData['photoURL'] ?? user.photoURL;
 
                   final inputPrice = double.parse(basePriceController.text); // Listing Price
-                  final earnings = inputPrice / (1 + platformFeePercentage / 100); // Base Price
+                  
+                  final isVehicle = _isVehicleService(selectedCategory);
+                  double earnings;
+                  if (isVehicle) {
+                    earnings = inputPrice > 50 ? inputPrice - 50 : 0;
+                  } else {
+                    earnings = inputPrice * (1 - platformFeePercentage / 100);
+                  }
 
                   final serviceData = {
                     'id': serviceId,
@@ -1717,7 +1830,9 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     'name': nameController.text.trim(),
                     'description': descriptionController.text.trim(),
                     'basePrice': earnings,
-                    'platformFeePercentage': platformFeePercentage,
+                    'platformFeePercentage': isVehicle ? 0 : platformFeePercentage,
+                    'platformFeeType': isVehicle ? 'fixed' : 'percentage',
+                    'platformFeeValue': isVehicle ? 50 : platformFeePercentage,
                     'price': inputPrice,
                     'ratePerKm': double.tryParse(ratePerKmController.text) ?? 0,
                     'preBookingAmount': double.tryParse(preBookingAmountController.text) ?? 0,
@@ -1757,7 +1872,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               },
               child: isLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Add Service')
+                  : const Text('Save Service')
             )
           ]
         );
@@ -1768,6 +1883,90 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
   }
 
   // View Bookings Dialog
+  Future<bool> _showQRScanner(BuildContext context, String expectedBookingId) async {
+    bool? result = await showDialog<bool>(
+      barrierDismissible: false,
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: SizedBox(
+          width: 300,
+          height: 450,
+          child: Column(
+            children: [
+              AppBar(
+                title: const Text('Scan Customer QR', style: TextStyle(fontSize: 16)), 
+                leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx, false)),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+              ),
+              Expanded(
+                child: MobileScanner(
+                  onDetect: (capture) {
+                    final List<Barcode> barcodes = capture.barcodes;
+                    for (final barcode in barcodes) {
+                      if (barcode.rawValue == expectedBookingId) {
+                        Navigator.pop(ctx, true);
+                        return;
+                      }
+                    }
+                  },
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('Scan the QR code on the customer\'s app to verify and complete the service.', textAlign: TextAlign.center),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<bool> _showPaymentCollectionDialog(BuildContext context, double totalAmount) async {
+    // Ideally we should track 'paidAmount' in Firestore. 
+    // For now assuming 'totalAmount' is effectively 'remaining' if not using partial payments yet,
+    // Or if we want to show total and confirm collection of whatever is due.
+    // The previous implementation used 'totalCost'.
+    
+    return await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Collect Payment'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Total Amount: ₹${totalAmount.toStringAsFixed(0)}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            const Text('Please confirm that you have collected the payment (Cash/Online) from the customer.', style: TextStyle(fontSize: 14)),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.orange[50], borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.orange)),
+              child: const Row(
+                children: [
+                   Icon(Icons.warning_amber_rounded, color: Colors.orange),
+                   SizedBox(width: 8),
+                   Expanded(child: Text('Do not complete without collecting payment.', style: TextStyle(color: Colors.orange, fontSize: 12))),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+            child: const Text('Payment Collected & Complete'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
   void _showViewBookingsDialog(BuildContext context, dynamic user) {
     showDialog(
       context: context,
@@ -1848,12 +2047,25 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           itemBuilder: (context, index) {
                             final bookingData = bookings[index].data() as Map<String, dynamic>;
                             final bookingId = bookings[index].id;
-                            final serviceName = bookingData['serviceName'] ?? 'Service';
+                            final metadata = bookingData['metadata'] as Map<String, dynamic>? ?? {};
+                            // serviceName in DB is like 'dtfgg Booking - Vehicle', extract provider name
+                            final rawName = bookingData['serviceName'] ?? 'Service';
+                            final serviceName = rawName.contains(' Booking - ') ? rawName.split(' Booking - ').first.trim() : rawName;
                             final customerName = bookingData['customerName'] ?? 'Customer';
                             final customerPhone = bookingData['customerPhone'] ?? 'N/A';
                             final status = bookingData['status'] ?? 'pending';
-                            final totalCost = (bookingData['totalCost'] as num?)?.toDouble() ?? 0;
-                            final bookingDate = (bookingData['bookingDate'] as Timestamp?)?.toDate();
+                            final totalCost = (bookingData['totalCost'] as num?)?.toDouble() ?? 
+                                              (bookingData['serviceAmount'] as num?)?.toDouble() ?? 0;
+                            DateTime? bookingDate;
+                            final rawDate = bookingData['bookingDate'];
+                            if (rawDate is Timestamp) {
+                              bookingDate = rawDate.toDate();
+                            } else if (rawDate is String) {
+                              try {
+                                bookingDate = DateTime.parse(rawDate);
+                              } catch (_) {}
+                            }
+                            final bookingTime = metadata['formattedTime'] ?? bookingData['bookingTime'] ?? '';
                             final address = bookingData['address'] ?? 'N/A';
                             
                             Color statusColor;
@@ -1865,49 +2077,61 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                               default: statusColor = Colors.orange;
                             }
                             
+                            // Format display date & time
+                            String dateTimeDisplay = 'N/A';
+                            if (bookingDate != null) {
+                              dateTimeDisplay = DateFormat('dd MMM yyyy').format(bookingDate);
+                              if (bookingTime.isNotEmpty) {
+                                dateTimeDisplay += ', $bookingTime';
+                              }
+                            }
+                            
                             return Card(
                               margin: const EdgeInsets.only(bottom: 12),
                               child: ExpansionTile(
                                 leading: CircleAvatar(backgroundColor: statusColor.withOpacity(0.1), child: Icon(Icons.work, color: statusColor, size: 20)),
-                                title: Text('Booking #${bookingId.substring(0, 8)}...', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text('$serviceName • $customerName'),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text('₹${totalCost.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                        decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                        child: status != 'completed' && status != 'cancelled' 
-                                            ? PopupMenuButton<String>(
-                                                child: Row(
-                                                  mainAxisSize: MainAxisSize.min,
-                                                  children: [
-                                                    Text(status.toUpperCase(), style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
-                                                    Icon(Icons.arrow_drop_down, color: statusColor, size: 16),
-                                                  ],
-                                                ),
-                                                onSelected: (newValue) async {
-                                                  // Confirm change
-                                                  final confirm = await showDialog<bool>(
-                                                    context: context,
-                                                    builder: (c) => AlertDialog(
-                                                      title: const Text('Update Status'),
-                                                      content: Text('Set status to ${newValue.toUpperCase()}?'),
-                                                      actions: [
-                                                        TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-                                                        TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
-                                                      ],
-                                                    ),
-                                                  );
+                                    const SizedBox(height: 4),
+                                    Row(
+                                      children: [
+                                        Icon(Icons.calendar_today, size: 13, color: Colors.grey[600]),
+                                        const SizedBox(width: 4),
+                                        Flexible(child: Text(dateTimeDisplay, style: TextStyle(fontSize: 12, color: Colors.grey[700]), overflow: TextOverflow.ellipsis)),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                      child: status != 'completed' && status != 'cancelled' 
+                                          ? PopupMenuButton<String>(
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(status.toUpperCase(), style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.bold)),
+                                                  Icon(Icons.arrow_drop_down, color: statusColor, size: 16),
+                                                ],
+                                              ),
+                                              onSelected: (newValue) async {
+                                                  if (newValue == 'completed') {
+                                                     // 1. Scan QR
+                                                     bool scanned = await _showQRScanner(context, bookingId);
+                                                     if (!scanned) return;
 
-                                                  if (confirm == true) {
+                                                     // 2. Collect Payment
+                                                     if (!context.mounted) return;
+                                                     bool collected = await _showPaymentCollectionDialog(context, totalCost);
+                                                     if (!collected) return;
+                                                     
+                                                     // 3. Update Status
                                                      try {
                                                         await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({'status': newValue});
                                                         
-                                                        // Record Transaction if Completed
-                                                        if (newValue == 'completed') {
+                                                        // Record Transaction
+                                                        if (context.mounted) {
                                                            final auth = Provider.of<AuthProvider>(context, listen: false);
                                                            final user = auth.currentUser;
                                                            if (user != null) {
@@ -1915,12 +2139,12 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                                                                  id: '', // Auto-gen
                                                                  userId: user.uid,
                                                                  amount: totalCost,
-                                                              type: TransactionType.credit,
-                                                              status: TransactionStatus.completed,
-                                                              description: 'Booking payment: $serviceName',
-                                                              createdAt: DateTime.now(),
-                                                              referenceId: bookingId,
-                                                              metadata: {'bookingId': bookingId},
+                                                                 type: TransactionType.credit,
+                                                                 status: TransactionStatus.completed,
+                                                                 description: 'Booking payment: $serviceName',
+                                                                 createdAt: DateTime.now(),
+                                                                 referenceId: bookingId,
+                                                                 metadata: {'bookingId': bookingId},
                                                            );
                                                            await TransactionService().recordTransaction(tx);
                                                             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payment Credited to Wallet'), backgroundColor: Colors.green));
@@ -1929,21 +2153,44 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
                                                         if (context.mounted) setState(() {}); 
                                                      } catch(e) {
-                                                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                                                        if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
                                                      }
+                                                  } else {
+                                                    // For other statuses: Confirm dialog
+                                                    final confirm = await showDialog<bool>(
+                                                      context: context,
+                                                      builder: (c) => AlertDialog(
+                                                        title: const Text('Update Status'),
+                                                        content: Text('Set status to ${newValue.toUpperCase()}?'),
+                                                        actions: [
+                                                          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                                                          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Confirm')),
+                                                        ],
+                                                      ),
+                                                    );
+
+                                                    if (confirm == true) {
+                                                       try {
+                                                          await FirebaseFirestore.instance.collection('bookings').doc(bookingId).update({'status': newValue});
+                                                          if (context.mounted) setState(() {});
+                                                       } catch (e) {
+                                                          if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+                                                       }
+                                                    }
                                                   }
                                                 },
-                                                itemBuilder: (context) => [
-                                                  if (status == 'pending') const PopupMenuItem(value: 'confirmed', child: Text('Confirm')),
-                                                  if (status == 'confirmed') const PopupMenuItem(value: 'in_progress', child: Text('In Progress')),
-                                                  if (status == 'in_progress') const PopupMenuItem(value: 'completed', child: Text('Complete')),
-                                                  const PopupMenuItem(value: 'cancelled', child: Text('Cancel')),
-                                                ],
-                                              )
-                                            : Text(status.toUpperCase(), style: TextStyle(fontSize: 10, color: statusColor, fontWeight: FontWeight.bold)),
-                                      ),
+                                              itemBuilder: (context) => [
+                                                if (status == 'pending') const PopupMenuItem(value: 'confirmed', child: Text('Confirm')),
+                                                if (status == 'confirmed') const PopupMenuItem(value: 'in_progress', child: Text('In Progress')),
+                                                if (status == 'in_progress') const PopupMenuItem(value: 'completed', child: Text('Complete')),
+                                                const PopupMenuItem(value: 'cancelled', child: Text('Cancel')),
+                                              ],
+                                            )
+                                          : Text(status.toUpperCase(), style: TextStyle(fontSize: 11, color: statusColor, fontWeight: FontWeight.bold)),
+                                    ),
                                   ],
                                 ),
+                                trailing: Text('₹${totalCost.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                 children: [
                                   Padding(
                                     padding: const EdgeInsets.all(16),
@@ -1961,6 +2208,34 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                                         _buildBookingDetailRow(Icons.location_on, 'Address', address),
                                         const SizedBox(height: 8),
                                         _buildBookingDetailRow(Icons.currency_rupee, 'Total Cost', '₹${totalCost.toStringAsFixed(2)}'),
+                                        // Round trip details
+                                        if (metadata['isRoundTrip'] == true) ...[
+                                          const SizedBox(height: 12),
+                                          Container(
+                                            padding: const EdgeInsets.all(10),
+                                            decoration: BoxDecoration(
+                                              color: Colors.green[50],
+                                              borderRadius: BorderRadius.circular(8),
+                                              border: Border.all(color: Colors.green[200]!),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Row(
+                                                  children: [
+                                                    Icon(Icons.swap_horiz, size: 16, color: Colors.green[700]),
+                                                    const SizedBox(width: 6),
+                                                    Text('Round Trip', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green[700], fontSize: 13)),
+                                                  ],
+                                                ),
+                                                const SizedBox(height: 6),
+                                                _buildBookingDetailRow(Icons.calendar_today, 'Return Date', metadata['formattedReturnDate'] ?? 'N/A'),
+                                                const SizedBox(height: 4),
+                                                _buildBookingDetailRow(Icons.access_time, 'Return Time', metadata['formattedReturnTime'] ?? 'N/A'),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -2013,81 +2288,121 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
   }
 
   Widget _buildWelcomeHeader(dynamic user) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.teal.shade800, Colors.teal.shade600],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.teal.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        bool isAvailable = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          final data = snapshot.data!.data() as Map<String, dynamic>;
+          isAvailable = data['isAvailable'] ?? true; // Default to true
+        }
+
+        return Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue[700]!, Colors.blue[500]!],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.withOpacity(0.3),
+                blurRadius: 10,
+                offset: const Offset(0, 5),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Colors.white,
-                  child: Text(
-                    user.name.isNotEmpty ? user.name[0].toUpperCase() : 'S',
-                    style: TextStyle(
-                      fontSize: 28,
-                      color: Colors.teal[800],
-                      fontWeight: FontWeight.bold,
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 30,
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      user.name != null && user.name!.isNotEmpty
+                          ? user.name![0].toUpperCase()
+                          : 'U',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue[700],
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Welcome back,',
-                        style: TextStyle(color: Colors.teal[100], fontSize: 14),
-                      ),
-                      Text(
-                        user.name,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Welcome back,',
+                          style: TextStyle(color: Colors.white70, fontSize: 14),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
+                        Text(
+                          user.name ?? 'Provider',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
-            ),
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.white),
-                  tooltip: 'Edit Profile',
-                  onPressed: () => _showEditProfileDialog(context, user),
+                child: SwitchListTile(
+                  value: isAvailable,
+                  onChanged: (val) async {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('users')
+                          .doc(user.uid)
+                          .update({'isAvailable': val});
+                      
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(val ? 'You are now Online' : 'You are now Offline'),
+                            backgroundColor: val ? Colors.green : Colors.grey,
+                            duration: const Duration(seconds: 1),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error updating status: $e')),
+                        );
+                      }
+                    }
+                  },
+                  title: const Text(
+                    'Availability Status',
+                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text(
+                    isAvailable ? 'You are receiving bookings' : 'You are currently inactive',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                  activeColor: Colors.greenAccent,
+                  inactiveThumbColor: Colors.grey[300],
+                  inactiveTrackColor: Colors.grey[500],
                 ),
-                const Icon(Icons.verified, color: Colors.white, size: 24),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 

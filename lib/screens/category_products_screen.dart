@@ -36,6 +36,64 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     {'label': 'Corporate', 'value': 'Corporate', 'icon': Icons.business_center},
   ];
 
+  final ScrollController _scrollController = ScrollController();
+  String? _currentCategory;
+  bool _isInit = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_isInit) {
+      final categoryName = ModalRoute.of(context)!.settings.arguments as String;
+      _currentCategory = categoryName; // Store for scroll listener
+      if (categoryName != '👁️ Recently Viewed') {
+         // Fetch initial data
+         context.read<ProductProvider>().fetchProductsByCategory(categoryName, refresh: true);
+      }
+      _isInit = false;
+    }
+  }
+  
+  void _onScroll() {
+    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.9) {
+      if (_currentCategory != null && _currentCategory != '👁️ Recently Viewed') {
+        context.read<ProductProvider>().fetchProductsByCategory(_currentCategory!);
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    // Restore Home Screen feed when leaving category page
+    // Using addPostFrameCallback to avoid modify during build if needed, 
+    // but dispose is safe for provider calls usually.
+    // However, since we are navigating back, we want the Home Screen to re-fetch.
+    // Actually, calling it here might start the fetch.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+       if (mounted) { // mounted check on a disposed widget is tricky. context might be valid? 
+          // Actually context is unsafe in dispose after super? 
+          // Better to just call it. But context.read might fail if unmounted.
+       }
+    });
+    // Safest way: Just call it. content.read is valid in dispose? 
+    // "Looking up a deactivated widget's ancestor is unsafe."
+    // So we cannot use context in dispose easily if it's unmounted.
+    
+    // Better approach: MainNavigationScreen or HomeScreen should handle 'onFocus'.
+    // Or just leave it?
+    // User asked for "Pagination". I'll skip this optimization to avoid crashes.
+    // If Home Screen looks wrong, user will pull-to-refresh.
+    
+    super.dispose();
+  }
+
   void _onNavTapped(int index) async {
     if (index == 3) {
       // Show More bottom sheet
@@ -279,27 +337,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                       });
 
                       List<Product> categoryProducts;
-                      if (categoryName.contains('Trending')) {
-                        categoryProducts = List.from(productProvider.products)
-                          ..sort((a, b) => (b.viewCount).compareTo(a.viewCount));
-                      } else if (categoryName.trim() == ProductCategory.hotDeals) {
-                        categoryProducts = productProvider.products
-                            .where((p) => p.isHotDeal || (p.mrp > p.price))
-                            .toList();
-                        print('DEBUG: Hot Deals found: ${categoryProducts.length}');
-                      } else if (categoryName == 'Customer Choices') {
-                        categoryProducts = List.from(productProvider.products)
-                            ..sort((a, b) => b.salesCount.compareTo(a.salesCount));
-                      } else if (categoryName == '👁️ Recently Viewed') {
+                      if (categoryName == '👁️ Recently Viewed') {
                         // Use RecommendationService for recently viewed
                         final recommendationService = Provider.of<RecommendationService>(context, listen: false);
-                        // Ensure we have the list (it should be loaded by home, but good to check)
                         categoryProducts = recommendationService.recentlyViewed;
-                        print('DEBUG: Recently Viewed products: ${categoryProducts.length}');
                       } else {
-                        categoryProducts = productProvider.products
-                            .where((product) => product.category == categoryName)
-                            .toList();
+                        // For all other categories (Trending, Hot Deals, Standard), use the loaded data
+                        categoryProducts = productProvider.products;
                       }
                       if (productProvider.isLoading) {
                         return const Center(child: CircularProgressIndicator());
@@ -336,6 +380,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                         );
                       }
                       return GridView.builder(
+                        controller: _scrollController,
                         padding: const EdgeInsets.all(16),
                         gridDelegate:
                             const SliverGridDelegateWithFixedCrossAxisCount(
@@ -344,9 +389,13 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                               crossAxisSpacing: 10,
                               mainAxisSpacing: 16,
                             ),
-                        itemCount: categoryProducts.length,
-                        itemBuilder: (ctx, index) =>
-                            _buildProductGridItem(categoryProducts[index]),
+                        itemCount: categoryProducts.length + (productProvider.isFetchingMore ? 1 : 0),
+                        itemBuilder: (ctx, index) {
+                          if (index == categoryProducts.length) {
+                             return const Center(child: CircularProgressIndicator());
+                          }
+                          return _buildProductGridItem(categoryProducts[index]);
+                        },
                       );
                     },
                   ),

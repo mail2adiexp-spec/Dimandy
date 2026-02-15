@@ -26,7 +26,9 @@ import 'package:ecommerce_app/screens/select_services_screen.dart';
 import 'package:ecommerce_app/screens/static_pages.dart';
 import 'package:ecommerce_app/models/service_category_model.dart';
 
+import 'package:ecommerce_app/screens/booking_tracking_screen.dart';
 import 'package:ecommerce_app/screens/my_orders_screen.dart';
+import 'package:ecommerce_app/screens/my_bookings_screen.dart';
 import 'package:ecommerce_app/screens/manage_addresses_screen.dart';
 import 'package:ecommerce_app/models/product_model.dart';
 import 'package:ecommerce_app/providers/cart_provider.dart';
@@ -93,7 +95,7 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) {
             final provider = ProductProvider();
-            provider.startListening();
+            provider.fetchProducts(refresh: true);
             return provider;
           },
         ),
@@ -233,6 +235,11 @@ class MyApp extends StatelessWidget {
                   builder: (_) => const MyOrdersScreen(),
                 );
               }
+              if (settings.name == MyBookingsScreen.routeName) {
+                return MaterialPageRoute(
+                  builder: (_) => const MyBookingsScreen(),
+                );
+              }
               if (settings.name == '/delivery-dashboard') {
                 return MaterialPageRoute(
                   builder: (_) => const DeliveryPartnerDashboardScreen(),
@@ -273,6 +280,12 @@ class MyApp extends StatelessWidget {
                   builder: (_) => const SelectServicesScreen(),
                   settings: settings, // Pass settings to preserve arguments
                 );
+              }
+              if (settings.name == BookingTrackingScreen.routeName) {
+                 final bookingId = settings.arguments as String;
+                 return MaterialPageRoute(
+                   builder: (_) => BookingTrackingScreen(bookingId: bookingId),
+                 );
               }
               return null;
             },

@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../models/payout_model.dart';
 import '../models/transaction_model.dart';
 import 'transaction_service.dart';
@@ -45,7 +46,7 @@ class PayoutService {
 
       await _firestore.collection('payouts').add(payout.toMap());
     } catch (e) {
-      print('Error requesting payout: $e');
+      debugPrint('Error requesting payout: $e');
       rethrow;
     }
   }
@@ -125,7 +126,7 @@ class PayoutService {
       });
 
     } catch (e) {
-      print('Error updating payout status: $e');
+      debugPrint('Error updating payout status: $e');
       rethrow;
     }
   }

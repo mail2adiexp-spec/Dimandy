@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../providers/auth_provider.dart';
 import '../models/payout_model.dart';
 import '../services/payout_service.dart';
@@ -21,13 +22,27 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
   
   double _balance = 0.0;
   bool _isLoading = true;
+  bool _isSavingBankDetails = false;
+  bool _bankDetailsLoaded = false;
   final TextEditingController _amountController = TextEditingController();
-  final TextEditingController _detailsController = TextEditingController();
+  final TextEditingController _accountNumberController = TextEditingController();
+  final TextEditingController _ifscController = TextEditingController();
+  final TextEditingController _upiController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _fetchBalance();
+    _loadBankDetails();
+  }
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    _accountNumberController.dispose();
+    _ifscController.dispose();
+    _upiController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchBalance() async {
@@ -42,8 +57,103 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
     }
   }
 
+  Future<void> _loadBankDetails() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .get();
+      if (doc.exists && mounted) {
+        final data = doc.data() ?? {};
+        setState(() {
+          _accountNumberController.text = data['bankAccountNumber'] ?? '';
+          _ifscController.text = data['bankIfscCode'] ?? '';
+          _upiController.text = data['upiId'] ?? '';
+          _bankDetailsLoaded = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading bank details: $e');
+    }
+  }
+
+  Future<void> _saveBankDetails() async {
+    final accountNo = _accountNumberController.text.trim();
+    final ifsc = _ifscController.text.trim();
+    final upi = _upiController.text.trim();
+
+    // Validate: at least bank (account+ifsc) or UPI must be provided
+    if (accountNo.isEmpty && ifsc.isEmpty && upi.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter Bank Details or UPI ID'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (accountNo.isNotEmpty && ifsc.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter IFSC Code with Account Number'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    if (ifsc.isNotEmpty && accountNo.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter Account Number with IFSC Code'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSavingBankDetails = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .set({
+        'bankAccountNumber': accountNo,
+        'bankIfscCode': ifsc.toUpperCase(),
+        'upiId': upi,
+        'bankDetailsUpdatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bank details saved successfully! ✅'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving bank details: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingBankDetails = false);
+    }
+  }
+
   void _showRequestPayoutDialog() {
     String? errorMessage;
+    // Pre-fill from saved bank details
+    final payoutAccountCtrl = TextEditingController(text: _accountNumberController.text);
+    final payoutIfscCtrl = TextEditingController(text: _ifscController.text);
+    final payoutUpiCtrl = TextEditingController(text: _upiController.text);
+    final payoutAmountCtrl = TextEditingController();
 
     showDialog(
       context: context,
@@ -51,55 +161,98 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
         builder: (context, setStateDialog) {
           return AlertDialog(
             title: const Text('Request Payout'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text('Available Balance: ₹${_balance.toStringAsFixed(2)}'),
-                const SizedBox(height: 16),
-                if (errorMessage != null) ...[
-                  Text(
-                    errorMessage!,
-                    style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                    textAlign: TextAlign.center,
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Available Balance: ₹${_balance.toStringAsFixed(2)}'),
+                  const SizedBox(height: 16),
+                  if (errorMessage != null) ...[
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  TextField(
+                    controller: payoutAmountCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: '₹',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) {
+                      if (errorMessage != null) {
+                        setStateDialog(() => errorMessage = null);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Bank Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                   ),
                   const SizedBox(height: 8),
+                  TextField(
+                    controller: payoutAccountCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Number',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., 1234567890',
+                      prefixIcon: Icon(Icons.account_balance),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: payoutIfscCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'IFSC Code',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., SBIN0001234',
+                      prefixIcon: Icon(Icons.code),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('OR UPI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: payoutUpiCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'UPI ID',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., name@upi',
+                      prefixIcon: Icon(Icons.payment),
+                    ),
+                  ),
                 ],
-                TextField(
-                  controller: _amountController,
-                  decoration: const InputDecoration(
-                    labelText: 'Amount',
-                    prefixText: '₹',
-                    border: OutlineInputBorder(),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (_) {
-                    if (errorMessage != null) {
-                      setStateDialog(() => errorMessage = null);
-                    }
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _detailsController,
-                  decoration: const InputDecoration(
-                    labelText: 'UPI ID / Bank Details',
-                    border: OutlineInputBorder(),
-                    hintText: 'e.g., name@upi or Bank Name, A/C No',
-                  ),
-                ),
-              ],
+              ),
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () {
+                  payoutAccountCtrl.dispose();
+                  payoutIfscCtrl.dispose();
+                  payoutUpiCtrl.dispose();
+                  payoutAmountCtrl.dispose();
+                  Navigator.pop(context);
+                },
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
                 onPressed: () async {
                   setStateDialog(() => errorMessage = null);
                   
-                  final amount = double.tryParse(_amountController.text) ?? 0;
-                  final details = _detailsController.text.trim();
+                  final amount = double.tryParse(payoutAmountCtrl.text) ?? 0;
+                  final accountNo = payoutAccountCtrl.text.trim();
+                  final ifsc = payoutIfscCtrl.text.trim();
+                  final upi = payoutUpiCtrl.text.trim();
                   
                   if (amount <= 0 || amount > _balance) {
                     setStateDialog(() => errorMessage = 'Invalid amount');
@@ -109,23 +262,50 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                      setStateDialog(() => errorMessage = 'Minimum withdrawal amount is ₹1000');
                     return;
                   }
-                  if (details.isEmpty) {
-                     setStateDialog(() => errorMessage = 'Please provide payment details');
+                  
+                  // Validate: at least bank (account+ifsc) or UPI must be provided
+                  final hasBankDetails = accountNo.isNotEmpty && ifsc.isNotEmpty;
+                  final hasUpi = upi.isNotEmpty;
+                  
+                  if (!hasBankDetails && !hasUpi) {
+                    setStateDialog(() => errorMessage = 'Please provide Bank Details (Account + IFSC) or UPI ID');
                     return;
                   }
+                  
+                  if (accountNo.isNotEmpty && ifsc.isEmpty) {
+                    setStateDialog(() => errorMessage = 'Please provide IFSC Code with Account Number');
+                    return;
+                  }
+                  if (ifsc.isNotEmpty && accountNo.isEmpty) {
+                    setStateDialog(() => errorMessage = 'Please provide Account Number with IFSC Code');
+                    return;
+                  }
+                  
+                  // Build payment details string
+                  final List<String> parts = [];
+                  if (hasBankDetails) {
+                    parts.add('Account: $accountNo');
+                    parts.add('IFSC: ${ifsc.toUpperCase()}');
+                  }
+                  if (hasUpi) {
+                    parts.add('UPI: $upi');
+                  }
+                  final details = parts.join(' | ');
 
                   try {
                     await _payoutService.requestPayout(widget.user.uid, amount, details);
                     if (context.mounted) {
+                      payoutAccountCtrl.dispose();
+                      payoutIfscCtrl.dispose();
+                      payoutUpiCtrl.dispose();
+                      payoutAmountCtrl.dispose();
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Payout requested successfully')),
                       );
                       _fetchBalance();
-                      _amountController.clear();
                     }
                   } catch (e) {
-                     // Extract cleaner message if possible, or show full error
                      String msg = e.toString();
                      if (msg.contains('Exception: ')) {
                        msg = msg.replaceAll('Exception: ', '');
@@ -206,9 +386,148 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 32),
-              
-              const SizedBox(height: 32),
+              const SizedBox(height: 24),
+
+              // Bank Details Section
+              Card(
+                elevation: 3,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.account_balance, color: Colors.blue[700], size: 28),
+                          const SizedBox(width: 12),
+                          const Text(
+                            'Bank Details & UPI',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const Spacer(),
+                          if (_bankDetailsLoaded && 
+                              (_accountNumberController.text.isNotEmpty || _upiController.text.isNotEmpty))
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.green),
+                              ),
+                              child: const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.check_circle, color: Colors.green, size: 16),
+                                  SizedBox(width: 4),
+                                  Text('Saved', style: TextStyle(color: Colors.green, fontSize: 12, fontWeight: FontWeight.bold)),
+                                ],
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Add your bank details for payout withdrawals',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                      ),
+                      const Divider(height: 24),
+
+                      // Account Number
+                      TextField(
+                        controller: _accountNumberController,
+                        decoration: InputDecoration(
+                          labelText: 'Account Number',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          hintText: 'e.g., 1234567890',
+                          prefixIcon: const Icon(Icons.account_balance),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // IFSC Code
+                      TextField(
+                        controller: _ifscController,
+                        decoration: InputDecoration(
+                          labelText: 'IFSC Code',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          hintText: 'e.g., SBIN0001234',
+                          prefixIcon: const Icon(Icons.code),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                        textCapitalization: TextCapitalization.characters,
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Divider with "OR"
+                      Row(
+                        children: [
+                          const Expanded(child: Divider()),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            child: Text(
+                              'OR',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 13,
+                              ),
+                            ),
+                          ),
+                          const Expanded(child: Divider()),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+
+                      // UPI ID
+                      TextField(
+                        controller: _upiController,
+                        decoration: InputDecoration(
+                          labelText: 'UPI ID',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          hintText: 'e.g., name@upi',
+                          prefixIcon: const Icon(Icons.payment),
+                          filled: true,
+                          fillColor: Colors.grey[50],
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+
+                      // Save Button
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _isSavingBankDetails ? null : _saveBankDetails,
+                          icon: _isSavingBankDetails
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Icon(Icons.save),
+                          label: Text(_isSavingBankDetails ? 'Saving...' : 'Save Bank Details'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue[700],
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
               
               DefaultTabController(
                 length: 2,

@@ -1,381 +1,175 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // ==================== HELPER FUNCTIONS ====================
-    
-    // Helper to check if user is authenticated
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
-
-    // Helper to check if user is owner of the data
+    
     function isOwner(userId) {
-      return request.auth != null && request.auth.uid == userId;
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    // Super Admin: Can do EVERYTHING (settings, permissions, delete, etc.)
+    // Super Admin: Can do EVERYTHING (settings, permissions, delete, etc.)
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        (
+          (request.auth.token.email in ['mail2adiexp@gmail.com', 'rfnindrajit@gmail.com']) ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'super_admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'administrator'
+        );
     }
 
-    // Helper function to check if user is store manager (7. Store Manager)
-    function isStoreManager() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             (getUserRole().role == 'store_manager' || getUserRole().role == 'Store Manager');
-    }
-    
-    // Helper function to get user role safely
-    function getUserRole() {
-      return request.auth != null && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data
-        : null;
-    }
-    
-    // Helper function to check if user is admin (5. Admin - all permissions)
+    // Admin: Can do everything EXCEPT Settings (includes Super Admin and State Admin)
     function isAdmin() {
-      return request.auth != null && (
-             request.auth.token.email == 'mail2adiexp@gmail.com' ||
-             (getUserRole() != null && (getUserRole().role == 'admin' || getUserRole().role == 'administrator' || getUserRole().role == 'super_admin'))
-      );
-    }
-    
-    // Helper function to check if user is seller (2. Seller)
-    function isSeller() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             (getUserRole().role == 'seller' || getUserRole().role == 'Seller');
-    }
-    
-    // Helper function to check if user is service provider (3. Service Provider)
-    function isServiceProvider() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             (getUserRole().role == 'service_provider' || getUserRole().role == 'Service Provider');
-    }
-    
-    // Helper function to check if user is core staff (4. Core Staff)
-    function isCoreStaff() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             (getUserRole().role == 'core_staff' || getUserRole().role == 'Core Staff');
+      return isAuthenticated() && 
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' || 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'state_admin' || 
+          isSuperAdmin()
+        );
     }
 
-    // Helper function to check if user is state admin (8. State Admin)
-    function isStateAdmin() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             getUserRole().role == 'state_admin';
-    }
-
-    // Helper to get assigned state for State Admin
-    function getAssignedState() {
-      // Logic: Get the assignedState field from the user's document
-      return getUserRole().assignedState;
-    }
-    
-    // ==================== USERS COLLECTION ====================
-    // All roles can read users, only owner/admin/core_staff can update
+    // --- Users Collection & Permissions ---
+    // Super Admin: Full control (manage roles/permissions).
+    // Admin: Can read/write (e.g. block users), but broadly allowed as per "sab kuch".
     match /users/{userId} {
-      allow read: if isAuthenticated() || (resource.data.role == 'service_provider');
-      allow create: if isAuthenticated() && isOwner(userId);
-      // Admin/CoreStaff can update anyone. 
-      // State Admin can update ONLY users in their state (e.g. promoting sellers)
-      allow update: if isOwner(userId) || isAdmin() || isCoreStaff() || 
-                      (isStateAdmin() && resource.data.state == getAssignedState());
-      allow delete: if isAdmin() || isCoreStaff() || 
-                      (isStateAdmin() && resource.data.state == getAssignedState());
+      allow read: if isOwner(userId) || isAdmin() || isAuthenticated(); 
+      allow write: if isOwner(userId) || isAdmin(); 
       
+      // Subcollections
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
-    // ==================== STORES COLLECTION ====================
-    // Read: Everyone (public for store locator)
-    // Write: Admin + Core Staff
-    match /stores/{storeId} {
-      allow read: if true;
-      allow write: if isAdmin() || isCoreStaff();
-    }
-    
-    // ==================== USER ADDRESSES ====================
-    // DEBUG: Temporarily Public to verify deployment
-    match /users/{userId}/addresses/{addressId} {
-      allow read, write: if isOwner(userId) || isAdmin(); 
-    }
-    
-    // ==================== PRODUCTS COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Seller (Own) + Admin + Core Staff + Store Manager + State Admin (State Filtered)
+    // --- Products & Categories (Catalog) ---
     match /products/{productId} {
       allow read: if true;
-      allow create: if (isSeller() || isAdmin() || isCoreStaff() || isStoreManager() || 
-                        (isStateAdmin() && request.resource.data.state == getAssignedState())) && 
-                      request.resource.data.keys().hasAll(['name', 'price', 'imageUrl', 'description']) &&
-                      request.resource.data.price is number &&
-                      request.resource.data.price >= 0;
-      allow update: if (isSeller() && resource.data.sellerId == request.auth.uid) || 
-                      isAdmin() || isCoreStaff() || isStoreManager() ||
-                      (isStateAdmin() && (resource == null || resource.data.state == getAssignedState()));
-      allow delete: if (isSeller() && resource.data.sellerId == request.auth.uid) || 
-                      isAdmin() || isCoreStaff() || isStoreManager() ||
-                      (isStateAdmin() && resource.data.state == getAssignedState());
+      allow write: if isAdmin() || (isAuthenticated() && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller')); 
     }
-    
-    // Helper function to check if user is delivery partner (6. Delivery Partner)
-    function isDeliveryPartner() {
-      return request.auth != null && 
-             getUserRole() != null && 
-             (getUserRole().role == 'delivery_partner' || getUserRole().role == 'Delivery Partner');
-    }
-
-    // ==================== ORDERS COLLECTION ====================
-    // Read: Own orders + Seller (Own) + Admin + Core Staff + Delivery Partner (Assigned) + State Admin
-    // Create: Any authenticated user
-    // Update: Admin + Core Staff + Seller (Own) + Delivery Partner (Assigned) + State Admin
-    match /orders/{orderId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || 
-        (isSeller() && request.auth.uid in resource.data.sellerIds) || 
-        isAdmin() || isCoreStaff() || 
-        (isDeliveryPartner() && resource.data.deliveryPartnerId == request.auth.uid) ||
-        isStoreManager() ||
-        (isStateAdmin() && resource.data.state == getAssignedState()));
-      allow create: if isAuthenticated();
-      allow update: if isAdmin() || isCoreStaff() || 
-                      (isSeller() && request.auth.uid in resource.data.sellerIds) ||
-                      (isDeliveryPartner() && resource.data.deliveryPartnerId == request.auth.uid) || 
-                      (isAuthenticated() && resource.data.userId == request.auth.uid) ||
-                      (isStateAdmin() && resource.data.state == getAssignedState());
-      allow delete: if isAdmin() || isCoreStaff();
-    }
-
-    // ... (Categories/Services/etc already have isCoreStaff/isAdmin mixed or permissive, checking specifically for partner_requests)
-
-    // ==================== DELIVERY PARTNERS COLLECTION (DEBUG) ====================
-    match /delivery_partners/{partnerId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isCoreStaff() || isStateAdmin();
-    }
-
-    // ...
-
-    // ==================== PARTNER REQUESTS COLLECTION ====================
-    match /partner_requests/{requestId} {
-      allow read: if isAuthenticated() && (
-        resource.data.email == request.auth.token.email ||
-        isAdmin() || isCoreStaff() || isStateAdmin()
-      );
-      allow create: if true; // Allow public partner request submissions
-      allow update: if isAdmin() || isCoreStaff() || isStateAdmin();
-      allow delete: if isAdmin() || isCoreStaff();
-    }
-    
-    // ==================== PENDING SELLERS COLLECTION ====================
-    match /pending_sellers/{sellerId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin() || isCoreStaff() ||
-        (isStateAdmin() && resource.data.state == getAssignedState())
-      );
-      allow create: if isAuthenticated();
-      allow update: if isAdmin() || isCoreStaff() || 
-                      (isStateAdmin() && resource.data.state == getAssignedState());
-      allow delete: if isAdmin() || isCoreStaff();
-    }
-    
-    // ==================== CATEGORIES COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Admin + Core Staff
     match /categories/{categoryId} {
       allow read: if true;
-      allow write: if isAdmin() || isCoreStaff();
+      allow write: if isAdmin();
     }
-    
-    // ==================== SERVICE CATEGORIES COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Admin only
     match /service_categories/{categoryId} {
       allow read: if true;
       allow write: if isAdmin();
     }
-    
-    // ==================== SERVICES COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Service Provider (Own) + Admin + State Admin (for their state)
-    match /services/{serviceId} {
-      allow read: if true;
-      allow create: if isServiceProvider() || isAdmin() || isCoreStaff() ||
-                      (isStateAdmin() && request.resource.data.state == getAssignedState());
-      allow update: if (isServiceProvider() && resource.data.providerId == request.auth.uid) || 
-                      isAdmin() || isCoreStaff() ||
-                      (isStateAdmin() && (resource == null || resource.data.state == getAssignedState()));
-      allow delete: if (isServiceProvider() && resource.data.providerId == request.auth.uid) || 
-                      isAdmin() || isCoreStaff() ||
-                      (isStateAdmin() && resource.data.state == getAssignedState());
-    }
-    
-    // ==================== SERVICE BOOKINGS COLLECTION (Deprecated) ====================
-    // Read: Own bookings + Service Provider + Admin
-    // Create: Any authenticated user
-    // Update: Service Provider (status) + Admin
-    match /service_bookings/{bookingId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isServiceProvider() ||
-        isAdmin()
-      );
-      allow create: if isAuthenticated();
-      allow update: if isServiceProvider() || isAdmin();
-      allow delete: if isAdmin();
-    }
 
-    // ==================== BOOKINGS COLLECTION (Active) ====================
-    // Read: Own bookings + Service Provider (if providerId matches) + Admin
-    // Create: Any authenticated user
-    match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || 
-        resource.data.providerId == request.auth.uid ||
-        isAdmin() || 
-        isCoreStaff()
-      );
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        resource.data.providerId == request.auth.uid || 
-        resource.data.userId == request.auth.uid ||
-        isAdmin()
-      );
-      allow delete: if isAdmin();
-    }
-    
-    // ==================== CART COLLECTION ====================
-    // Read/Write: Only own cart
-    match /carts/{userId} {
-      allow read, write: if isOwner(userId);
-    }
-    
-    match /carts/{userId}/items/{itemId} {
-      allow read, write: if isOwner(userId);
-    }
-    
-    // ==================== WISHLIST COLLECTION ====================
-    // Read/Write: Only own wishlist
-    match /wishlists/{userId} {
-      allow read, write: if isOwner(userId);
-    }
-    
-    match /wishlists/{userId}/items/{itemId} {
-      allow read, write: if isOwner(userId);
-    }
-    
-    // ==================== REVIEWS COLLECTION ====================
-    // Read: Everyone
-    // Create: Authenticated users
-    // Update/Delete: Own review + Admin
-    match /reviews/{reviewId} {
-      allow read: if true;
-      allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && 
-                              (resource.data.userId == request.auth.uid || isAdmin());
-    }
-    
-    // ==================== FEATURED SECTIONS COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Admin + Core Staff
+    // --- Featured Sections ---
     match /featured_sections/{sectionId} {
       allow read: if true;
-      allow write: if isAdmin() || isCoreStaff();
+      allow write: if isAdmin();
     }
 
-    
-    // ==================== GIFTS COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Admin only
+    // --- Gifts ---
     match /gifts/{giftId} {
       allow read: if true;
       allow write: if isAdmin();
     }
-    
 
-    
-    // ==================== NOTIFICATIONS COLLECTION ====================
-    // Read: Own notifications
-    // Create: Sellers, Service Providers, Core Staff, Admin
-    // Update/Delete: Own notification + Admin
-    match /notifications/{notificationId} {
-      allow read: if isAuthenticated() && resource.data.toUserId == request.auth.uid;
+    // --- Stores ---
+    match /stores/{storeId} {
+      allow read: if true;
+      // Admins can manage all stores. 
+      // Store Managers can update their assigned store.
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.managerId);
+    }
+
+    // --- App Settings (Fees, UPI, etc.) ---
+    // RESTRICTED: Only Super Admin can write/change settings.
+    match /app_settings/{document} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // --- Payouts ---
+    match /payouts/{payoutId} {
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        resource.data.toUserId == request.auth.uid ||
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update: if isAdmin(); 
+    }
+
+    // --- Contact Messages ---
+    match /contact_messages/{messageId} {
+      allow create: if true; 
+      allow read, write: if isAdmin();
+    }
+    
+    // --- Delivery Partners (Profiles) ---
+    match /delivery_partners/{partnerId} {
+        allow read: if isAuthenticated(); 
+        allow write: if isAdmin() || isOwner(partnerId);
+    }
+
+    // --- Transactions (History) ---
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated(); 
+      allow write: if isAdmin();
+    }
+
+    // --- Orders ---
+    match /orders/{orderId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin() || 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller') || 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_manager') ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_partner')
+      ); 
+      allow update: if isAuthenticated() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin() || 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller') || 
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_manager') ||
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_partner')
+      );
+    }
+
+    // --- Services ---
+    match /services/{serviceId} {
+      allow read: if true;
+      allow write: if isAdmin() || (isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'service_provider'
+      )); 
+    }
+    
+    // --- Partner Requests ---
+    match /partner_requests/{requestId} {
+      allow create: if true;
+      allow read, write: if isAdmin() || (isAuthenticated() && (
+        request.auth.uid == resource.data.userId || 
+        resource.data.email == request.auth.token.email
+      ));
+    }
+
+    // --- Bookings ---
+    match /bookings/{bookingId} {
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && (resource.data.customerId == request.auth.uid || resource.data.providerId == request.auth.uid || isAdmin());
+      allow update: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid ||
         isAdmin()
       );
     }
-
-    // ==================== PAYOUTS COLLECTION ====================
-    match /payouts/{payoutId} {
-      // Allow users to see their own payouts
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin() || isCoreStaff() || isStateAdmin()
-      );
-      // Allow users to create payouts
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      // Allow admins to update status
-      allow update: if isAdmin() || isCoreStaff() || isStateAdmin();
-      allow delete: if isAdmin();
-    }
     
-    // ==================== BANNERS/PROMOTIONS COLLECTION ====================
-    // Read: Everyone (public)
-    // Write: Admin + Core Staff
-    match /banners/{bannerId} {
-      allow read: if true;
-      allow write: if isAdmin() || isCoreStaff();
-    }
-    
-    match /promotions/{promotionId} {
-      allow read: if true;
-      allow write: if isAdmin() || isCoreStaff();
-    }
-    
-    // ==================== APP SETTINGS COLLECTION ====================
-    // Read: Authenticated users (needed for QR code)
-    // Write: Admin only
-    match /app_settings/{documentId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-    
-    // ==================== ANALYTICS/REPORTS COLLECTION ====================
-    // Read/Write: Admin + Core Staff only
-    match /analytics/{documentId} {
-      allow read, write: if isAdmin() || isCoreStaff();
-    }
-    
-    match /reports/{reportId} {
-      allow read, write: if isAdmin() || isCoreStaff();
-    }
-    
-    // ==================== CONTACT MESSAGES COLLECTION ====================
-    match /contact_messages/{messageId} {
-      allow read: if isAdmin() || isCoreStaff() || isStateAdmin();
-      allow create: if true;
-      allow delete: if isAdmin() || isCoreStaff();
+    // --- Notifications ---
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && resource.data.toUserId == request.auth.uid;
+      allow update: if isAuthenticated() && resource.data.toUserId == request.auth.uid;
+      allow create: if isAuthenticated();
+      allow delete: if isAdmin(); 
     }
 
-    // ==================== TRANSACTIONS COLLECTION ====================
-    match /transactions/{transactionId} {
-      allow read: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        isAdmin() ||
-        isCoreStaff()
-      );
-      // Deny client-side creation - Backend (Cloud Functions) uses Admin SDK to create
-      allow create: if false;
-      allow update: if isAdmin() || isCoreStaff(); // Only admin should modify history
-    }
-    
-    // ==================== ADMIN FALLBACK ====================
-    // 5. Admin gets full access to everything
+    // --- Default Fallback ---
     match /{document=**} {
-      allow read, write: if isAdmin();
+      allow read, write: if false;
     }
   }
 }
-

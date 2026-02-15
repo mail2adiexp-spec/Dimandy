@@ -330,6 +330,7 @@ class _SignUpFormState extends State<_SignUpForm> {
   final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController(); // Added
   final _pincodeCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   final _confirmCtrl = TextEditingController();
@@ -344,6 +345,7 @@ class _SignUpFormState extends State<_SignUpForm> {
   void dispose() {
     _nameCtrl.dispose();
     _emailCtrl.dispose();
+    _phoneCtrl.dispose(); // Added
     _pincodeCtrl.dispose();
     _passCtrl.dispose();
     _confirmCtrl.dispose();
@@ -358,6 +360,7 @@ class _SignUpFormState extends State<_SignUpForm> {
         name: _nameCtrl.text,
         email: _emailCtrl.text,
         password: _passCtrl.text,
+        phoneNumber: _phoneCtrl.text, // Added
         state: _selectedState,
         pincode: _pincodeCtrl.text,
       );
@@ -380,6 +383,7 @@ class _SignUpFormState extends State<_SignUpForm> {
       padding: const EdgeInsets.all(16),
       child: Form(
         key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
         child: SingleChildScrollView(
           child: Column(
             children: [
@@ -398,6 +402,21 @@ class _SignUpFormState extends State<_SignUpForm> {
                 validator: (v) => (v == null || v.isEmpty || !v.contains('@'))
                     ? 'Enter a valid email'
                     : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _phoneCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Phone Number',
+                  prefixText: '+91 ',
+                ),
+                keyboardType: TextInputType.phone,
+                maxLength: 10,
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Enter phone number';
+                  if (!RegExp(r'^[0-9]{10}$').hasMatch(v)) return 'Enter valid 10-digit number';
+                  return null;
+                },
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
@@ -440,6 +459,13 @@ class _SignUpFormState extends State<_SignUpForm> {
                 ),
                 obscureText: !_isPasswordVisible,
                 validator: PasswordValidator.validate,
+                style: TextStyle(
+                  color: (_passCtrl.text.isNotEmpty && 
+                          PasswordValidator.validate(_passCtrl.text) == null) 
+                      ? Colors.green 
+                      : null,
+                ),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
               TextFormField(

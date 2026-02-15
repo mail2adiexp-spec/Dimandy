@@ -1213,7 +1213,7 @@ return GridView.builder(
   itemBuilder: (context, index) {
     final action = actions[index];
     
-    Widget iconWidget = Container(
+    Widget baseIconWidget = Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
@@ -1222,29 +1222,28 @@ return GridView.builder(
       child: Icon(action['icon'] as IconData, color: action['color'] as Color, size: 28),
     );
 
+    Widget displayWidget = baseIconWidget;
+
     if (action['title'] == 'My Orders') {
-      iconWidget = StreamBuilder<QuerySnapshot>(
+      displayWidget = StreamBuilder<QuerySnapshot>(
         stream: _ordersStream,
         builder: (context, snapshot) {
           if (snapshot.hasData) {
             final allDocs = snapshot.data!.docs;
-            // print('DEBUG Seller Badge: Total Orders: ${allDocs.length}');
             
             final pendingDocs = allDocs.where((doc) {
               final data = doc.data() as Map<String, dynamic>;
               final status = data['status'];
-              // print('DEBUG Seller Badge: Order ${doc.id} status: $status');
               return status == 'pending';
             }).toList();
             
             final pendingCount = pendingDocs.length;
-            // print('DEBUG Seller Badge: Pending Count: $pendingCount');
 
             if (pendingCount > 0) {
               return Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  iconWidget,
+                  baseIconWidget,
                   Positioned(
                     right: -4,
                     top: -4,
@@ -1273,7 +1272,7 @@ return GridView.builder(
               );
             }
           }
-          return iconWidget;
+          return baseIconWidget;
         },
       );
     }
@@ -1292,7 +1291,7 @@ return GridView.builder(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-             iconWidget,
+             displayWidget,
              const SizedBox(height: 8),
              Text(
                action['title'] as String,
@@ -1303,115 +1302,118 @@ return GridView.builder(
         ),
       ),
     );
-  },
-);
+  }
+  );
 }
 
-Widget _buildRecentOrdersList(AppUser user) {
- return StreamBuilder<QuerySnapshot>(
-    stream: _recentActivityStream,
-    builder: (context, snapshot) {
-       if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-       
-       if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Container(
-             width: double.infinity,
-             padding: const EdgeInsets.all(24),
-             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-             child: const Center(child: Text('No recent activity', style: TextStyle(color: Colors.grey))),
-          );
-       }
 
-       // Filter for relevant orders using a more manual approach since we can't filter the stream easily by array contains object field
-       final relevantDocs = snapshot.data!.docs.where((doc) {
-          final data = doc.data() as Map<String, dynamic>;
-          final items = data['items'] as List<dynamic>? ?? [];
-          return items.any((item) => item['sellerId'] == user.uid);
-       }).take(3).toList(); // Show max 3
-       
-       if (relevantDocs.isEmpty) {
-          return Container(
-             width: double.infinity,
-             padding: const EdgeInsets.all(24),
-             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-             child: const Center(child: Text('No orders yet', style: TextStyle(color: Colors.grey))),
-          );
-       }
+  Widget _buildRecentOrdersList(AppUser user) {
+   return StreamBuilder<QuerySnapshot>(
+      stream: _recentActivityStream,
+      builder: (context, snapshot) {
+         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+         
+         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return Container(
+               width: double.infinity,
+               padding: const EdgeInsets.all(24),
+               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+               child: const Center(child: Text('No recent activity', style: TextStyle(color: Colors.grey))),
+            );
+         }
 
-       return ListView.separated(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: relevantDocs.length,
-          separatorBuilder: (c, i) => const SizedBox(height: 12),
-          itemBuilder: (context, index) {
-             final data = relevantDocs[index].data() as Map<String, dynamic>;
-             final orderId = relevantDocs[index].id;
-             final status = data['status'] ?? 'pending';
-             final items = data['items'] as List<dynamic>? ?? [];
-             
-             // Calculate value for this seller
-             double orderValue = 0;
-             int itemCount = 0;
-             for(var item in items) {
-                if (item['sellerId'] == user.uid) {
-                   orderValue += ((item['price'] as num) * (item['quantity'] as num)).toDouble();
-                   itemCount++;
-                }
-             }
+         // Filter for relevant orders using a more manual approach since we can't filter the stream easily by array contains object field
+         final relevantDocs = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final items = data['items'] as List<dynamic>? ?? [];
+            return items.any((item) => item['sellerId'] == user.uid);
+         }).take(3).toList(); // Show max 3
+         
+         if (relevantDocs.isEmpty) {
+            return Container(
+               width: double.infinity,
+               padding: const EdgeInsets.all(24),
+               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+               child: const Center(child: Text('No orders yet', style: TextStyle(color: Colors.grey))),
+            );
+         }
 
-             Color statusColor = Colors.grey;
-             if (status == 'pending') statusColor = Colors.orange;
-             if (status == 'confirmed') statusColor = Colors.blue;
-             if (status == 'delivered') statusColor = Colors.green;
-             if (status == 'cancelled') statusColor = Colors.red;
+         return ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: relevantDocs.length,
+            separatorBuilder: (c, i) => const SizedBox(height: 12),
+            itemBuilder: (context, index) {
+               final data = relevantDocs[index].data() as Map<String, dynamic>;
+               final orderId = relevantDocs[index].id;
+               final status = data['status'] ?? 'pending';
+               final items = data['items'] as List<dynamic>? ?? [];
+               
+               // Calculate value for this seller
+               double orderValue = 0;
+               int itemCount = 0;
+               for(var item in items) {
+                  if (item['sellerId'] == user.uid) {
+                     orderValue += ((item['price'] as num) * (item['quantity'] as num)).toDouble();
+                     itemCount++;
+                  }
+               }
 
-             return Container(
-                decoration: BoxDecoration(
-                   color: Colors.white,
-                   borderRadius: BorderRadius.circular(12),
-                   border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: IntrinsicHeight(
-                  child: Row(
-                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                     children: [
-                        Container(width: 4, color: statusColor),
-                        Expanded(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                               children: [
-                                  Expanded(
-                                     child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                           Text('Order #${orderId.substring(0,8)}', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                           const SizedBox(height: 4),
-                                           Text('$itemCount items • ₹${orderValue.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                                        ],
-                                     ),
-                                  ),
-                                  Container(
-                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                     decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
-                                     child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
-                                  ),
-                               ],
+               Color statusColor = Colors.grey;
+               if (status == 'pending') statusColor = Colors.orange;
+               if (status == 'confirmed') statusColor = Colors.blue;
+               if (status == 'delivered') statusColor = Colors.green;
+               if (status == 'cancelled') statusColor = Colors.red;
+
+               return Container(
+                  decoration: BoxDecoration(
+                     color: Colors.white,
+                     borderRadius: BorderRadius.circular(12),
+                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
+                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: IntrinsicHeight(
+                    child: Row(
+                       crossAxisAlignment: CrossAxisAlignment.stretch,
+                       children: [
+                          Container(width: 4, color: statusColor),
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                 children: [
+                                    Expanded(
+                                       child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                             Text('Order #${orderId.substring(0,8)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                                             const SizedBox(height: 4),
+                                             Text('$itemCount items • ₹${orderValue.toStringAsFixed(0)}', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                                          ],
+                                       ),
+                                    ),
+                                    Container(
+                                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                       decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                                       child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                                    ),
+                                 ],
+                              ),
                             ),
                           ),
-                        ),
-                     ],
+                       ],
+                    ),
                   ),
-                ),
-             );
-          },
-       );
-    },
- );
+               );
+            },
+         );
+      },
+   );
   }
-}
+} // End of _SellerDashboardScreenState
+
+
 
 class _InventoryOverviewDialog extends StatefulWidget {
   final AppUser user;

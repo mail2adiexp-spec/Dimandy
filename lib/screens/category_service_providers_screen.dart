@@ -183,8 +183,13 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
                       return const Center(child: CircularProgressIndicator());
                     }
 
-                    // Providers serving this area
+                    // Providers serving this area — exclude inactive providers
                     final validProviderIds = providerSnapshot.data?.docs
+                            .where((doc) {
+                              final data = doc.data() as Map<String, dynamic>;
+                              // Default to true if field doesn't exist
+                              return data['isAvailable'] ?? true;
+                            })
                             .map((doc) => doc.id)
                             .toSet() ??
                         {};
@@ -325,21 +330,13 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                 child: Container(
                   color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                  child: providerImage != null && providerImage.isNotEmpty
+                  child: imageUrl != null && imageUrl.isNotEmpty
                       ? Image.network(
-                          providerImage,
+                          imageUrl,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Icon(
-                            Icons.person,
-                            size: 48,
-                            color: Theme.of(context).primaryColor,
-                          ),
+                          errorBuilder: (_, __, ___) => _buildProviderImage(context, providerImage),
                         )
-                      : Icon(
-                          Icons.person,
-                          size: 48,
-                          color: Theme.of(context).primaryColor,
-                        ),
+                      : _buildProviderImage(context, providerImage),
                 ),
               ),
             ),
@@ -426,6 +423,24 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
           ],
         ),
       ),
+    );
+  }
+  Widget _buildProviderImage(BuildContext context, String? providerImage) {
+    if (providerImage != null && providerImage.isNotEmpty) {
+      return Image.network(
+        providerImage,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Icon(
+          Icons.person,
+          size: 48,
+          color: Theme.of(context).primaryColor,
+        ),
+      );
+    }
+    return Icon(
+      Icons.person,
+      size: 48,
+      color: Theme.of(context).primaryColor,
     );
   }
 }

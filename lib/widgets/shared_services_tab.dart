@@ -11,6 +11,7 @@ import '../providers/auth_provider.dart';
 import '../models/service_item_model.dart';
 import '../widgets/services_list_manager.dart';
 import '../utils/category_helpers.dart';
+import 'clickable_error_text.dart';
 
 class SharedServicesTab extends StatefulWidget {
   final bool canManage;
@@ -53,9 +54,14 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
   }
 
   void _initializeStream() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
     Query query = FirebaseFirestore.instance.collection('services');
     if (widget.providerId != null) {
       query = query.where('providerId', isEqualTo: widget.providerId);
+    }
+    // State Admin: only show services from their assigned state
+    if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
+      query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
     }
     _servicesStream = query.orderBy('createdAt', descending: true).snapshots();
   }
@@ -518,6 +524,45 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
     String pricingModel = serviceData['pricingModel'] ?? 'fixed';
     bool isAvailable = serviceData['isAvailable'] ?? true;
     bool isLoading = false;
+    Uint8List? selectedImage;
+    final ImagePicker picker = ImagePicker();
+    String? currentImageUrl = serviceData['imageUrl'];
+
+    Future<void> pickImage(StateSetter setState) async {
+      try {
+        final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+        if (image != null) {
+          final bytes = await image.readAsBytes();
+          setState(() {
+            selectedImage = bytes;
+          });
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error picking image: $e')),
+          );
+        }
+      }
+    }
+
+    Future<String?> uploadImage(String serviceId) async {
+      if (selectedImage == null) return null;
+      try {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('services')
+            .child(serviceId)
+            .child('image.jpg');
+        await ref.putData(selectedImage!);
+        return await ref.getDownloadURL();
+      } catch (e) {
+        if (kDebugMode) {
+          print('Error uploading image: $e');
+        }
+        return null;
+      }
+    }
 
     showDialog(
       context: context,
@@ -674,6 +719,59 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                       const SizedBox(height: 16),
                     ],
                     
+                    // Image Upload
+                    OutlinedButton.icon(
+                      onPressed: () => pickImage(setState),
+                      icon: const Icon(Icons.image),
+                      label: Text(selectedImage == null 
+                          ? (currentImageUrl != null ? 'Change Image' : 'Select Image')
+                          : 'Image selected'),
+                    ),
+                    if (selectedImage != null) ...[
+                      const SizedBox(height: 8),
+                      Stack(
+                        children: [
+                          Image.memory(
+                            selectedImage!,
+                            width: 150,
+                            height: 150,
+                            fit: BoxFit.cover,
+                          ),
+                          Positioned(
+                            top: 0,
+                            right: 0,
+                            child: IconButton(
+                              icon: const Icon(Icons.close, size: 20),
+                              onPressed: () {
+                                setState(() {
+                                  selectedImage = null;
+                                });
+                              },
+                              style: IconButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else if (currentImageUrl != null) ...[
+                      const SizedBox(height: 8),
+                      Stack(
+                        children: [
+                          Image.network(
+                            currentImageUrl!,
+                            width: 150,
+                            height: 150,
+                            fit: BoxFit.cover,
+                            errorBuilder: (c, e, s) => const Icon(Icons.broken_image),
+                          ),
+                          // Optional: Add a way to clear the existing image if desired
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+
                     // Available Toggle
                     SwitchListTile(
                       title: const Text('Service Available'),
@@ -716,6 +814,14 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                     
                                     if (pricingModel == 'range' && maxPriceCtrl.text.isNotEmpty) {
                                       updateData['maxPrice'] = double.parse(maxPriceCtrl.text);
+                                    }
+                                    
+                                    // Upload new image if selected
+                                    if (selectedImage != null) {
+                                      final imageUrl = await uploadImage(serviceId);
+                                      if (imageUrl != null) {
+                                        updateData['imageUrl'] = imageUrl;
+                                      }
                                     }
                                     
                                     await FirebaseFirestore.instance
@@ -850,7 +956,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
         }
 
         if (snapshot.hasError) {
-          return Center(child: Text('Error: ${snapshot.error}'));
+          return ClickableErrorWidget(errorText: '${snapshot.error}');
         }
 
         var services = snapshot.data?.docs ?? [];
@@ -1099,7 +1205,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
               child: services.isEmpty
                   ? const Center(child: Text('No services found matching filters'))
                   : ListView.builder(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16, top: 16),
                       itemCount: services.length,
                       itemBuilder: (context, index) {
                         final service = services[index];
@@ -1125,7 +1231,9 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
                                       }
                                     });
                                   }
-                                : null,
+                                : widget.canManage
+                                    ? () => _showEditServiceDialog(service.id, data)
+                                    : null,
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Row(

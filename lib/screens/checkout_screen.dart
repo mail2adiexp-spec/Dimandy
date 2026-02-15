@@ -328,6 +328,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: _selectedState,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
@@ -342,7 +343,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                    'Uttar Pradesh', 'Uttarakhand', 'West Bengal', 'Andaman and Nicobar Islands',
                    'Chandigarh', 'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
                    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry'
-                  ].map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                  ].map((s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(
+                          s,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      )).toList(),
                   onChanged: (val) => setState(() => _selectedState = val),
                   validator: (v) => v == null ? 'Please select state' : null,
                 ),
@@ -507,8 +514,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             addressLine: _addressController.text,
             city: _cityController.text,
             postalCode: _postalCodeController.text,
+            state: _selectedState,
             isDefault: addrProvider.defaultAddress == null,
-            // TODO: Add 'state' to AddressModel to save it properly next time
           ),
         );
       }
@@ -566,9 +573,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             final bookingId = FirebaseFirestore.instance.collection('bookings').doc().id;
             
             // Calculate platform fee on actual service amount, not customer payment
+            // Calculate platform fee
+            double platformFeeAmount = 0.0;
+            double platformFeePercentage = 0.0;
+
+            if (item.metadata!['serviceType'] == 'transport') {
+              // Fixed commission for vehicle bookings
+              platformFeeAmount = 50.0;
+              platformFeePercentage = 0.0; // Fixed fee, not percentage
+            } else {
+              // Percentage based for other services
+              final serviceAmount = (item.metadata!['serviceAmount'] as num?)?.toDouble() ?? item.price;
+              platformFeePercentage = (item.metadata!['platformFeePercentage'] as num?)?.toDouble() ?? 10.0;
+              platformFeeAmount = serviceAmount * (platformFeePercentage / 100);
+            }
+
             final serviceAmount = (item.metadata!['serviceAmount'] as num?)?.toDouble() ?? item.price;
-            final platformFeePercentage = (item.metadata!['platformFeePercentage'] as num?)?.toDouble() ?? 10.0;
-            final platformFeeAmount = serviceAmount * (platformFeePercentage / 100);
             final providerEarnings = item.price - platformFeeAmount; // Customer payment - platform fee
             
             // Calculate remaining amount
@@ -734,7 +754,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _addressController.text = a.addressLine;
     _cityController.text = a.city;
     _postalCodeController.text = a.postalCode;
-    setState(() {});
+    setState(() {
+      _selectedState = a.state;
+    });
   }
 
   Future<void> _showSavedAddressesSheet() async {

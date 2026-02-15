@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../utils/locations_data.dart';
 
-class LocationAutocompleteField extends StatelessWidget {
+class LocationAutocompleteField extends StatefulWidget {
   final String label;
   final IconData icon;
   final Function(City) onSelected;
@@ -20,18 +20,29 @@ class LocationAutocompleteField extends StatelessWidget {
   });
 
   @override
+  State<LocationAutocompleteField> createState() => _LocationAutocompleteFieldState();
+}
+
+class _LocationAutocompleteFieldState extends State<LocationAutocompleteField> {
+  @override
+  void initState() {
+    super.initState();
+    // Trigger loading of cities from JSON if not already loaded
+    LocationsData.loadCities().then((_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Autocomplete<City>(
-      initialValue: TextEditingValue(text: initialValue ?? ''),
+      initialValue: TextEditingValue(text: widget.initialValue ?? ''),
       optionsBuilder: (TextEditingValue textEditingValue) {
         if (textEditingValue.text.isEmpty) {
           return const Iterable<City>.empty();
         }
-        return LocationsData.cities.where((City city) {
-          return city.name
-              .toLowerCase()
-              .contains(textEditingValue.text.toLowerCase());
-        });
+        // Use the search method which handles the large dataset efficiently
+        return LocationsData.searchCities(textEditingValue.text);
       },
       displayStringForOption: (City option) => option.name,
       fieldViewBuilder: (
@@ -41,16 +52,16 @@ class LocationAutocompleteField extends StatelessWidget {
         VoidCallback onFieldSubmitted,
       ) {
         // Init controller if available (one-time sync)
-         if (controller != null && fieldTextEditingController.text.isEmpty && controller!.text.isNotEmpty) {
-           fieldTextEditingController.text = controller!.text;
+         if (widget.controller != null && fieldTextEditingController.text.isEmpty && widget.controller!.text.isNotEmpty) {
+           fieldTextEditingController.text = widget.controller!.text;
          }
 
         return TextField(
           controller: fieldTextEditingController,
           focusNode: fieldFocusNode,
           decoration: InputDecoration(
-            labelText: label,
-            prefixIcon: Icon(icon, color: Colors.deepPurple),
+            labelText: widget.label,
+            prefixIcon: Icon(widget.icon, color: Colors.deepPurple),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
             ),
@@ -58,12 +69,12 @@ class LocationAutocompleteField extends StatelessWidget {
             fillColor: Colors.grey.shade50,
           ),
           onChanged: (val) {
-             if (controller != null) controller!.text = val;
-             if (onChanged != null) onChanged!(val);
+             if (widget.controller != null) widget.controller!.text = val;
+             if (widget.onChanged != null) widget.onChanged!(val);
           },
         );
       },
-      onSelected: onSelected,
+      onSelected: widget.onSelected,
       optionsViewBuilder: (
         BuildContext context,
         AutocompleteOnSelected<City> onSelected,
