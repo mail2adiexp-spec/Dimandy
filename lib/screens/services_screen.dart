@@ -135,7 +135,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
+                    color: Colors.black.withValues(alpha: 0.05),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -191,7 +191,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                             size: 64,
                             color: Theme.of(
                               context,
-                            ).colorScheme.primary.withOpacity(0.6),
+                            ).colorScheme.primary.withValues(alpha: 0.6),
                           ),
                           const SizedBox(height: 12),
                           Text(
@@ -366,7 +366,7 @@ class _ServicesScreenState extends State<ServicesScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 4,
                     offset: const Offset(0, 2),
                     spreadRadius: 0,

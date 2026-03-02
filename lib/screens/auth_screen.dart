@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../utils/error_display.dart';
 import '../utils/password_validator.dart';
-import '../utils/password_validator.dart';
 import 'join_partner_screen.dart';
 import '../utils/locations_data.dart';
 
@@ -393,7 +392,6 @@ class _SignUpFormState extends State<_SignUpForm> {
                 validator: (v) =>
                     (v == null || v.isEmpty) ? 'Enter your name' : null,
               ),
-              const SizedBox(height: 12),
               const SizedBox(height: 12),
               TextFormField(
                 controller: _emailCtrl,

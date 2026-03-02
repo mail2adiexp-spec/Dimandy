@@ -308,7 +308,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
+                        color: Colors.black.withValues(alpha: 0.2),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -352,7 +352,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               color: Theme.of(context)
                                   .colorScheme
                                   .onPrimary
-                                  .withOpacity(0.2),
+                                  .withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
@@ -498,7 +498,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         color: Colors.deepPurple.shade900,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(2, 0),
           ),
@@ -1027,11 +1027,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             final userId = data['userId'] as String? ?? '-';
             final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
             final status = data['status'] as String? ?? 'pending';
-            final orderDateStr = data['orderDate'] as String?;
+            final rawOrderDate = data['orderDate'];
             DateTime? orderDate;
             try {
-              if (orderDateStr != null) {
-                orderDate = DateTime.tryParse(orderDateStr);
+              if (rawOrderDate is Timestamp) {
+                orderDate = rawOrderDate.toDate();
+              } else if (rawOrderDate is String) {
+                orderDate = DateTime.tryParse(rawOrderDate);
               }
             } catch (_) {}
 
@@ -1084,7 +1086,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1147,14 +1149,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               width: 150,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.blue.withOpacity(0.7), Colors.blue],
+                  colors: [Colors.blue.withValues(alpha: 0.7), Colors.blue],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.blue.withOpacity(0.4),
+                    color: Colors.blue.withValues(alpha: 0.4),
                     offset: const Offset(2, 2),
                     blurRadius: 8,
                   ),
@@ -1225,14 +1227,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               width: 150,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.green.withOpacity(0.7), Colors.green],
+                  colors: [Colors.green.withValues(alpha: 0.7), Colors.green],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withOpacity(0.4),
+                    color: Colors.green.withValues(alpha: 0.4),
                     offset: const Offset(2, 2),
                     blurRadius: 8,
                   ),
@@ -1274,13 +1276,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }) {
     return Card(
       elevation: 4,
-      shadowColor: color.withOpacity(0.3),
+      shadowColor: color.withValues(alpha: 0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.8), color.withOpacity(0.5)],
+            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),

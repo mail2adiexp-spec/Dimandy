@@ -15,8 +15,8 @@ class Product {
   final bool isFeatured;
   final bool isHotDeal;
   final bool isCustomerChoice;
-  int salesCount;
-  int viewCount;
+  final int salesCount;
+  final int viewCount;
   int stock;
   final int minimumQuantity; // Added minimum quantity field
   final List<String> storeIds; // Added storeIds for availability

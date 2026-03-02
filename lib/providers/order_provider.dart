@@ -115,7 +115,7 @@ class OrderProvider extends ChangeNotifier {
         'deliveryAddress': deliveryAddress,
         'phoneNumber': phoneNumber,
         'state': state, // Save state top-level
-        'orderDate': DateTime.now().toIso8601String(),
+        'orderDate': FieldValue.serverTimestamp(),
         'status': 'pending',
         'statusHistory': {'pending': DateTime.now().toIso8601String()},
         'deliveryPincode': deliveryPincode,
@@ -176,9 +176,8 @@ class OrderProvider extends ChangeNotifier {
         'orderCount': FieldValue.increment(1),
       });
 
-      // Increment salesCount for each product and Create Bookings for Services
+      // Increment salesCount for each product
       for (var item in items) {
-        // 1. Increment Sales Count
         try {
           await _firestore.collection('products').doc(item.productId).update({
             'salesCount': FieldValue.increment(item.quantity),
@@ -186,67 +185,7 @@ class OrderProvider extends ChangeNotifier {
         } catch (e) {
           debugPrint('Error incrementing salesCount for ${item.productId}: $e');
         }
-
-        // 2. Create Booking for Services
-        if (item.productId.startsWith('svc_') || (item.metadata != null && item.metadata!.containsKey('bookingDate'))) {
-           try {
-              debugPrint('OrderProvider: Creating booking for item ${item.productName}');
-              
-              DateTime bookingDate = DateTime.now();
-              String address = deliveryAddress;
-              String notes = '';
-
-              if (item.metadata != null) {
-                 if (item.metadata!['bookingDate'] != null) {
-                    bookingDate = DateTime.parse(item.metadata!['bookingDate']);
-                 }
-                 if (item.metadata!['bookingTime'] != null) {
-                    final parts = item.metadata!['bookingTime'].toString().split(':');
-                    if (parts.length == 2) {
-                       bookingDate = DateTime(
-                         bookingDate.year, bookingDate.month, bookingDate.day, 
-                         int.parse(parts[0]), int.parse(parts[1])
-                       );
-                    }
-                 }
-                 if (item.metadata!['address'] != null) address = item.metadata!['address'];
-                 if (item.metadata!['notes'] != null) notes = item.metadata!['notes'];
-              }
-
-              final bookingId = _firestore.collection('bookings').doc().id;
-              await _firestore.collection('bookings').doc(bookingId).set({
-                 'id': bookingId,
-                 'providerId': item.sellerId,
-                 'userId': userId,
-                 'orderId': docRef.id,
-                 'serviceName': item.productName,
-                 'customerName': authProvider.currentUser?.name ?? 'Customer',
-                 'customerPhone': phoneNumber,
-                 'bookingDate': Timestamp.fromDate(bookingDate),
-                 'address': address,
-                 'notes': notes,
-                 'status': 'pending',
-                 'totalCost': item.price * item.quantity,
-                 'createdAt': FieldValue.serverTimestamp(),
-                 'metadata': item.metadata,
-              });
-              
-              // Notify Provider
-              final notificationService = NotificationService();
-              await notificationService.sendNotification(
-                toUserId: item.sellerId,
-                title: 'New Service Booking',
-                body: 'You have a new booking for ${item.productName}',
-                type: 'booking_new',
-                relatedId: bookingId,
-              );
-
-              debugPrint('OrderProvider: Booking created successfully ($bookingId)');
-
-           } catch (e) {
-              debugPrint('Error creating booking for ${item.productId}: $e');
-           }
-        }
+        // NOTE: Booking creation for services is handled in CheckoutScreen._placeOrder()
       }
 
       await fetchUserOrders(); // Refresh orders

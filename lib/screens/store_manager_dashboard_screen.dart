@@ -303,7 +303,7 @@ class _OrdersTab extends StatelessWidget {
                 ),
                 trailing: Chip(
                   label: Text(order.status.toUpperCase()),
-                  backgroundColor: _getStatusColor(order.status).withOpacity(0.1),
+                  backgroundColor: _getStatusColor(order.status).withValues(alpha: 0.1),
                   labelStyle: TextStyle(color: _getStatusColor(order.status), fontSize: 10),
                 ),
               ),

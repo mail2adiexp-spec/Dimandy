@@ -19,7 +19,7 @@ void showToast(BuildContext context, String message, {bool isError = false}) {
             borderRadius: BorderRadius.circular(25.0),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 8.0,
                 offset: const Offset(0, 4),
               ),

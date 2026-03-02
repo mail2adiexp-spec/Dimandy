@@ -583,7 +583,7 @@ class _ServicesListManagerState extends State<ServicesListManager> {
                   child: Row(
                     children: [
                       CircleAvatar(
-                        backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                         child: Icon(
                           Icons.content_cut,
                           color: Theme.of(context).colorScheme.primary,

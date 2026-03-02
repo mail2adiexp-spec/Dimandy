@@ -62,8 +62,14 @@ class AuthProvider extends ChangeNotifier {
   AppUser? _currentUser;
   bool _isAdmin = false;
 
-  // Simple fallback allowlist for admin emails (requested)
-  static const Set<String> _adminEmails = {'mail2adiexp@gmail.com', 'rfnindrajit@gmail.com'};
+  // Simple fallback allowlist for admin emails
+  // NOTE: For better security, move these to Firestore 'admins' collection or Firebase Custom Claims
+  static const Set<String> _adminEmails = {
+    'mail2adiexp@gmail.com',
+    'sounak@bongbazar.com',
+    'admin@bongbazar.com',
+    'rfnindrajit@gmail.com',
+  };
 
   AuthProvider() {
     _auth.authStateChanges().listen(_onAuthStateChanged);
@@ -131,18 +137,18 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _onAuthStateChanged(User? firebaseUser) async {
     if (firebaseUser != null) {
-      print('🔄 Auth state changed for user: ${firebaseUser.uid}');
-      print('📸 PhotoURL: ${firebaseUser.photoURL}');
+      debugPrint('🔄 Auth state changed for user: ${firebaseUser.uid}');
 
-      // Fetch user role from Firestore
+      // Fetch user role from Firestore (SINGLE read)
       String userRole = 'user';
       String? storeId;
-      String? assignedState; // Added declaration
-      String? state;         // Added declaration
-      String? pincode;       // Added declaration
+      String? assignedState;
+      String? state;
+      String? pincode;
       Map<String, dynamic> permissions = {};
-
       String? firestorePhone;
+      bool hasAdminRole = false;
+
       try {
         final userDoc = await FirebaseFirestore.instance
             .collection('users')
@@ -152,11 +158,12 @@ class AuthProvider extends ChangeNotifier {
           final data = userDoc.data() ?? {};
           userRole = data['role'] ?? 'user';
           storeId = data['storeId'] as String?;
-          assignedState = data['assignedState'] as String?; // Added assignment
-          state = data['state'] as String?;                 // Added assignment
-          pincode = data['pincode'] as String? ?? data['servicePincode'] as String?; // Try both
+          assignedState = data['assignedState'] as String?;
+          state = data['state'] as String?;
+          pincode = data['pincode'] as String? ?? data['servicePincode'] as String?;
           permissions = data['permissions'] as Map<String, dynamic>? ?? {};
           firestorePhone = data['phoneNumber'] as String? ?? data['phone'] as String?;
+          hasAdminRole = userRole == 'admin';
           
           // Update lastLogin
           await FirebaseFirestore.instance
@@ -165,11 +172,9 @@ class AuthProvider extends ChangeNotifier {
               .update({'lastLogin': FieldValue.serverTimestamp()});
         }
       } catch (e) {
-        print('Error fetching user role or updating lastLogin: $e');
+        debugPrint('Error fetching user data or updating lastLogin: $e');
       }
 
-
-      
       _currentUser = AppUser(
         uid: firebaseUser.uid,
         email: firebaseUser.email ?? '',
@@ -184,9 +189,7 @@ class AuthProvider extends ChangeNotifier {
         permissions: permissions,
       );
 
-      print(
-        '✅ Current user updated with photoURL: ${_currentUser?.photoURL} and role: $userRole',
-      );
+      debugPrint('✅ User updated - role: $userRole');
 
       try {
         // 1) Check custom claims
@@ -194,36 +197,13 @@ class AuthProvider extends ChangeNotifier {
         final claims = token.claims ?? {};
         bool hasAdminClaim = claims['admin'] == true;
 
-        // 2) Also check Firestore users/{uid}.role == 'admin'
-        bool hasAdminRole = false;
-        try {
-          final userDoc = await FirebaseFirestore.instance
-              .collection('users')
-              .doc(firebaseUser.uid)
-              .get();
-          if (userDoc.exists) {
-            final data = userDoc.data();
-            if (data != null && data['role'] == 'admin') {
-              hasAdminRole = true;
-            }
-          }
-        } catch (e) {
-          print('Error checking admin role in Firestore: $e');
-        }
-
-        // 3) Check allowed email list (fallback)
-        final allowedEmails = [
-          'mail2adiexp@gmail.com', // Master Admin
-          'sounak@bongbazar.com',
-          'admin@bongbazar.com',
-          'rfnindrajit@gmail.com',
-        ];
-        bool isAllowedEmail = allowedEmails.contains(firebaseUser.email);
+        // 2) Check allowed email list (fallback)
+        bool isAllowedEmail = _adminEmails.contains(firebaseUser.email);
 
         _isAdmin = hasAdminClaim || hasAdminRole || isAllowedEmail;
-        print('👑 Admin status: $_isAdmin');
+        debugPrint('👑 Admin status: $_isAdmin');
       } catch (e) {
-        print('Error checking admin status: $e');
+        debugPrint('Error checking admin status: $e');
         _isAdmin = false;
       }
     } else {
@@ -481,9 +461,7 @@ class AuthProvider extends ChangeNotifier {
       await FirebaseFirestore.instance.collection('users').doc(user.uid).update(
         {'email': email.trim()},
       );
-      throw Exception(
-        'Verification email sent. Please check your new email and verify it.',
-      );
+      // Return success message via a custom result instead of throwing
     } on FirebaseAuthException catch (e) {
       if (e.code == 'email-already-in-use') {
         throw Exception('This email is already registered');
@@ -545,32 +523,29 @@ class AuthProvider extends ChangeNotifier {
     String? fileName,
   }) async {
     try {
-      print('🔵 Starting image upload...');
+      debugPrint('🔵 Starting image upload...');
       final user = _auth.currentUser;
       if (user == null) {
-        print('❌ No user signed in');
+        debugPrint('❌ No user signed in');
         throw Exception('No user signed in');
       }
-      print('✅ User authenticated: ${user.uid}');
+      debugPrint('✅ User authenticated: ${user.uid}');
 
       if (imageFile == null && imageBytes == null) {
-        print('❌ No image provided');
+        debugPrint('❌ No image provided');
         throw Exception('No image provided');
       }
 
       final imageSize = imageBytes?.length ?? await imageFile!.length();
-      print('📦 Image size: ${(imageSize / 1024).toStringAsFixed(2)} KB');
+      debugPrint('📦 Image size: ${(imageSize / 1024).toStringAsFixed(2)} KB');
 
-      // Upload to Firebase Storage with explicit bucket
-      final storage = FirebaseStorage.instanceFor(
-        bucket: 'gs://bong-bazar-3659f.firebasestorage.app',
-      );
+      // Upload to Firebase Storage using default bucket
+      final storage = FirebaseStorage.instance;
       final storageRef = storage
           .ref()
           .child('user_images')
           .child('${user.uid}.jpg');
-      print('📁 Upload path: user_images/${user.uid}.jpg');
-      print('🪣 Bucket: gs://bong-bazar-3659f.firebasestorage.app');
+      debugPrint('📁 Upload path: user_images/${user.uid}.jpg');
 
       // Decide content type from filename if available
       String contentType = 'image/jpeg';
@@ -579,12 +554,12 @@ class AuthProvider extends ChangeNotifier {
         if (lower.endsWith('.png')) contentType = 'image/png';
         if (lower.endsWith('.webp')) contentType = 'image/webp';
       }
-      print('📝 Content-Type: $contentType');
+      debugPrint('📝 Content-Type: $contentType');
 
       // Upload based on platform
       UploadTask uploadTask;
       if (imageBytes != null) {
-        print('🌐 Uploading via bytes (Web)...');
+        debugPrint('🌐 Uploading via bytes (Web)...');
         uploadTask = storageRef.putData(
           imageBytes,
           SettableMetadata(
@@ -593,7 +568,7 @@ class AuthProvider extends ChangeNotifier {
           ),
         );
       } else {
-        print('📱 Uploading via file (Mobile/Desktop)...');
+        debugPrint('📱 Uploading via file (Mobile/Desktop)...');
         uploadTask = storageRef.putFile(
           imageFile!,
           SettableMetadata(
@@ -603,46 +578,46 @@ class AuthProvider extends ChangeNotifier {
         );
       }
 
-      print('⏳ Waiting for upload to complete...');
+      debugPrint('⏳ Waiting for upload to complete...');
       final TaskSnapshot snapshot = await uploadTask;
-      print('📊 Upload state: ${snapshot.state.name}');
+      debugPrint('📊 Upload state: ${snapshot.state.name}');
 
       if (snapshot.state != TaskState.success) {
-        print('❌ Upload failed with state: ${snapshot.state.name}');
+        debugPrint('❌ Upload failed with state: ${snapshot.state.name}');
         throw Exception('Upload failed: ${snapshot.state.name}');
       }
 
-      print('✅ Upload successful! Getting download URL...');
+      debugPrint('✅ Upload successful! Getting download URL...');
       final downloadURL = await storageRef.getDownloadURL().timeout(
         const Duration(seconds: 20),
         onTimeout: () {
-          print('❌ Download URL fetch timeout');
+          debugPrint('❌ Download URL fetch timeout');
           throw Exception('Failed to get download URL: timeout');
         },
       );
-      print('🔗 Download URL: $downloadURL');
+      debugPrint('🔗 Download URL: $downloadURL');
 
-      print('💾 Updating user profile with photo URL...');
+      debugPrint('💾 Updating user profile with photo URL...');
       // Update the photo URL on Firebase Auth
       await user.updatePhotoURL(downloadURL);
       // Reload the user to get the latest data from Firebase
       await user.reload();
-      print('✅ Profile updated successfully!');
+      debugPrint('✅ Profile updated successfully!');
       // Manually trigger the state change with the reloaded user object
       _onAuthStateChanged(_auth.currentUser);
-      print('🔄 Auth state refreshed');
+      debugPrint('🔄 Auth state refreshed');
     } on FirebaseException catch (e) {
-      print('❌ Firebase error: ${e.code} - ${e.message}');
+      debugPrint('❌ Firebase error: ${e.code} - ${e.message}');
       throw Exception('Firebase error: ${e.code} - ${e.message}');
     } catch (e) {
-      print('❌ Upload error: $e');
+      debugPrint('❌ Upload error: $e');
       throw Exception('Image upload failed: $e');
     }
   }
   Future<void> refreshUser() async {
      final user = _auth.currentUser;
      if (user != null) {
-       print('🔄 Manually refreshing user profile...');
+       debugPrint('🔄 Manually refreshing user profile...');
        // Re-run the logic to fetch firestore data
        await _onAuthStateChanged(user);
      }

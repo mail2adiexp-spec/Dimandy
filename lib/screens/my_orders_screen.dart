@@ -194,9 +194,9 @@ class _MyOrdersScreenState extends State<MyOrdersScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         OrderModel(
@@ -414,7 +414,7 @@ class OrderTrackingScreen extends StatelessWidget {
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 10,
               offset: const Offset(0, -5),
             ),
@@ -447,7 +447,7 @@ class OrderTrackingScreen extends StatelessWidget {
               color: Colors.white,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   blurRadius: 10,
                   offset: const Offset(0, -5),
                 ),
@@ -642,7 +642,7 @@ class OrderTrackingScreen extends StatelessWidget {
         leading: Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: currentColor.withOpacity(0.1),
+            color: currentColor.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Icon(Icons.local_shipping_outlined, color: currentColor),
@@ -732,9 +732,9 @@ class OrderTrackingScreen extends StatelessWidget {
           margin: const EdgeInsets.only(top: 24, left: 8), // Indent to align with line
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.blue.withOpacity(0.1),
+            color: Colors.blue.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.withOpacity(0.3)),
+            border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
           ),
           child: Row(
             children: [

@@ -112,7 +112,7 @@ class _SellerAnalyticsScreenState extends State<SellerAnalyticsScreen> {
                        final product = entries[index].value;
                        return ListTile(
                          leading: CircleAvatar(
-                           backgroundColor: Colors.teal.withOpacity(0.1),
+                           backgroundColor: Colors.teal.withValues(alpha: 0.1),
                            child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.teal)),
                          ),
                          title: Text(product['name'], style: const TextStyle(fontWeight: FontWeight.w500)),
@@ -278,7 +278,7 @@ class _SellerAnalyticsScreenState extends State<SellerAnalyticsScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.1), blurRadius: 10, offset: const Offset(0, 4))],
+        boxShadow: [BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

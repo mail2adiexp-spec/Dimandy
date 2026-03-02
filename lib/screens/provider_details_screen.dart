@@ -60,7 +60,7 @@ class ProviderDetailsScreen extends StatelessWidget {
                   gradient: LinearGradient(
                     colors: [
                       Theme.of(context).colorScheme.primary,
-                      Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                      Theme.of(context).colorScheme.primary.withValues(alpha: 0.7),
                     ],
                   ),
                 ),
@@ -168,7 +168,7 @@ class ProviderDetailsScreen extends StatelessWidget {
                                 width: 50,
                                 height: 50,
                                 decoration: BoxDecoration(
-                                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(10),
                                 ),
                                 child: Icon(
@@ -212,7 +212,7 @@ class ProviderDetailsScreen extends StatelessWidget {
                                   vertical: 6,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.green.withOpacity(0.1),
+                                  color: Colors.green.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: Text(
@@ -239,7 +239,7 @@ class ProviderDetailsScreen extends StatelessWidget {
           color: Theme.of(context).scaffoldBackgroundColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               offset: const Offset(0, -4),
               blurRadius: 10,
             ),

@@ -122,7 +122,7 @@ class _NotificationsDialogState extends State<NotificationsDialog> {
 
                       return ListTile(
                         leading: CircleAvatar(
-                          backgroundColor: color.withOpacity(0.1),
+                          backgroundColor: color.withValues(alpha: 0.1),
                           child: Icon(icon, color: color, size: 20),
                         ),
                         title: Text(
@@ -145,7 +145,7 @@ class _NotificationsDialogState extends State<NotificationsDialog> {
                               ),
                           ],
                         ),
-                        tileColor: isRead ? null : Colors.blue.withOpacity(0.05),
+                        tileColor: isRead ? null : Colors.blue.withValues(alpha: 0.05),
                         onTap: () async {
                           if (!isRead) {
                             await FirebaseFirestore.instance

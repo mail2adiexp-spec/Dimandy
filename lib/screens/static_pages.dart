@@ -92,7 +92,7 @@ class AboutScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.deepPurple.shade200, width: 2),
                   ),

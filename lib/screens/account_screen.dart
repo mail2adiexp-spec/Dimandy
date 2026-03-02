@@ -8,7 +8,6 @@ import 'edit_profile_screen.dart';
 import 'admin_panel_screen.dart';
 import 'seller_dashboard_screen.dart';
 import 'service_provider_dashboard_screen.dart';
-import 'service_provider_dashboard_screen.dart';
 import 'core_staff_dashboard_screen.dart';
 import 'store_manager_dashboard_screen.dart';
 import 'join_partner_screen.dart';
@@ -139,7 +138,7 @@ class _AccountScreenState extends State<AccountScreen> {
                               auth.currentUser!.email,
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Colors.white.withOpacity(0.9),
+                                color: Colors.white.withValues(alpha: 0.9),
                               ),
                             ),
                             if (auth.currentUser!.phoneNumber != null) ...[
@@ -148,7 +147,7 @@ class _AccountScreenState extends State<AccountScreen> {
                                 auth.currentUser!.phoneNumber!,
                                 style: TextStyle(
                                   fontSize: 14,
-                                  color: Colors.white.withOpacity(0.9),
+                                  color: Colors.white.withValues(alpha: 0.9),
                                 ),
                               ),
                             ],
@@ -504,7 +503,6 @@ class _AccountScreenState extends State<AccountScreen> {
                                 onTap: () => Navigator.pushNamed(context, JoinPartnerScreen.routeName),
                               ),
 
-                            const SizedBox(height: 20),
                             const SizedBox(height: 20),
                             // Sign Out Button
                             SizedBox(

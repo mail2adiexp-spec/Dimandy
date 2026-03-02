@@ -329,7 +329,7 @@ class _CategoryServiceProvidersScreenState extends State<CategoryServiceProvider
               child: ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
                 child: Container(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   child: imageUrl != null && imageUrl.isNotEmpty
                       ? Image.network(
                           imageUrl,

@@ -316,7 +316,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                           radius: 36,
                           backgroundColor: Theme.of(
                             context,
-                          ).colorScheme.primary.withOpacity(0.1),
+                          ).colorScheme.primary.withValues(alpha: 0.1),
                           backgroundImage: _profileImageBytes != null
                               ? MemoryImage(_profileImageBytes!)
                               : null,
@@ -627,7 +627,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
           color: Theme.of(context).scaffoldBackgroundColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               offset: const Offset(0, -4),
               blurRadius: 10,
             ),

@@ -165,7 +165,7 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ExpansionTile(
                         leading: CircleAvatar(
-                          backgroundColor: statusColor.withOpacity(0.1),
+                          backgroundColor: statusColor.withValues(alpha: 0.1),
                           child: Icon(Icons.shopping_bag, color: statusColor),
                         ),
                         title: Column(
@@ -194,9 +194,9 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                         trailing: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
-                            color: statusColor.withOpacity(0.1),
+                            color: statusColor.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: statusColor.withOpacity(0.3)),
+                            border: Border.all(color: statusColor.withValues(alpha: 0.3)),
                           ),
                           child: Text(
                             status.toUpperCase(),
@@ -265,9 +265,9 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                 Container(
                                   padding: const EdgeInsets.all(16),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue.withOpacity(0.05),
+                                    color: Colors.blue.withValues(alpha: 0.05),
                                     borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+                                    border: Border.all(color: Colors.blue.withValues(alpha: 0.2)),
                                   ),
                                   child: Column(
                                     children: [

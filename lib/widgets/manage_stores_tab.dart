@@ -150,7 +150,7 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
               color: store.isActive ? Colors.blue[50] : Colors.grey[100],
               borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
               border: Border(
-                  bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+                  bottom: BorderSide(color: Colors.grey.withValues(alpha: 0.2))),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

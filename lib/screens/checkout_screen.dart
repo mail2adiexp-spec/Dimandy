@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../providers/cart_provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/order_provider.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/order_model.dart';
 import '../utils/currency.dart';
@@ -189,9 +188,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                   Container(
                                     padding: const EdgeInsets.all(8),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withOpacity(0.1),
+                                      color: Colors.blue.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.blue.withOpacity(0.3)),
+                                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
                                     ),
                                     child: const Row(
                                       children: [
@@ -288,7 +287,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -424,7 +422,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           color: Theme.of(context).scaffoldBackgroundColor,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               offset: const Offset(0, -4),
               blurRadius: 10,
             ),
@@ -675,7 +673,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: Colors.green),
                   ),

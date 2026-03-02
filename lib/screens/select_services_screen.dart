@@ -89,7 +89,7 @@ class _SelectServicesScreenState extends State<SelectServicesScreen> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -300,10 +300,10 @@ class _SelectServicesScreenState extends State<SelectServicesScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
+                    color: Colors.green.withValues(alpha: 0.1),
                     border: Border(
                       top: BorderSide(
-                        color: Colors.green.withOpacity(0.3),
+                        color: Colors.green.withValues(alpha: 0.3),
                         width: 2,
                       ),
                     ),
@@ -354,7 +354,7 @@ class _SelectServicesScreenState extends State<SelectServicesScreen> {
               color: Theme.of(context).scaffoldBackgroundColor,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
+                  color: Colors.black.withValues(alpha: 0.05),
                   offset: const Offset(0, -4),
                   blurRadius: 10,
                 ),
@@ -370,9 +370,9 @@ class _SelectServicesScreenState extends State<SelectServicesScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: Colors.orange.withOpacity(0.1),
+                          color: Colors.orange.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           children: [

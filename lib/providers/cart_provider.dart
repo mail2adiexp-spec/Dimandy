@@ -123,8 +123,8 @@ class CartProvider extends ChangeNotifier {
           }),
         );
       notifyListeners();
-    } catch (_) {
-      // Ignore persistence errors
+    } catch (e) {
+      debugPrint('CartProvider: Error loading cart from storage: $e');
     }
   }
 
@@ -133,8 +133,8 @@ class CartProvider extends ChangeNotifier {
       final prefs = await SharedPreferences.getInstance();
       final list = _items.values.map((e) => e.toMap()).toList();
       await prefs.setString(_storageKey, jsonEncode(list));
-    } catch (_) {
-      // Ignore persistence errors
+    } catch (e) {
+      debugPrint('CartProvider: Error saving cart to storage: $e');
     }
   }
 

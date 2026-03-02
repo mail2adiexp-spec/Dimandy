@@ -759,7 +759,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                 if (!isListed)
                                   Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.5),
+                                      color: Colors.black.withValues(alpha: 0.5),
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Center(
@@ -932,7 +932,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.red.withOpacity(0.3)),
+                              border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                             ),
                             padding: const EdgeInsets.all(12),
                             child: Column(
@@ -996,7 +996,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.3),
+            color: Colors.blue.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -1039,7 +1039,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(20),
             ),
             child: const Row(
@@ -1125,10 +1125,10 @@ return Container(
   decoration: BoxDecoration(
     color: Colors.white,
     borderRadius: BorderRadius.circular(16),
-    border: Border.all(color: Colors.grey.withOpacity(0.3)),
+    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.1),
+        color: Colors.black.withValues(alpha: 0.1),
         blurRadius: 10,
         offset: const Offset(0, 4),
       ),
@@ -1217,7 +1217,7 @@ return GridView.builder(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: (action['color'] as Color).withOpacity(0.1),
+        color: (action['color'] as Color).withValues(alpha: 0.1),
       ),
       child: Icon(action['icon'] as IconData, color: action['color'] as Color, size: 28),
     );
@@ -1283,9 +1283,9 @@ return GridView.builder(
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.grey.withOpacity(0.3)),
+          border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2)),
+            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, offset: const Offset(0, 2)),
           ],
         ),
         child: Column(
@@ -1369,8 +1369,8 @@ return GridView.builder(
                   decoration: BoxDecoration(
                      color: Colors.white,
                      borderRadius: BorderRadius.circular(12),
-                     border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
+                     border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                     boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
                   ),
                   clipBehavior: Clip.antiAlias,
                   child: IntrinsicHeight(
@@ -1395,7 +1395,7 @@ return GridView.builder(
                                     ),
                                     Container(
                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                       decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                                       decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                                        child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
                                     ),
                                  ],
@@ -1532,15 +1532,15 @@ class _InventoryOverviewDialogState extends State<_InventoryOverviewDialog> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.05),
+        color: color.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), shape: BoxShape.circle),
             child: Icon(icon, color: color, size: 20),
           ),
           const SizedBox(width: 16),

@@ -251,11 +251,6 @@ class MyApp extends StatelessWidget {
                   builder: (_) => const ManageAddressesScreen(),
                 );
               }
-              if (settings.name == ManageAddressesScreen.routeName) {
-                return MaterialPageRoute(
-                  builder: (_) => const ManageAddressesScreen(),
-                );
-              }
               if (settings.name == CategoryServiceProvidersScreen.routeName) {
                 final category = settings.arguments as ServiceCategory;
                 return MaterialPageRoute(

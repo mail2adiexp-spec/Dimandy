@@ -127,7 +127,7 @@ class _CheckPartnerStatusScreenState extends State<CheckPartnerStatusScreen> {
               child: Icon(
                 Icons.person_search,
                 size: 100,
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
               ),
             ),
             const SizedBox(height: 16),
@@ -227,7 +227,7 @@ class _CheckPartnerStatusScreenState extends State<CheckPartnerStatusScreen> {
                       _getStatusColor(_requestData!['status'] ?? 'pending'),
                       _getStatusColor(
                         _requestData!['status'] ?? 'pending',
-                      ).withOpacity(0.7),
+                      ).withValues(alpha: 0.7),
                     ],
                   ),
                   borderRadius: BorderRadius.circular(16),
@@ -235,7 +235,7 @@ class _CheckPartnerStatusScreenState extends State<CheckPartnerStatusScreen> {
                     BoxShadow(
                       color: _getStatusColor(
                         _requestData!['status'] ?? 'pending',
-                      ).withOpacity(0.3),
+                      ).withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -263,7 +263,7 @@ class _CheckPartnerStatusScreenState extends State<CheckPartnerStatusScreen> {
                         margin: const EdgeInsets.only(top: 8),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.2),
+                          color: Colors.white.withValues(alpha: 0.2),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(

@@ -30,13 +30,13 @@ Future<void> showMoreBottomSheet(BuildContext context) {
         builder: (context, scrollController) {
           return Container(
             decoration: BoxDecoration(
-              color: theme.colorScheme.surface.withOpacity(0.05),
+              color: theme.colorScheme.surface.withValues(alpha: 0.05),
               borderRadius: const BorderRadius.vertical(
                 top: Radius.circular(20),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.2),
+                  color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 20,
                   offset: const Offset(0, -6),
                 ),
@@ -438,7 +438,7 @@ class _MoreSheetContent extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.7),
+              color: Colors.white.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.deepPurple.shade200, width: 2),
             ),

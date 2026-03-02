@@ -378,7 +378,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: statusColor),
                       ),
@@ -425,9 +425,9 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.green.withOpacity(0.1),
+                  color: Colors.green.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green.withOpacity(0.3)),
+                  border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -452,9 +452,9 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.withOpacity(0.3)),
+                  border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -476,9 +476,9 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.orange.withOpacity(0.1),
+                  color: Colors.orange.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
                 ),
                 child: Row(
                   children: [
@@ -576,7 +576,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     margin: const EdgeInsets.only(bottom: 12),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: color.withOpacity(0.1),
+                        backgroundColor: color.withValues(alpha: 0.1),
                         child: Icon(icon, color: color),
                       ),
                       title: Text(
@@ -1276,7 +1276,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           Container(
                              width: double.maxFinite,
                              padding: const EdgeInsets.all(12),
-                             decoration: BoxDecoration(color: Colors.green.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                             decoration: BoxDecoration(color: Colors.green.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                              child: Builder(
                                builder: (context) {
                                  final isVehicle = _isVehicleService(selectedCategory ?? '');
@@ -1736,9 +1736,9 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                           width: double.maxFinite,
                           padding: const EdgeInsets.all(12.0),
                           decoration: BoxDecoration(
-                            color: Colors.green.withOpacity(0.1),
+                            color: Colors.green.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.green.withOpacity(0.3))
+                            border: Border.all(color: Colors.green.withValues(alpha: 0.3))
                           ),
                           child: Builder(
                             builder: (context) {
@@ -2089,7 +2089,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                             return Card(
                               margin: const EdgeInsets.only(bottom: 12),
                               child: ExpansionTile(
-                                leading: CircleAvatar(backgroundColor: statusColor.withOpacity(0.1), child: Icon(Icons.work, color: statusColor, size: 20)),
+                                leading: CircleAvatar(backgroundColor: statusColor.withValues(alpha: 0.1), child: Icon(Icons.work, color: statusColor, size: 20)),
                                 title: Text(serviceName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2105,7 +2105,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                                     const SizedBox(height: 6),
                                     Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                      decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                      decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
                                       child: status != 'completed' && status != 'cancelled' 
                                           ? PopupMenuButton<String>(
                                               child: Row(
@@ -2308,7 +2308,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha: 0.3),
                 blurRadius: 10,
                 offset: const Offset(0, 5),
               ),
@@ -2357,7 +2357,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
               const SizedBox(height: 16),
               Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: SwitchListTile(
@@ -2471,10 +2471,10 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey.withOpacity(0.3)),
+        border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -2537,15 +2537,15 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                  decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8, offset: const Offset(0, 2))],
+                    border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 8, offset: const Offset(0, 2))],
                  ),
                  child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                        Container(
                           padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(shape: BoxShape.circle, color: (action['color'] as Color).withOpacity(0.1)),
+                          decoration: BoxDecoration(shape: BoxShape.circle, color: (action['color'] as Color).withValues(alpha: 0.1)),
                           child: Icon(action['icon'] as IconData, color: action['color'] as Color, size: 28),
                        ),
                        const SizedBox(height: 8),
@@ -2602,8 +2602,8 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                     decoration: BoxDecoration(
                        color: Colors.white,
                        borderRadius: BorderRadius.circular(12),
-                       border: Border.all(color: Colors.grey.withOpacity(0.3)),
-                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 4, offset: const Offset(0, 2))],
+                       border: Border.all(color: Colors.grey.withValues(alpha: 0.3)),
+                       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
                     ),
                     clipBehavior: Clip.antiAlias,
                     child: IntrinsicHeight(
@@ -2628,7 +2628,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                                       ),
                                       Container(
                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                         decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+                                         decoration: BoxDecoration(color: statusColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12)),
                                          child: Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold)),
                                       ),
                                    ],

@@ -360,7 +360,7 @@ class _DeliveryPartnerDashboardScreenState
       margin: const EdgeInsets.only(bottom: 16),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.blue.withOpacity(0.5), width: 1),
+        side: BorderSide(color: Colors.blue.withValues(alpha: 0.5), width: 1),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -844,7 +844,7 @@ class _DeliveryPartnerDashboardScreenState
                     vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.2),
+                    color: statusColor.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: statusColor),
                   ),
@@ -1775,7 +1775,7 @@ class _DeliveryPartnerDashboardScreenState
 
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: statusColor.withOpacity(0.1),
+                        backgroundColor: statusColor.withValues(alpha: 0.1),
                         child: Icon(Icons.local_shipping, color: statusColor, size: 20),
                       ),
                       title: Text('Order #${orderId.substring(0, 8)}...'),
@@ -1797,7 +1797,7 @@ class _DeliveryPartnerDashboardScreenState
                               vertical: 2,
                             ),
                             decoration: BoxDecoration(
-                              color: statusColor.withOpacity(0.1),
+                              color: statusColor.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
@@ -1842,7 +1842,7 @@ class _DeliveryPartnerDashboardScreenState
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
+                    color: color.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Icon(icon, color: color, size: 24),

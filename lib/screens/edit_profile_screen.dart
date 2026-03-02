@@ -126,18 +126,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             email: _emailController.text,
             password: _passwordController.text,
           );
-        } catch (e) {
-          final msg = e.toString();
-          // If it's the verification info message, show it and continue
-          if (msg.contains('Verification email sent')) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text(msg.replaceFirst('Exception: ', ''))),
-              );
-            }
-          } else {
-            rethrow;
+          // Show verification email sent message
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Verification email sent. Please check your new email and verify it.')),
+            );
           }
+        } catch (e) {
+          rethrow;
         }
       }
 

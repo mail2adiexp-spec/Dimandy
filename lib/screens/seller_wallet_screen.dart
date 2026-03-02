@@ -347,7 +347,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.blue.withOpacity(0.3),
+                      color: Colors.blue.withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -414,7 +414,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               decoration: BoxDecoration(
-                                color: Colors.green.withOpacity(0.1),
+                                color: Colors.green.withValues(alpha: 0.1),
                                 borderRadius: BorderRadius.circular(8),
                                 border: Border.all(color: Colors.green),
                               ),
@@ -572,7 +572,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
             
                                   return ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: statusColor.withOpacity(0.1),
+                                      backgroundColor: statusColor.withValues(alpha: 0.1),
                                       child: Icon(
                                         payout.status == PayoutStatus.approved ? Icons.check : Icons.access_time,
                                         color: statusColor,
@@ -583,7 +583,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                                     trailing: Container(
                                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                       decoration: BoxDecoration(
-                                        color: statusColor.withOpacity(0.1),
+                                        color: statusColor.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Text(
@@ -624,7 +624,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
 
                                   return ListTile(
                                     leading: CircleAvatar(
-                                      backgroundColor: color.withOpacity(0.1),
+                                      backgroundColor: color.withValues(alpha: 0.1),
                                       child: Icon(
                                           isCredit ? Icons.arrow_downward : (isRefund ? Icons.assignment_return : Icons.arrow_upward), // arrow_down usually means incoming money
                                           color: color

@@ -423,11 +423,11 @@ class OrderDetailsDialog extends StatelessWidget {
 
   Widget _buildOrderSummary() {
     final totalAmount = (orderData['totalAmount'] as num?)?.toDouble() ?? 0.0;
-    final orderDateStr = orderData['orderDate'] as String?;
+    final rawOrderDate = orderData['orderDate'];
     DateTime? orderDate;
     try {
-      if (orderDateStr != null) {
-        orderDate = DateTime.tryParse(orderDateStr);
+      if (rawOrderDate != null) {
+        orderDate = _parseTimestamp(rawOrderDate);
       }
     } catch (_) {}
     

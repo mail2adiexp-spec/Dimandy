@@ -392,7 +392,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
+                          color: Colors.black.withValues(alpha: 0.05),
                           blurRadius: 8,
                           offset: const Offset(0, 2),
                         ),
@@ -406,7 +406,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         hintStyle: TextStyle(
                           color: Theme.of(
                             context,
-                          ).colorScheme.onSurfaceVariant.withOpacity(0.6),
+                          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
                           fontSize: 13,
                         ),
                         prefixIcon: Icon(
@@ -743,7 +743,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withOpacity(0.2),
+                                      color: Colors.black.withValues(alpha: 0.2),
                                       blurRadius: 8,
                                       offset: const Offset(0, 4),
                                     ),
@@ -754,7 +754,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     Container(
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withOpacity(0.2),
+                                        color: Colors.white.withValues(alpha: 0.2),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: const Icon(
@@ -957,7 +957,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                     spreadRadius: 1,
