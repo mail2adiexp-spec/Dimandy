@@ -304,32 +304,81 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // Name Field
               TextFormField(
                 controller: _nameController,
-                readOnly: true, // READ-ONLY
                 decoration: const InputDecoration(
                   labelText: 'Name',
                   prefixIcon: Icon(Icons.person_outline),
                   border: OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.white70, // Visual cue
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Enter your name' : null,
               ),
               const SizedBox(height: 16),
               
-              // State Dropdown (Editable)
-              DropdownButtonFormField<String>(
-                value: _selectedState,
+              // State Selection Field (Using Bottom Sheet for better scrolling)
+              TextFormField(
+                key: ValueKey(_selectedState),
+                initialValue: _selectedState,
+                readOnly: true,
                 decoration: const InputDecoration(
                   labelText: 'State',
                   prefixIcon: Icon(Icons.location_city),
+                  suffixIcon: Icon(Icons.arrow_drop_down),
                   border: OutlineInputBorder(),
+                  hintText: 'Select your state',
                 ),
-                items: _availableStates.map((state) {
-                  return DropdownMenuItem(value: state, child: Text(state));
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedState = val),
-                validator: (v) => v == null ? 'Please select your state' : null,
+                validator: (v) => (v == null || v.isEmpty) ? 'Please select your state' : null,
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+                    ),
+                    builder: (BuildContext context) {
+                      return DraggableScrollableSheet(
+                        expand: false,
+                        initialChildSize: 0.6,
+                        minChildSize: 0.3,
+                        maxChildSize: 0.9,
+                        builder: (context, scrollController) {
+                          return Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                child: Text(
+                                  'Select State',
+                                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              const Divider(height: 1),
+                              Expanded(
+                                child: ListView.builder(
+                                  controller: scrollController,
+                                  itemCount: _availableStates.length,
+                                  itemBuilder: (context, index) {
+                                    final state = _availableStates[index];
+                                    return ListTile(
+                                      title: Text(state),
+                                      trailing: _selectedState == state
+                                          ? Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary)
+                                          : null,
+                                      onTap: () {
+                                        setState(() => _selectedState = state);
+                                        Navigator.pop(context);
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
               ),
               const SizedBox(height: 16),
 
@@ -357,15 +406,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // Email Field
               TextFormField(
                 controller: _emailController,
-                readOnly: true, // READ-ONLY
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Email',
-                  prefixIcon: const Icon(Icons.email_outlined),
-                  border: const OutlineInputBorder(),
-                  filled: true,
-                  fillColor: Colors.white70,
-                  // Remove helper text and suffix icon since it's read-only and password change logic implies editing
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
+                keyboardType: TextInputType.emailAddress,
+                onChanged: (val) {
+                  setState(() {
+                    _showPasswordField = val.trim() != context.read<AuthProvider>().currentUser?.email && val.trim().isNotEmpty;
+                  });
+                },
               ),
 
               // Password Field (shown when email is changed)

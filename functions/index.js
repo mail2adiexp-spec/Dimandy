@@ -460,12 +460,22 @@ exports.createStateAdminAccount = functions.https.onCall(async (data, context) =
     }
   }
 
-  // 2. Validate input
-  const { email, password, name, phone, assignedState } = data;
-  if (!email || !password || !name || !assignedState) {
+    // 2. Validate input
+  const { email, password, name, phone, assignedState, role } = data;
+  if (!email || !password || !name) {
     throw new functions.https.HttpsError(
       "invalid-argument",
-      "Email, password, name, and assigned state are required.",
+      "Email, password, and name are required.",
+    );
+  }
+
+  const newRole = role || "state_admin";
+
+  // If role is state_admin, assignedState is required
+  if (newRole === "state_admin" && !assignedState) {
+     throw new functions.https.HttpsError(
+      "invalid-argument",
+      "Assigned state is required for State Admins.",
     );
   }
 
@@ -479,6 +489,11 @@ exports.createStateAdminAccount = functions.https.onCall(async (data, context) =
       disabled: false,
     });
 
+    // Set custom claims if the role is admin-level
+    if (newRole === 'administrator' || newRole === 'super_admin' || newRole === 'state_admin') {
+      await admin.auth().setCustomUserClaims(userRecord.uid, { admin: true });
+    }
+
     // 4. Create new user document in Firestore
     const newUserRef = admin.firestore().collection("users").doc(userRecord.uid);
     const userData = {
@@ -486,14 +501,17 @@ exports.createStateAdminAccount = functions.https.onCall(async (data, context) =
       name: name,
       email: email,
       phone: phone || "",
-      role: "state_admin",
-      assignedState: assignedState,
+      role: newRole,
       permissions: {
         can_view_dashboard: true,
       },
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
+
+    if (newRole === 'state_admin') {
+      userData.assignedState = assignedState;
+    }
 
     await newUserRef.set(userData);
 
@@ -829,3 +847,90 @@ exports.onOrderUpdate = functions.firestore
       console.error(`Error in onOrderUpdate for ${orderId}:`, error);
     }
   });
+
+/**
+ * Check if a user with the given phone number already exists in Firestore.
+ * If yes, return a custom token for that user so they can log in.
+ */
+exports.checkAndReturnExistingAccount = functions.https.onCall(async (data, context) => {
+  // 1. Must be authenticated (initially authenticated by Phone Auth)
+  if (!context.auth) {
+    throw new functions.https.HttpsError(
+      "unauthenticated",
+      "Must be authenticated to check accounts."
+    );
+  }
+
+  // 2. Fetch the caller's Firebase Auth record to verify their phone number
+  const callerUid = context.auth.uid;
+  let callerRecord;
+  try {
+    callerRecord = await admin.auth().getUser(callerUid);
+  } catch (e) {
+    console.error("Error fetching caller record:", e);
+    throw new functions.https.HttpsError("internal", "Failed to verify caller.");
+  }
+
+  const verifiedPhone = callerRecord.phoneNumber;
+  if (!verifiedPhone) {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "Caller does not have a verified phone number."
+    );
+  }
+
+  try {
+    // 3. Search Firestore for any user with this phone number
+    // Note: ensure we check both 'phoneNumber' and 'phone' fields if you use both
+    let userQuery = await admin.firestore()
+      .collection("users")
+      .where("phoneNumber", "==", verifiedPhone)
+      .limit(1)
+      .get();
+
+    if (userQuery.empty) {
+        userQuery = await admin.firestore()
+            .collection("users")
+            .where("phone", "==", verifiedPhone)
+            .limit(1)
+            .get();
+    }
+
+    if (userQuery.empty) {
+      // No existing account found.
+      // Return false so the client knows this is a genuinely new user
+      return { 
+        exists: false, 
+        message: "No existing account found for this phone number." 
+      };
+    }
+
+    // 4. Existing account found!
+    const existingUserDoc = userQuery.docs[0];
+    const existingUid = existingUserDoc.id;
+
+    // Optional but recommended: Check if the original account is disabled
+    const existingRecord = await admin.auth().getUser(existingUid);
+    if (existingRecord.disabled) {
+      throw new functions.https.HttpsError("permission-denied", "Account disabled.");
+    }
+
+    // 5. Generate a Custom Token for the original account
+    const customToken = await admin.auth().createCustomToken(existingUid);
+
+    // Set a flag to optionally clean up the temporary phone auth account later 
+    return {
+      exists: true,
+      customToken: customToken,
+      originalUid: existingUid,
+      temporaryUidToClean: callerUid 
+    };
+
+  } catch (error) {
+    console.error("Error in checkAndReturnExistingAccount:", error);
+    throw new functions.https.HttpsError(
+      "internal",
+      "Failed to check existing accounts: " + error.message
+    );
+  }
+});

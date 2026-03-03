@@ -84,13 +84,19 @@ class _SignInFormState extends State<_SignInForm> {
   final _formKey = GlobalKey<FormState>();
   final _emailCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
   bool _loading = false;
   bool _isPasswordVisible = false;
+  bool _isOtpLogin = true; // Default to OTP login
+  bool _isOtpSent = false;
 
   @override
   void dispose() {
     _emailCtrl.dispose();
     _passCtrl.dispose();
+    _phoneCtrl.dispose();
+    _otpCtrl.dispose();
     super.dispose();
   }
 
@@ -98,11 +104,26 @@ class _SignInFormState extends State<_SignInForm> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      await context.read<AuthProvider>().signIn(
-        email: _emailCtrl.text,
-        password: _passCtrl.text,
-      );
-      widget.onSuccess();
+      if (_isOtpLogin) {
+        if (!_isOtpSent) {
+          await context.read<AuthProvider>().requestOTP(_phoneCtrl.text);
+          setState(() => _isOtpSent = true);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('OTP sent to your phone!')),
+            );
+          }
+        } else {
+          await context.read<AuthProvider>().verifyOTP(_otpCtrl.text);
+          widget.onSuccess();
+        }
+      } else {
+        await context.read<AuthProvider>().signIn(
+          email: _emailCtrl.text,
+          password: _passCtrl.text,
+        );
+        widget.onSuccess();
+      }
     } catch (e) {
       if (mounted) {
         ErrorDisplay.showError(
@@ -124,35 +145,110 @@ class _SignInFormState extends State<_SignInForm> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              TextFormField(
-                controller: _emailCtrl,
-                decoration: const InputDecoration(labelText: 'Email'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (v) => (v == null || v.isEmpty || !v.contains('@'))
-                    ? 'Enter a valid email'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _passCtrl,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () {
+              // Toggle Login Mode
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  ChoiceChip(
+                    label: const Text('Login with OTP'),
+                    selected: _isOtpLogin,
+                    onSelected: (val) {
                       setState(() {
-                        _isPasswordVisible = !_isPasswordVisible;
+                         _isOtpLogin = true;
+                         _isOtpSent = false;
+                         _otpCtrl.clear();
                       });
                     },
                   ),
-                ),
-                obscureText: !_isPasswordVisible,
-                validator: (v) => (v == null || v.isEmpty)
-                    ? 'Please enter your password'
-                    : null,
+                  const SizedBox(width: 12),
+                  ChoiceChip(
+                    label: const Text('Email & Pass'),
+                    selected: !_isOtpLogin,
+                    onSelected: (val) {
+                      setState(() {
+                         _isOtpLogin = false;
+                      });
+                    },
+                  ),
+                ],
               ),
+              const SizedBox(height: 20),
+              
+              if (_isOtpLogin) ...[
+                TextFormField(
+                  controller: _phoneCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Phone Number',
+                    prefixText: '+91 ',
+                    prefixIcon: Icon(Icons.phone),
+                  ),
+                  keyboardType: TextInputType.phone,
+                  enabled: !_isOtpSent,
+                  maxLength: 10,
+                  validator: (v) {
+                    if (v == null || v.isEmpty) return 'Enter phone number';
+                    if (!RegExp(r'^[0-9]{10}$').hasMatch(v)) return 'Enter valid 10-digit number';
+                    return null;
+                  },
+                ),
+                if (_isOtpSent) ...[
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _otpCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'OTP Code',
+                      prefixIcon: Icon(Icons.message),
+                    ),
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    validator: (v) => (v == null || v.length < 6) ? 'Enter 6-digit OTP' : null,
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () {
+                        setState(() { _isOtpSent = false; _otpCtrl.clear(); });
+                      },
+                      child: const Text('Change Phone Number'),
+                    ),
+                  ),
+                ],
+              ] else ...[
+                TextFormField(
+                  controller: _emailCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email_outlined),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                  validator: (v) => (v == null || v.isEmpty || !v.contains('@'))
+                      ? 'Enter a valid email'
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _passCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _isPasswordVisible = !_isPasswordVisible;
+                        });
+                      },
+                    ),
+                  ),
+                  obscureText: !_isPasswordVisible,
+                  validator: (v) => (v == null || v.isEmpty)
+                      ? 'Please enter your password'
+                      : null,
+                ),
+              ],
+              
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -165,7 +261,9 @@ class _SignInFormState extends State<_SignInForm> {
                               width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : const Text('Sign In'),
+                          : Text(_isOtpLogin 
+                              ? (_isOtpSent ? 'Verify OTP' : 'Send OTP') 
+                              : 'Sign In'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -204,34 +302,19 @@ class _SignInFormState extends State<_SignInForm> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () => _showForgotPasswordDialog(context),
-                  child: const Text(
-                    'Forgot Password?',
-                    style: TextStyle(fontSize: 14),
+              if (!_isOtpLogin) ...[
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () => _showForgotPasswordDialog(context),
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(fontSize: 14),
+                    ),
                   ),
                 ),
-              ),
-              // const Divider(height: 32),
-              // SizedBox(
-              //   width: double.infinity,
-              //   child: OutlinedButton.icon(
-              //     onPressed: () {
-              //       Navigator.of(context).pushNamed(
-              //         JoinPartnerScreen.routeName,
-              //       );
-              //     },
-              //     icon: const Icon(Icons.store),
-              //     label: const Text('Join as Partner'),
-              //     style: OutlinedButton.styleFrom(
-              //       padding: const EdgeInsets.symmetric(vertical: 12),
-              //       side: BorderSide(color: Theme.of(context).primaryColor),
-              //     ),
-              //   ),
-              // ),
+              ],
             ],
           ),
         ),

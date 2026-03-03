@@ -56,6 +56,27 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
     'West Bengal',
   ];
 
+  // Admin Roles
+  final List<String> _adminRoles = [
+    'Super Admin',
+    'Global Admin (Administrator)',
+    'State Admin',
+    'Core Staff',
+  ];
+
+  String _selectedRoleFilter = 'All Admins';
+
+  // Helper to map DB roles to Display Roles
+  String _getDisplayRole(String dbRole) {
+    switch (dbRole) {
+      case 'super_admin': return 'Super Admin';
+      case 'administrator': return 'Global Admin (Administrator)';
+      case 'state_admin': return 'State Admin';
+      case 'core_staff': return 'Core Staff';
+      default: return dbRole;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -64,7 +85,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
         heroTag: 'manage_admins_fab',
         onPressed: () => _showPromoteDialog(),
         icon: const Icon(Icons.person_add),
-        label: const Text('Add State Admin'),
+        label: const Text('Add Administrator'),
         backgroundColor: Colors.deepPurple,
       ),
       body: Padding(
@@ -73,28 +94,53 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Icon(Icons.admin_panel_settings, size: 32, color: Colors.deepPurple),
-                const SizedBox(width: 12),
-                Text(
-                  'Manage State Admins',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey[900],
-                      ),
+                Row(
+                  children: [
+                    const Icon(Icons.admin_panel_settings, size: 32, color: Colors.deepPurple),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Manage Administrators',
+                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blueGrey[900],
+                          ),
+                    ),
+                  ],
+                ),
+                // Filter Dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedRoleFilter,
+                      items: ['All Admins', ..._adminRoles].map((role) {
+                        return DropdownMenuItem(value: role, child: Text(role));
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null) setState(() => _selectedRoleFilter = val);
+                      },
+                    ),
+                  ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
             Text(
-              'Assign admins to specific states. They will only see data related to their assigned state.',
+              'Assign roles like Super Admin, Global Admin, State Admin, or Core Staff to manage app access.',
               style: TextStyle(color: Colors.grey[600]),
             ),
             const SizedBox(height: 24),
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _usersCollection
-                    .where('role', isEqualTo: 'state_admin')
+                    .where('role', whereIn: ['state_admin', 'super_admin', 'administrator', 'core_staff'])
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
@@ -105,7 +151,15 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                     return const Center(child: CircularProgressIndicator());
                   }
 
-                  final docs = snapshot.data?.docs ?? [];
+                  var docs = snapshot.data?.docs ?? [];
+
+                  // Apply local filter
+                  if (_selectedRoleFilter != 'All Admins') {
+                    docs = docs.where((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      return _getDisplayRole(data['role'] ?? '') == _selectedRoleFilter;
+                    }).toList();
+                  }
 
                   if (docs.isEmpty) {
                     return Center(
@@ -116,7 +170,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                               size: 64, color: Colors.grey[400]),
                           const SizedBox(height: 16),
                           Text(
-                            'No State Admins assigned yet.',
+                            'No Admins found for the selected filter.',
                             style: TextStyle(
                               fontSize: 18,
                               color: Colors.grey[600],
@@ -125,7 +179,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                           const SizedBox(height: 8),
                           OutlinedButton(
                             onPressed: () => _showPromoteDialog(),
-                            child: const Text('Assign Your First State Admin'),
+                            child: const Text('Assign a New Admin'),
                           ),
                         ],
                       ),
@@ -254,6 +308,8 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
     final passwordController = TextEditingController();
     
     String? selectedState = currentData?['assignedState'];
+    String? currentDbRole = currentData?['role'];
+    String selectedRole = currentDbRole != null ? _getDisplayRole(currentDbRole) : 'State Admin';
     
     // If editing, email should be read-only
     final isEditing = existingId != null;
@@ -268,8 +324,16 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
     String? verifiedUserName;
     String? verifiedUserPhone;
     
-    // Debounce for checking user
-    // Timer? _debounce;
+    // Helper to map UI Role to DB Role
+    String getDbRole(String uiRole) {
+      switch (uiRole) {
+        case 'Super Admin': return 'super_admin';
+        case 'Global Admin (Administrator)': return 'administrator';
+        case 'State Admin': return 'state_admin';
+        case 'Core Staff': return 'core_staff';
+        default: return 'state_admin';
+      }
+    }
 
     showDialog(
       context: context,
@@ -298,7 +362,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
           }
 
           return AlertDialog(
-            title: Text(isEditing ? 'Edit State Admin' : 'Add State Admin'),
+            title: Text(isEditing ? 'Edit Administrator' : 'Add Administrator'),
             content: SizedBox(
               width: 450,
               child: Form(
@@ -430,19 +494,34 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                          ),
                          const SizedBox(height: 16),
                        ],
-                  
-                       // 4. State Dropdown
+
+                       // 4. Role Selection
                        DropdownButtonFormField<String>(
-                         value: selectedState,
+                         value: selectedRole,
                          decoration: const InputDecoration(
-                           labelText: 'Assign State',
+                           labelText: 'Select Admin Role',
                            border: OutlineInputBorder(),
-                           prefixIcon: Icon(Icons.map),
+                           prefixIcon: Icon(Icons.badge),
                          ),
-                         items: _indianStates.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-                         onChanged: (val) => setState(() => selectedState = val),
-                         validator: (value) => value == null ? 'Select a state' : null,
+                         items: _adminRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                         onChanged: (val) => setState(() => selectedRole = val!),
                        ),
+                  
+                       const SizedBox(height: 16),
+                       
+                       // 5. State Dropdown (Only if State Admin)
+                       if (selectedRole == 'State Admin')
+                         DropdownButtonFormField<String>(
+                           value: selectedState,
+                           decoration: const InputDecoration(
+                             labelText: 'Assign State',
+                             border: OutlineInputBorder(),
+                             prefixIcon: Icon(Icons.map),
+                           ),
+                           items: _indianStates.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                           onChanged: (val) => setState(() => selectedState = val),
+                           validator: (value) => value == null ? 'Select a state' : null,
+                         ),
                        
                        if (errorMsg != null) ...[
                          const SizedBox(height: 16),
@@ -460,6 +539,8 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                   if (formKey.currentState?.validate() ?? false) {
                     setState(() { isLoading = true; errorMsg = null; });
                     
+                    final dbRole = getDbRole(selectedRole);
+
                     try {
                       // Scenario A: Create New User via Cloud Function
                       if (createNewUser) {
@@ -472,7 +553,8 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                              'phone': phoneController.text.trim().startsWith('+') 
                                  ? phoneController.text.trim() 
                                  : '+91${phoneController.text.trim()}',
-                             'assignedState': selectedState,
+                             'assignedState': selectedRole == 'State Admin' ? selectedState : null,
+                             'role': dbRole, // Pass the chosen role
                            });
                         } catch (e) {
                           // Handle Cloud Function errors
@@ -500,16 +582,23 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                           }
                           
                           // Update User Doc
-                          await _usersCollection.doc(uid).update({
-                             'role': 'state_admin',
-                             'assignedState': selectedState,
-                          });
+                          Map<String, dynamic> updateData = {
+                            'role': dbRole,
+                          };
+
+                          if (selectedRole == 'State Admin') {
+                            updateData['assignedState'] = selectedState;
+                          } else {
+                            updateData['assignedState'] = FieldValue.delete();
+                          }
+
+                          await _usersCollection.doc(uid).update(updateData);
                       }
                       
                       if (mounted) Navigator.pop(context);
                       
                       ScaffoldMessenger.of(context).showSnackBar(
-                         SnackBar(content: Text('Successfully saved state admin for $selectedState')),
+                         SnackBar(content: Text('Successfully saved $selectedRole')),
                       );
                       
                     } catch (e) {
