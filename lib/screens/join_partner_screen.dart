@@ -43,6 +43,8 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
   final _vehicleNumberController = TextEditingController();
 
   Uint8List? _profileImageBytes;
+  Uint8List? _panImageBytes;
+  Uint8List? _aadhaarImageBytes;
   bool _isSubmitting = false;
 
   final List<String> _vehicleTypes = [
@@ -71,6 +73,30 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to pick image: $e')));
+    }
+  }
+
+  Future<void> _pickDocumentImage(String type) async {
+    try {
+      final picker = ImagePicker();
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked != null) {
+        final bytes = await picked.readAsBytes();
+        if (!mounted) return;
+        setState(() {
+          if (type == 'PAN') _panImageBytes = bytes;
+          if (type == 'Aadhaar') _aadhaarImageBytes = bytes;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to pick document: $e')));
     }
   }
 
@@ -127,6 +153,26 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         profilePicUrl = await uploadTask.ref.getDownloadURL();
       }
 
+      String? panImageUrl;
+      if (_panImageBytes != null) {
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('partner_documents')
+            .child('pan_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        final uploadTask = await storageRef.putData(_panImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+        panImageUrl = await uploadTask.ref.getDownloadURL();
+      }
+
+      String? aadhaarImageUrl;
+      if (_aadhaarImageBytes != null) {
+        final storageRef = FirebaseStorage.instance
+            .ref()
+            .child('partner_documents')
+            .child('aadhaar_${DateTime.now().millisecondsSinceEpoch}.jpg');
+        final uploadTask = await storageRef.putData(_aadhaarImageBytes!, SettableMetadata(contentType: 'image/jpeg'));
+        aadhaarImageUrl = await uploadTask.ref.getDownloadURL();
+      }
+
       // Create partner request document
       final docRef = FirebaseFirestore.instance
           .collection('partner_requests')
@@ -145,7 +191,9 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         'address': _districtController.text.trim(), // Saving as address too for clarity
         'pincode': _pincodeController.text.trim(),
         'panNumber': _panController.text.trim().toUpperCase(),
+        'panImageUrl': panImageUrl,
         'aadhaarNumber': _aadhaarController.text.trim(),
+        'aadhaarImageUrl': aadhaarImageUrl,
         'profilePicUrl': profilePicUrl,
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
@@ -567,6 +615,8 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                         return null;
                       },
                     ),
+                    const SizedBox(height: 8),
+                    _buildDocPicker('PAN Card', _panImageBytes, () => _pickDocumentImage('PAN')),
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _aadhaarController,
@@ -586,6 +636,8 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                         return null;
                       },
                     ),
+                    const SizedBox(height: 8),
+                    _buildDocPicker('Aadhaar Card', _aadhaarImageBytes, () => _pickDocumentImage('Aadhaar')),
 
                     if (isServiceProvider) ...[
                       const SizedBox(height: 12),
@@ -655,6 +707,47 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildDocPicker(String label, Uint8List? imageBytes, VoidCallback onPick) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.grey.shade300),
+        borderRadius: BorderRadius.circular(8),
+        color: Colors.grey.shade50,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                Text(
+                  imageBytes == null ? 'No document selected' : 'Document Selected ✅',
+                  style: TextStyle(fontSize: 12, color: imageBytes == null ? Colors.red : Colors.green),
+                ),
+              ],
+            ),
+          ),
+          if (imageBytes != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: Image.memory(imageBytes, width: 60, height: 60, fit: BoxFit.cover),
+              ),
+            ),
+          ElevatedButton(
+            onPressed: onPick,
+            style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 12)),
+            child: Text(imageBytes == null ? 'Upload' : 'Change'),
+          ),
+        ],
       ),
     );
   }

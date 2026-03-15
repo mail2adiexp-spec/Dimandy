@@ -191,7 +191,9 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                     margin: const EdgeInsets.only(bottom: 12),
                     child: InkWell(
                       onTap: () {
-                        if (widget.onViewDashboard != null && !isRequest) {
+                        if (isRequest) {
+                          _showDetailsDialog(context, data);
+                        } else if (widget.onViewDashboard != null) {
                           widget.onViewDashboard!(id, data);
                         }
                       },
@@ -343,6 +345,170 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
           ),
         ),
       ],
+    );
+  }
+
+  void _showDetailsDialog(BuildContext context, Map<String, dynamic> data) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(data['name'] ?? 'Request Details'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (data['profilePicUrl'] != null)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: CircleAvatar(
+                        radius: 50,
+                        backgroundImage: NetworkImage(data['profilePicUrl']),
+                      ),
+                    ),
+                  ),
+                _buildDetailRow('Role', data['role']),
+                _buildDetailRow('Gender', data['gender']),
+                _buildDetailRow('Email', data['email']),
+                _buildDetailRow('Phone', data['phone']),
+                const Divider(),
+                _buildDetailRow('Business Name', data['businessName']),
+                if (data['role'] == 'Service Provider') ...[
+                  _buildDetailRow('Category', data['serviceCategoryName']),
+                  _buildDetailRow('Min Charge', '₹${data['minCharge']}'),
+                ],
+                const Divider(),
+                _buildDetailRow('PAN Number', data['panNumber']),
+                if (data['panImageUrl'] != null)
+                  _buildDocPreview(context, 'PAN Card', data['panImageUrl']),
+                _buildDetailRow('Aadhaar', data['aadhaarNumber']),
+                if (data['aadhaarImageUrl'] != null)
+                  _buildDocPreview(context, 'Aadhaar Card', data['aadhaarImageUrl']),
+                const Divider(),
+                _buildDetailRow('State', data['state']),
+                _buildDetailRow('District', data['district']),
+                _buildDetailRow('Address', data['address']),
+                _buildDetailRow('Pincode', data['pincode']),
+                if (data['role'] == 'Delivery Partner') ...[
+                  const Divider(),
+                  _buildDetailRow('Vehicle Type', data['vehicleType']),
+                  _buildDetailRow('Vehicle Number', data['vehicleNumber']),
+                ],
+                const SizedBox(height: 16),
+                if (data['status'] != null)
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        'Status: ${data['status'].toString().toUpperCase()}',
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocPreview(BuildContext context, String label, String imageUrl) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$label Image:', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 4),
+          GestureDetector(
+            onTap: () => _showFullScreenImage(context, imageUrl, label),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                imageUrl,
+                height: 150,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  height: 150,
+                  color: Colors.grey.shade200,
+                  child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text('Tap to view full size', style: TextStyle(fontSize: 10, fontStyle: FontStyle.italic, color: Colors.blue)),
+        ],
+      ),
+    );
+  }
+
+  void _showFullScreenImage(BuildContext context, String imageUrl, String title) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        insetPadding: const EdgeInsets.all(10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppBar(
+              title: Text(title),
+              leading: IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(ctx)),
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+            ),
+            Expanded(
+              child: InteractiveViewer(
+                child: Image.network(
+                  imageUrl,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(child: CircularProgressIndicator());
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDetailRow(String label, dynamic value) {
+    if (value == null || value.toString().isEmpty) return const SizedBox();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
+            ),
+          ),
+          Expanded(
+            child: Text(value.toString()),
+          ),
+        ],
+      ),
     );
   }
 }

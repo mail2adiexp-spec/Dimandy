@@ -20,7 +20,7 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace = "in.dimandy.app"
     compileSdk = 36  // Required for latest plugins (mobile_scanner, image_picker, etc.)
-    ndkVersion = flutter.ndkVersion
+    ndkVersion = "27.0.12077973"  // Use locally available NDK r27 for 16 KB page size support
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

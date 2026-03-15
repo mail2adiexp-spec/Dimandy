@@ -103,7 +103,6 @@ class CategoryProvider with ChangeNotifier {
       {'name': 'Gifts', 'image': 'assets/images/gifts.png', 'id': 'gifts'},
       {'name': 'Rice & Ata', 'image': 'assets/images/rice.png', 'id': 'rice_ata'},
       {'name': 'Cooking Oils', 'image': 'assets/images/oil.png', 'id': 'cooking_oils'},
-      {'name': 'Fast Food', 'image': 'assets/images/fast_food.png', 'id': 'fast_food'},
       {'name': 'Cold Drinks', 'image': 'assets/images/drinks.png', 'id': 'cold_drinks'},
     ];
 

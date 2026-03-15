@@ -96,19 +96,26 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.admin_panel_settings, size: 32, color: Colors.deepPurple),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Manage Administrators',
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blueGrey[900],
-                          ),
-                    ),
-                  ],
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.admin_panel_settings, size: 32, color: Colors.deepPurple),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          'Manage Administrators',
+                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                                fontWeight: FontWeight.bold,
+                                color: Colors.blueGrey[900],
+                              ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(width: 16),
                 // Filter Dropdown
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),

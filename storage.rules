@@ -122,6 +122,15 @@ service firebase.storage {
       allow delete: if isAdmin();
     }
     
+    // Partner documents (PAN, Aadhaar for partner requests - before approval)
+    match /partner_documents/{fileName} {
+      allow read: if true;
+      allow write: if true && 
+                     isValidImageSize() && 
+                     isValidImageType();
+      allow delete: if isAdmin();
+    }
+    
     // Service category images - only admins
     match /service_category_images/{imageId} {
       allow read: if true;

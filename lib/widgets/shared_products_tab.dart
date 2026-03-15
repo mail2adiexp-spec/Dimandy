@@ -1035,19 +1035,21 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                        validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                     ),
                     const SizedBox(height: 16),
-                    MediaQuery.of(context).size.width < 600
-                    ? DropdownButtonFormField<String>(
-                        initialValue: selectedCategory,
-                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                        items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                        onChanged: (v) => setState(() => selectedCategory = v!),
-                      )
-                    : DropdownButtonFormField<String>(
-                        initialValue: selectedCategory,
-                        decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                        items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
-                        onChanged: (v) => setState(() => selectedCategory = v!),
-                      ),
+                     MediaQuery.of(context).size.width < 600
+                     ? DropdownButtonFormField<String>(
+                         initialValue: selectedCategory,
+                         isExpanded: true,
+                         decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                         items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
+                         onChanged: (v) => setState(() => selectedCategory = v!),
+                       )
+                     : DropdownButtonFormField<String>(
+                         initialValue: selectedCategory,
+                         isExpanded: true,
+                         decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                         items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
+                         onChanged: (v) => setState(() => selectedCategory = v!),
+                       ),
                     const SizedBox(height: 16),
                     SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
                     // Auto-calculated Hot Deal based on MRP > Price
@@ -1433,11 +1435,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       MediaQuery.of(context).size.width < 600
                       ? DropdownButtonFormField(
                           initialValue: selectedCategory,
+                          isExpanded: true,
                           items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(),
                           onChanged: (v) => setState(() => selectedCategory = v!),
                           decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())
                         )
-                      : DropdownButtonFormField(initialValue: selectedCategory, items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!), decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())),
+                      : DropdownButtonFormField(
+                          initialValue: selectedCategory, 
+                          isExpanded: true,
+                          items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), 
+                          onChanged: (v) => setState(() => selectedCategory = v!), 
+                          decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder())
+                        ),
                       const SizedBox(height: 16),
 
                       const SizedBox(height: 16),
@@ -1445,6 +1454,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       if (!auth.isStateAdmin) ...[
                         DropdownButtonFormField<String>(
                           initialValue: selectedState,
+                          isExpanded: true,
                           decoration: const InputDecoration(labelText: 'Product State', border: OutlineInputBorder()),
                           items: [
                              const DropdownMenuItem(value: null, child: Text('Global / No State')),

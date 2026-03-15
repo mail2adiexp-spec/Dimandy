@@ -53,7 +53,7 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
       final categoryName = ModalRoute.of(context)!.settings.arguments as String;
       _currentCategory = categoryName; // Store for scroll listener
       if (categoryName != '👁️ Recently Viewed') {
-         // Fetch initial data
+         // Fetch initial data for all standard and special categories
          context.read<ProductProvider>().fetchProductsByCategory(categoryName, refresh: true);
       }
       _isInit = false;
@@ -330,20 +330,14 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                   )
                 : Consumer<ProductProvider>(
                     builder: (context, productProvider, _) {
-                      print('DEBUG: checking against "${ProductCategory.hotDeals}"');
-                      print('DEBUG: Total products in provider: ${productProvider.products.length}');
-                      productProvider.products.take(5).forEach((p) {
-                         print('DEBUG PROD: ${p.name} | isHotDeal: ${p.isHotDeal} | mrp: ${p.mrp} | price: ${p.price} | mrp>price: ${p.mrp > p.price}');
-                      });
-
                       List<Product> categoryProducts;
                       if (categoryName == '👁️ Recently Viewed') {
                         // Use RecommendationService for recently viewed
                         final recommendationService = Provider.of<RecommendationService>(context, listen: false);
                         categoryProducts = recommendationService.recentlyViewed;
                       } else {
-                        // For all other categories (Trending, Hot Deals, Standard), use the loaded data
-                        categoryProducts = productProvider.products;
+                        // For all other standard and special categories, use the dedicated category list
+                        categoryProducts = productProvider.categoryProducts;
                       }
                       if (productProvider.isLoading) {
                         return const Center(child: CircularProgressIndicator());

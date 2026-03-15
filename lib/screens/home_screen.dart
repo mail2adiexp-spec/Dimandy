@@ -55,6 +55,22 @@ class _HomeScreenState extends State<HomeScreen> {
         _showAppDownloadNotification();
       });
     }
+    
+    // Fetch initial home sections after initial build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchInitialSections();
+    });
+  }
+
+  Future<void> _fetchInitialSections() async {
+    final productProvider = context.read<ProductProvider>();
+    await Future.wait([
+      productProvider.fetchHomeSection('Daily Needs'),
+      productProvider.fetchHomeSection('Snacks'),
+      productProvider.fetchHomeSection('Hot Deals'),
+      productProvider.fetchHomeSection('Customer Choices'),
+      productProvider.fetchHomeSection('🔥 Trending Now'),
+    ]);
   }
 
   void _showAppDownloadNotification() {
@@ -82,8 +98,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleRefresh() async {
     // Reload recommendations (products and categories auto-update via realtime listeners)
     await _loadRecommendations();
+    
+    final productProvider = context.read<ProductProvider>();
     // Reset product pagination
-    await context.read<ProductProvider>().fetchProducts(refresh: true);
+    await productProvider.fetchProducts(refresh: true);
+    
+    // Fetch individual sections to ensure they are populated
+    await Future.wait([
+      productProvider.fetchHomeSection('Daily Needs'),
+      productProvider.fetchHomeSection('Snacks'),
+      productProvider.fetchHomeSection('Hot Deals'),
+      productProvider.fetchHomeSection('Customer Choices'),
+    ]);
     
     // Show a success message
     if (mounted) {
@@ -605,48 +631,43 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                           ),
                         ),
+                        
                         // Trending Products Section (Logic: Most Viewed)
-                        if (productProvider.products.any((p) => p.viewCount > 0))
+                        if (productProvider.getSectionProducts('🔥 Trending Now').isNotEmpty || 
+                            productProvider.getSectionProducts('Trending Now').isNotEmpty)
                           SliverToBoxAdapter(
                             child: _buildProductCarousel(
                               context,
                               '🔥 Trending Now',
-                              (productProvider.products.where((p) => p.viewCount > 0).toList()
-                                ..sort((a, b) => b.viewCount.compareTo(a.viewCount)))
-                                .take(10)
-                                .toList(),
+                              productProvider.getSectionProducts('🔥 Trending Now').isNotEmpty 
+                                ? productProvider.getSectionProducts('🔥 Trending Now')
+                                : productProvider.getSectionProducts('Trending Now'),
                             ),
                           ),
                           
                         // Daily Needs horizontal carousel
-                        if (productProvider.products.any((p) => p.category == 'Daily Needs'))
+                        if (productProvider.getSectionProducts('Daily Needs').isNotEmpty)
                           SliverToBoxAdapter(
                             child: _buildProductCarousel(
                               context,
                               'Daily Needs',
-                              productProvider.products
-                                  .where((p) => p.category == 'Daily Needs')
-                                  .toList(),
+                              productProvider.getSectionProducts('Daily Needs'),
                             ),
                           ),
                           
                         // Customer Choices (Logic: Top selling products)
-                        // Sort by salesCount descending and take top 10
-                         if (productProvider.products.any((p) => p.salesCount > 0)) ...[
+                         if (productProvider.getSectionProducts('Customer Choices').isNotEmpty) ...[
                            SliverToBoxAdapter(
                             child: _buildProductCarousel(
                               context,
                               'Customer Choices',
-                              (productProvider.products.where((p) => p.salesCount > 0).toList()
-                                ..sort((a, b) => b.salesCount.compareTo(a.salesCount)))
-                                .take(10)
-                                .toList(),
+                              productProvider.getSectionProducts('Customer Choices'),
                             ),
                           ),
                          ],
                           
                         // Hot Deals Banner & Section (Logic: isHotDeal == true OR mrp > price)
-                        if (productProvider.products.any((p) => p.isHotDeal || (p.mrp > p.price && p.mrp > 0))) ...[
+                        if (productProvider.getSectionProducts('Hot Deals').isNotEmpty) ...[
                            SliverToBoxAdapter(child: const SizedBox(height: 16)),
                            SliverToBoxAdapter(
                                       child: InkWell(
@@ -796,15 +817,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         // Snacks Carousel
-                        SliverToBoxAdapter(
-                          child: _buildProductCarousel(
-                            context,
-                            'Snacks',
-                            productProvider.products
-                                .where((p) => p.category == 'Snacks')
-                                .toList(),
+                        if (productProvider.getSectionProducts('Snacks').isNotEmpty)
+                          SliverToBoxAdapter(
+                            child: _buildProductCarousel(
+                              context,
+                              'Snacks',
+                              productProvider.getSectionProducts('Snacks'),
+                            ),
                           ),
-                        ),
                         
                         // Products grid or Empty State
                         if (filteredProducts.isEmpty)

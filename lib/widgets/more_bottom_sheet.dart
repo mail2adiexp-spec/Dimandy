@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/settings_provider.dart';
 import '../screens/manage_addresses_screen.dart';
+import '../utils/app_strings.dart';
 
 Future<void> showMoreBottomSheet(BuildContext context) {
   final theme = Theme.of(context);
@@ -111,10 +112,10 @@ class _MoreSheetContent extends StatelessWidget {
                         child: _buildHorizontalButton(
                           context,
                           icon: Icons.settings,
-                          label: 'Settings',
+                          label: AppStrings.get('settings', context.read<SettingsProvider>().language),
                           onTap: () => _openSheet(
                             context,
-                            'Settings',
+                            AppStrings.get('settings', context.read<SettingsProvider>().language),
                             _settingsContent(context),
                           ),
                         ),
@@ -124,10 +125,10 @@ class _MoreSheetContent extends StatelessWidget {
                         child: _buildHorizontalButton(
                           context,
                           icon: Icons.security,
-                          label: 'Privacy & Security',
+                          label: AppStrings.get('privacy_security', context.read<SettingsProvider>().language),
                           onTap: () => _openSheet(
                             context,
-                            'Privacy & Security',
+                            AppStrings.get('privacy_security', context.read<SettingsProvider>().language),
                             _privacyContent(),
                           ),
                         ),
@@ -137,10 +138,10 @@ class _MoreSheetContent extends StatelessWidget {
                         child: _buildHorizontalButton(
                           context,
                           icon: Icons.assignment_return,
-                          label: 'Return Policy',
+                          label: AppStrings.get('return_policy', context.read<SettingsProvider>().language),
                           onTap: () => _openSheet(
                             context,
-                            'Return Policy',
+                            AppStrings.get('return_policy', context.read<SettingsProvider>().language),
                             _returnPolicyContent(),
                           ),
                         ),
@@ -151,9 +152,9 @@ class _MoreSheetContent extends StatelessWidget {
                         child: _buildHorizontalButton(
                           context,
                           icon: Icons.info_outline,
-                          label: 'About Us',
+                          label: AppStrings.get('about_us', context.read<SettingsProvider>().language),
                           onTap: () =>
-                              _openSheet(context, 'About Us', _aboutContent()),
+                              _openSheet(context, AppStrings.get('about_us', context.read<SettingsProvider>().language), _aboutContent(context)),
                         ),
                       ),
                     ],
@@ -192,7 +193,7 @@ class _MoreSheetContent extends StatelessWidget {
                       }
                     },
                     icon: const Icon(Icons.logout),
-                    label: const Text('Logout'),
+                    label: Text(AppStrings.get('logout', context.read<SettingsProvider>().language)),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Theme.of(context).colorScheme.error,
                       foregroundColor: Colors.white,
@@ -359,7 +360,8 @@ class _MoreSheetContent extends StatelessWidget {
     );
   }
 
-  Widget _aboutContent() {
+  Widget _aboutContent(BuildContext context) {
+    final lang = context.read<SettingsProvider>().language;
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -391,49 +393,73 @@ class _MoreSheetContent extends StatelessWidget {
           const SizedBox(height: 8),
           Center(child: _aboutContentVersion()),
           const SizedBox(height: 24),
-          const Text(
-            'Dimandy में आपका स्वागत है—एक ऐसा नाम जिसके पीछे केवल व्यापार नहीं, बल्कि एक दिल का गहरा रिश्ता जो बादो पर खरा उतरने से और उनका पूरा करने से बनता है। हमारा सफर उस गाँव की मिट्टी से शुरू होता है जहाँ हमने भोजन की शुद्धता और अपनों की देखभाल का मूल्य सीखा। शहर आकर हमने देखा कि जीवन कितना जटिल है—परिवारों को ताज़गी नहीं मिलती और ज़रूरी काम के लिए भरोसेमंद मदद ढूँढ़ना कितना मुश्किल है। सबसे ज़्यादा हमारा ध्यान उन लोगों पर गया जो अपने परिवार की खातिर घर से दूर रहते हैं या काम में व्यस्त हैं, और हमारे बुज़ुर्गों पर जिन्हें उम्र या स्वास्थ्य के कारण बाज़ार तक जाना कठिन लगता है।',
-            style: TextStyle(
-              fontSize: 15.5,
-              height: 1.7,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
+          if (lang == 'hi') ...[
+            const Text(
+              'Dimandy में आपका स्वागत है—एक ऐसा नाम जिसके पीछे केवल व्यापार नहीं, बल्कि एक दिल का गहरा रिश्ता जो बादो पर खरा उतरने से और उनका पूरा करने से बनता है। हमारा सफर उस गाँव की मिट्टी से शुरू होता है जहाँ हमने भोजन की शुद्धता और अपनों की देखभाल का मूल्य सीखा। शहर आकर हमने देखा कि जीवन कितना जटिल है—परिवारों को ताज़गी नहीं मिलती और ज़रूरी काम के लिए भरोसेमंद मदद ढूँढ़ना कितना मुश्किल है। सबसे ज़्यादा हमारा ध्यान उन लोगों पर गया जो अपने परिवार की खातिर घर से दूर रहते हैं या काम में व्यस्त हैं, और हमारे बुज़ुर्गों पर जिन्हें उम्र या स्वास्थ्य के कारण बाज़ार तक जाना कठिन लगता है।',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
             ),
-            textAlign: TextAlign.justify,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Dimandy का जन्म इसी जिम्मेदारी से हुआ है। यह सिर्फ़ एक प्लेटफॉर्म नहीं है; यह एक भरोसेमंद साथी है जो गाँव की शुद्धता को आपकी व्यस्त ज़िंदगी को सुविधा से जोड़ता है। हमारा लक्ष्य केवल डिलीवरी देना नहीं है, बल्कि आपको यह आश्वासन देना है कि जब आप काम में व्यस्त हों या घर पर आराम कर रहे हों या फिर आप अपने परिवार से दूर हो तो आपके परिवार को बेहतरीन पोषण और घर की देखभाल के साथ। और आपके घर तक हर सुविधा पहुंचना है हमारा पहला वादा है ग्रॉसरी में अटूट विश्वास। हम सीधे किसानों से ताज़ी और शुद्ध उपज लाते हैं। आपको Dimandy ऐप पर हर फल, हर सब्ज़ी में गाँव की शुद्धता मिलेगी। और हाँ, हम यह सब आपके अपनों तक पहुँचाने के लिए कोई डिलीवरी शुल्क नहीं लेते हैं।',
-            style: TextStyle(
-              fontSize: 15.5,
-              height: 1.7,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
+            const SizedBox(height: 16),
+            const Text(
+              'Dimandy का जन्म इसी जिम्मेदारी से हुआ है। यह सिर्फ़ एक प्लेटफॉर्म नहीं है; यह एक भरोसेमंद साथी है जो गाँव की शुद्धता को आपकी व्यस्त ज़िंदगी को सुविधा से जोड़ता है। हमारा लक्ष्य केवल डिलीवरी देना नहीं है, बल्कि आपको यह आश्वासन देना है कि जब आप काम में व्यस्त हों या घर पर आराम कर रहे हों या फिर आप अपने परिवार से दूर हो तो आपके परिवार को बेहतरीन पोषण और घर की देखभाल के साथ। और आपके घर तक हर सुविधा पहुंचना है हमारा पहला वादा है ग्रॉसरी में अटूट विश्वास। हम सीधे किसानों से ताज़ी और शुद्ध उपज लाते हैं। आपको Dimandy ऐप पर हर फल, हर सब्ज़ी में गाँव की शुद्धता मिलेगी। और हाँ, हम यह सब आपके अपनों तक पहुँचाने के लिए कोई डिलीवरी शुल्क नहीं लेते हैं।',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
             ),
-            textAlign: TextAlign.justify,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'हमारा दूसरा वादा है घर की देखभाल में राहत। हमने समझा कि घर के अचानक बिगड़े हुए काम बुज़ुर्गों और व्यस्त लोगों के लिए बड़ी चिंता बन जाते हैं। इसलिए, हमने सत्यापित और अनुभवी पेशेवरों की एक टीम बनाई है जो ऐप बुकिंग पर तुरंत उपलब्ध होते हैं। चाहे वह इलेक्ट्रीशियन, प्लंबर, कारपेंटर की तकनीकी सेवाएँ हों, बाथरूम की सफ़ाई हो, या स्थानीय गाड़ी बुकिंग—हम हर ज़रूरत का समाधान हैं और यह सब सुविधा आपको कम से कम कीमत यानी जितना कम उतनी ही कीमत में उपलब्ध होगी।',
-            style: TextStyle(
-              fontSize: 15.5,
-              height: 1.7,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
+            const SizedBox(height: 16),
+            const Text(
+              'हमारा दूसरा वादा है घर की देखभाल में राहत। हमने समझा कि घर के अचानक बिगड़े हुए काम बुज़ुर्गों और व्यस्त लोगों के लिए बड़ी चिंता बन जाते हैं। इसलिए, हमने सत्यापित और अनुभवी पेशेवरों की एक टीम बनाई है जो ऐप बुकिंग पर तुरंत उपलब्ध होते हैं। चाहे वह इलेक्ट्रीशियन, प्लंबर, कारपेंटर की तकनीकी सेवाएँ हों, बाथरूम की सफ़ाई हो, या स्थानीय गाड़ी बुकिंग—हम हर ज़रूरत का समाधान हैं और यह सब सुविधा आपको कम से कम कीमत यानी जितना कम उतनी ही कीमत में उपलब्ध होगी।',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
             ),
-            textAlign: TextAlign.justify,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Dimandy में हम व्यक्तिगत रूप से इस बात की गारंटी देते हैं कि आपको हमेशा सर्वोत्तम ही मिले। आपका विश्वास ही हमारी सबसे बड़ी कमाई है। आप हमारे Dimandy ऐप के माध्यम से आसानी से ऑर्डर या बुकिंग कर सकते हैं, या किसी भी ज़रूरत के लिए हमें सीधे 7479223366 पर कॉल कर सकते हैं। हमें आपकी सेवा करने और आपके अपनों की देखभाल में मदद करने का अवसर दें।',
-            style: TextStyle(
-              fontSize: 15.5,
-              height: 1.7,
-              fontWeight: FontWeight.w500,
-              color: Colors.black87,
+            const SizedBox(height: 16),
+            const Text(
+              'Dimandy में हम व्यक्तिगत रूप से इस बात की गारंटी देते हैं कि आपको हमेशा सर्वोत्तम ही मिले। आपका विश्वास ही हमारी सबसे बड़ी कमाई है। आप हमारे Dimandy ऐप के माध्यम से आसानी से ऑर्डर या बुकिंग कर सकते हैं, या किसी भी ज़रूरत के लिए हमें सीधे 7479223366 पर कॉल कर सकते हैं। हमें आपकी सेवा करने और आपके अपनों की देखभाल में मदद करने का अवसर दें।',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
             ),
-            textAlign: TextAlign.justify,
-          ),
+          ] else ...[
+            const Text(
+              'Welcome to Dimandy—a name that represents not just a business, but a deep relationship built on keeping and fulfilling promises. Our journey began in the village soil where we learned the value of food purity and caring for our loved ones. Coming to the city, we saw how complex life is—families don\'t get freshness and finding reliable help for essential work is so difficult.',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Dimandy was born from this responsibility. It is not just a platform; it is a trusted partner that connects village purity with the convenience of your busy life. Our goal is not just to provide delivery, but to give you the assurance that while you are busy or resting at home, your family receives the best nutrition and care.',
+              style: TextStyle(
+                fontSize: 15.5,
+                height: 1.7,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
+              ),
+              textAlign: TextAlign.justify,
+            ),
+          ],
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(16),
@@ -442,11 +468,13 @@ class _MoreSheetContent extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: Colors.deepPurple.shade200, width: 2),
             ),
-            child: const Column(
+            child: Column(
               children: [
                 Text(
-                  '❤️ आपका विश्वास, हमारा सबसे गहरा रिश्ता है।',
-                  style: TextStyle(
+                  lang == 'hi'
+                      ? '❤️ आपका विश्वास, हमारा सबसे गहरा रिश्ता है।'
+                      : '❤️ Your trust is our deepest relationship.',
+                  style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w800,
                     fontStyle: FontStyle.italic,
@@ -454,8 +482,8 @@ class _MoreSheetContent extends StatelessWidget {
                   ),
                   textAlign: TextAlign.center,
                 ),
-                SizedBox(height: 12),
-                Text(
+                const SizedBox(height: 12),
+                const Text(
                   'Dimandy',
                   style: TextStyle(
                     fontSize: 20,
@@ -544,19 +572,20 @@ class _MoreSheetContent extends StatelessWidget {
         Consumer<SettingsProvider>(
           builder: (context, settings, _) {
             return _settingTile(
-              'Notifications',
-              settings.notificationsEnabled ? 'On' : 'Off',
+              AppStrings.get('notifications', settings.language),
+              settings.notificationsEnabled ? AppStrings.get('on', settings.language) : AppStrings.get('off', settings.language),
               settings.notificationsEnabled
                   ? Icons.notifications_active
                   : Icons.notifications_off_outlined,
               onTap: () {
+                final lang = settings.language;
                 settings.toggleNotifications(!settings.notificationsEnabled);
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
                       settings.notificationsEnabled
-                          ? 'Notifications enabled'
-                          : 'Notifications disabled',
+                          ? AppStrings.get('notifications_enabled', lang)
+                          : AppStrings.get('notifications_disabled', lang),
                     ),
                     duration: const Duration(seconds: 1),
                   ),
@@ -568,14 +597,15 @@ class _MoreSheetContent extends StatelessWidget {
         Consumer<SettingsProvider>(
           builder: (context, settings, _) {
             return _settingTile(
-              'Language',
+              AppStrings.get('language', settings.language),
               settings.getLanguageName(),
               Icons.language,
               onTap: () {
+                final lang = settings.language;
                 showDialog(
                   context: context,
                   builder: (dialogContext) => AlertDialog(
-                    title: const Text('Choose Language'),
+                    title: Text(AppStrings.get('choose_language', lang)),
                     content: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -611,7 +641,7 @@ class _MoreSheetContent extends StatelessWidget {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(dialogContext),
-                        child: const Text('Cancel'),
+                        child: Text(AppStrings.get('cancel', lang)),
                       ),
                     ],
                   ),
@@ -621,19 +651,20 @@ class _MoreSheetContent extends StatelessWidget {
           },
         ),
         _settingTile(
-          'Theme',
-          'Auto (System default)',
+          AppStrings.get('theme', context.read<SettingsProvider>().language),
+          AppStrings.get('auto_system_default', context.read<SettingsProvider>().language),
           Icons.palette_outlined,
           onTap: () {
+            final lang = context.read<SettingsProvider>().language;
             showDialog(
               context: context,
               builder: (dialogContext) => AlertDialog(
-                title: const Text('Choose Theme'),
+                title: Text(AppStrings.get('choose_theme', lang)),
                 content: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     RadioListTile<ThemeMode>(
-                      title: const Text('Light'),
+                      title: Text(AppStrings.get('light', lang)),
                       value: ThemeMode.light,
                       groupValue: Provider.of<ThemeProvider>(context, listen: false).themeMode,
                       onChanged: (value) {
@@ -642,7 +673,7 @@ class _MoreSheetContent extends StatelessWidget {
                       },
                     ),
                     RadioListTile<ThemeMode>(
-                      title: const Text('Dark'),
+                      title: Text(AppStrings.get('dark', lang)),
                       value: ThemeMode.dark,
                       groupValue: Provider.of<ThemeProvider>(context, listen: false).themeMode,
                       onChanged: (value) {
@@ -655,7 +686,7 @@ class _MoreSheetContent extends StatelessWidget {
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.pop(dialogContext),
-                    child: const Text('Cancel'),
+                    child: Text(AppStrings.get('cancel', lang)),
                   ),
                 ],
               ),
@@ -663,28 +694,28 @@ class _MoreSheetContent extends StatelessWidget {
           },
         ),
         _settingTile(
-          'Data & Storage',
-          'Manage cache and data',
+          AppStrings.get('data_storage', context.read<SettingsProvider>().language),
+          AppStrings.get('manage_cache_data', context.read<SettingsProvider>().language),
           Icons.storage,
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Storage settings coming soon')),
+              SnackBar(content: Text(AppStrings.get('storage_settings_coming_soon', context.read<SettingsProvider>().language))),
             );
           },
         ),
         _settingTile(
-          'Payment Methods',
-          'Manage saved cards',
+          AppStrings.get('payment_methods', context.read<SettingsProvider>().language),
+          AppStrings.get('manage_saved_cards', context.read<SettingsProvider>().language),
           Icons.payment,
           onTap: () {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Payment settings coming soon')),
+              SnackBar(content: Text(AppStrings.get('payment_settings_coming_soon', context.read<SettingsProvider>().language))),
             );
           },
         ),
         _settingTile(
-          'Addresses',
-          'Manage delivery addresses',
+          AppStrings.get('addresses', context.read<SettingsProvider>().language),
+          AppStrings.get('manage_delivery_addresses', context.read<SettingsProvider>().language),
           Icons.location_on_outlined,
           onTap: () {
             Navigator.pop(context); // Close bottom sheet
@@ -692,9 +723,9 @@ class _MoreSheetContent extends StatelessWidget {
           },
         ),
         const SizedBox(height: 16),
-        const Text(
-          'App Version',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        Text(
+          AppStrings.get('app_version', context.read<SettingsProvider>().language),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         const SizedBox(height: 8),
         FutureBuilder<String?>(
@@ -709,12 +740,13 @@ class _MoreSheetContent extends StatelessWidget {
         const SizedBox(height: 24),
         ElevatedButton.icon(
           onPressed: () {
+            final lang = context.read<SettingsProvider>().language;
             ScaffoldMessenger.of(
               context,
-            ).showSnackBar(const SnackBar(content: Text('Cache cleared')));
+            ).showSnackBar(SnackBar(content: Text(AppStrings.get('cache_cleared', lang))));
           },
           icon: const Icon(Icons.cached),
-          label: const Text('Clear Cache'),
+          label: Text(AppStrings.get('clear_cache', context.read<SettingsProvider>().language)),
           style: ElevatedButton.styleFrom(
             minimumSize: const Size(double.infinity, 48),
           ),

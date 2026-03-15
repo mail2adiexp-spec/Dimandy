@@ -139,6 +139,12 @@ service cloud.firestore {
       )); 
     }
     
+    // --- Stats (for numeric user IDs) ---
+    match /stats/{statId} {
+      allow read: if true; // Allows anyone (including unauthenticated users signing up) to read the next ID
+      allow write: if true; // Allows users to increment ID during signup and admins for other stats
+    }
+    
     // --- Partner Requests ---
     match /partner_requests/{requestId} {
       allow create: if true;

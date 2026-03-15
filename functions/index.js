@@ -880,23 +880,43 @@ exports.checkAndReturnExistingAccount = functions.https.onCall(async (data, cont
   }
 
   try {
-    // 3. Search Firestore for any user with this phone number
-    // Note: ensure we check both 'phoneNumber' and 'phone' fields if you use both
-    let userQuery = await admin.firestore()
-      .collection("users")
-      .where("phoneNumber", "==", verifiedPhone)
-      .limit(1)
-      .get();
-
-    if (userQuery.empty) {
+    // Generate variations to search for
+    const variations = [
+      verifiedPhone, // e.g. +919051XXXXXX
+      verifiedPhone.replace('+', ''), // e.g. 919051XXXXXX
+    ];
+    
+    // For India (+91), try without the country code
+    if (verifiedPhone.startsWith('+91')) {
+      const withoutCountryCode = verifiedPhone.substring(3);
+      variations.push(withoutCountryCode); // e.g. 9051XXXXXX
+    }
+    
+    let userQuery = null;
+    
+    // Check all variations
+    for (const variation of variations) {
+      if (!userQuery || userQuery.empty) {
         userQuery = await admin.firestore()
-            .collection("users")
-            .where("phone", "==", verifiedPhone)
-            .limit(1)
-            .get();
+          .collection("users")
+          .where("phoneNumber", "==", variation)
+          .limit(1)
+          .get();
+      }
+      if (!userQuery || userQuery.empty) {
+        userQuery = await admin.firestore()
+          .collection("users")
+          .where("phone", "==", variation)
+          .limit(1)
+          .get();
+      }
+      
+      if (userQuery && !userQuery.empty) {
+        break; // Match found!
+      }
     }
 
-    if (userQuery.empty) {
+    if (!userQuery || userQuery.empty) {
       // No existing account found.
       // Return false so the client knows this is a genuinely new user
       return { 
