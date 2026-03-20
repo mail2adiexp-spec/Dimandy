@@ -49,6 +49,7 @@ import 'admin_settings_screen.dart';
 import '../widgets/manage_stores_tab.dart';
 import 'permission_editor_screen.dart';
 import '../widgets/manage_admins_tab.dart'; // NEW
+import 'admin_financial_screen.dart'; // NEW
 
 
 class AdminPanelScreen extends StatefulWidget {
@@ -234,6 +235,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       
       {'title': 'Service Categories', 'icon': Icons.miscellaneous_services, 'index': 14, 'requiresSuperAdmin': true},
       {'title': 'Featured Sections', 'icon': Icons.star, 'index': 4, 'requiresSuperAdmin': true},
+      {'title': 'Financials', 'icon': Icons.account_balance, 'index': 24, 'requiresSuperAdmin': true}, // NEW
     ];
 
     if (isSuperAdmin) {
@@ -421,6 +423,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             const ManageAdminsTab(), // 21 - NEW Manage Admins
                             _buildMessagesTab(), // 22 - MESSAGES
                             _buildDeleteRequestsTab(), // 23 - DELETE REQUESTS
+                            const AdminFinancialScreen(), // 24 - FINANCIALS
                           ],
                         ),
                       ),
@@ -676,7 +679,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       collection: 'partner_requests',
       assignedState: auth.isStateAdmin ? auth.currentUser?.assignedState : null, // Filter by state
       onEdit: (id, data) {
-        // This is not expected to be called for partner requests.
+        final request = PartnerRequest.fromMap({...data, 'id': id});
+        _editPartnerRequest(request);
       },
       onDelete: (id, email) async {
         // Handle deletion of a partner request.
@@ -3862,6 +3866,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
                   // State Dropdown
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: selectedState,
                     decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
                     items: LocationsData.cities.map((e) => e.state).toSet().toList().map((s) => DropdownMenuItem(value: s, child: Text(s))).toList()..sort((a,b) => a.value!.compareTo(b.value!)),
@@ -5087,6 +5092,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final experienceCtrl = TextEditingController(text: userData['experience']?.toString() ?? '');
     final descriptionCtrl = TextEditingController(text: userData['description'] ?? '');
     
+    // Business Fields
+    final businessNameCtrl = TextEditingController(text: userData['businessName'] ?? '');
+    final panCtrl = TextEditingController(text: userData['panNumber'] ?? '');
+    final aadhaarCtrl = TextEditingController(text: userData['aadhaarNumber'] ?? '');
+    final districtCtrl = TextEditingController(text: userData['district'] ?? '');
+    final minChargeCtrl = TextEditingController(text: userData['minCharge']?.toString() ?? '');
+    
     String? selectedCategory = userData['category'];
     String? selectedState = userData['state']; // New State field
     bool isVerified = userData['isVerified'] ?? false;
@@ -5125,12 +5137,54 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       
                       // State Dropdown
                       DropdownButtonFormField<String>(
+                        isExpanded: true,
                         initialValue: selectedState,
                         decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
                         items: LocationsData.cities.map((e) => e.state).toSet().toList().map((s) => DropdownMenuItem(value: s, child: Text(s))).toList()..sort((a,b) => a.value!.compareTo(b.value!)),
                         onChanged: Provider.of<AuthProvider>(context, listen: false).isStateAdmin ? null : (v) => setState(() => selectedState = v), // Read-only for State Admin
                       ),
                       const SizedBox(height: 16),
+                      
+                      // -- SELLER & SERVICE PROVIDER SHARED BUSINESS INFO --
+                      if (role == 'seller' || role == 'service_provider') ...[
+                        const Divider(),
+                        const Text('Business Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: businessNameCtrl,
+                          decoration: const InputDecoration(labelText: 'Business Name', border: OutlineInputBorder()),
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: districtCtrl,
+                          decoration: const InputDecoration(labelText: 'District', border: OutlineInputBorder()),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: panCtrl,
+                                decoration: const InputDecoration(labelText: 'PAN Number', border: OutlineInputBorder()),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextFormField(
+                                controller: aadhaarCtrl,
+                                decoration: const InputDecoration(labelText: 'Aadhaar Number', border: OutlineInputBorder()),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        TextFormField(
+                          controller: minChargeCtrl,
+                          decoration: const InputDecoration(labelText: 'Minimum Charge', border: OutlineInputBorder()),
+                          keyboardType: TextInputType.number,
+                        ),
+                        const SizedBox(height: 12),
+                      ],
                       
                       // -- DELIVERY PARTNER SPECIFIC --
                       if (role == 'delivery_partner') ...[
@@ -5159,20 +5213,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                              }
                              
                              return DropdownButtonFormField<String>(
+                               isExpanded: true,
                                initialValue: selectedCategory,
                                decoration: const InputDecoration(labelText: 'Service Category', border: OutlineInputBorder()),
                                items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                                onChanged: (v) => setState(() => selectedCategory = v),
                              );
                           }
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        // Pincode
-                        TextFormField(
-                          controller: pincodeCtrl,
-                          decoration: const InputDecoration(labelText: 'Service Pincode', border: OutlineInputBorder()),
-                          validator: (v) => v!.isEmpty ? 'Required' : null,
                         ),
                         const SizedBox(height: 12),
                         
@@ -5225,12 +5272,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     
                     if (role == 'delivery_partner') {
                        updates['service_pincode'] = pincodeCtrl.text.trim();
-                    } else if (role == 'service_provider') {
-                       updates['service_pincode'] = pincodeCtrl.text.trim();
-                       updates['category'] = selectedCategory;
-                       updates['experience'] = double.tryParse(experienceCtrl.text.trim()) ?? 0;
-                       updates['description'] = descriptionCtrl.text.trim();
-                       updates['isVerified'] = isVerified;
+                    } else if (role == 'service_provider' || role == 'seller') {
+                       updates['businessName'] = businessNameCtrl.text.trim();
+                       updates['district'] = districtCtrl.text.trim();
+                       updates['panNumber'] = panCtrl.text.trim();
+                       updates['aadhaarNumber'] = aadhaarCtrl.text.trim();
+                       updates['minCharge'] = double.tryParse(minChargeCtrl.text.trim()) ?? 0;
+                       
+                       if (role == 'service_provider') {
+                         updates['service_pincode'] = pincodeCtrl.text.trim();
+                         updates['category'] = selectedCategory;
+                         updates['experience'] = double.tryParse(experienceCtrl.text.trim()) ?? 0;
+                         updates['description'] = descriptionCtrl.text.trim();
+                         updates['isVerified'] = isVerified;
+                       }
                     }
 
                     await FirebaseFirestore.instance

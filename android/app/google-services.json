@@ -8,12 +8,25 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:226065809285:android:c09300643798993855ff7c",
+        "mobilesdk_app_id": "1:110161971301:android:33b83f7368d351509ede8c",
         "android_client_info": {
           "package_name": "in.dimandy.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "110161971301-sl4jke1cr627qsn9eout1rhr4h2u8f3t.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.dimandy.app",
+            "certificate_hash": "6f74abd8732af623f433c8a2f1759e4063029909"
+          }
+        },
+        {
+          "client_id": "110161971301-4krovef2iegma5v33aefbchk8crqqjus.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyANwTZrdVIP7sLoJzXq2KXJ7gatAbKS6yY"
@@ -21,7 +34,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "110161971301-4krovef2iegma5v33aefbchk8crqqjus.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "110161971301-ndhvkm44egrrm6gl8kso9427e5uupo35.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "in.dimandy.app"
+              }
+            }
+          ]
         }
       }
     }

@@ -14,9 +14,8 @@ class _AppDownloadNotificationState extends State<AppDownloadNotification> {
   Timer? _autoCloseTimer;
   bool _isVisible = true;
 
-  // TODO: Update this URL with your actual Play Store App Package Name
   static const String _apkDownloadUrl = 
-      'https://play.google.com/store/apps/details?id=com.dimandy.user';
+      'https://play.google.com/store/apps/details?id=in.dimandy.app';
 
   @override
   void initState() {
@@ -170,9 +169,9 @@ class _AppDownloadNotificationState extends State<AppDownloadNotification> {
                         // Download Button
                         ElevatedButton.icon(
                           onPressed: _downloadApp,
-                          icon: const Icon(Icons.download, color: Colors.white),
+                          icon: const Icon(Icons.shop, color: Colors.white),
                           label: const Text(
-                            'Download Mobile App',
+                            'Get it on Google Play',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,

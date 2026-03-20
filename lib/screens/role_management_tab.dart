@@ -191,9 +191,9 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                     margin: const EdgeInsets.only(bottom: 12),
                     child: InkWell(
                       onTap: () {
-                        if (isRequest) {
+                        if (isRequest || widget.onViewDashboard == null) {
                           _showDetailsDialog(context, data);
-                        } else if (widget.onViewDashboard != null) {
+                        } else {
                           widget.onViewDashboard!(id, data);
                         }
                       },
@@ -283,8 +283,8 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                                   ),
                                 ),
                                 const SizedBox(height: 8),
-                                // 3-dot menu in center
-                                if (isRequest && widget.onRequestAction != null && status == 'pending')
+                                // Actions
+                                if (status == 'pending' && widget.onRequestAction != null)
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
@@ -300,7 +300,7 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                                       ),
                                     ],
                                   )
-                                else if (!isRequest)
+                                else
                                   PopupMenuButton<String>(
                                     onSelected: (value) {
                                       if (value == 'edit') {

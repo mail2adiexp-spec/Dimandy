@@ -111,6 +111,9 @@ class AddressProvider extends ChangeNotifier {
     for (final a in _addresses) {
       if (a.isDefault) return a;
     }
+    if (_addresses.isNotEmpty) {
+      return _addresses.first;
+    }
     return null;
   }
 }

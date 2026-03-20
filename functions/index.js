@@ -795,38 +795,130 @@ exports.onOrderUpdate = functions.firestore
     }
 
     try {
-      // 1. Handle 'delivered' -> Credit Seller
-      if (newStatus === "delivered" && oldStatus !== "delivered") {
-        console.log(`Order ${orderId} delivered. Crediting sellers.`);
+      // 1. Fetch Platform Fee Settings
+      let platformFeePercentage = 5.0; // Default 5%
+      try {
+        const settingsDoc = await admin.firestore().collection('app_settings').doc('general').get();
+        if (settingsDoc.exists) {
+          const settingsData = settingsDoc.data();
+          platformFeePercentage = Number(settingsData.sellerPlatformFeePercentage) || 
+                                 Number(settingsData.platformFeePercentage) || 5.0;
+        }
+      } catch (settingsError) {
+        console.error("Error fetching platform fee settings:", settingsError);
+      }
 
-        for (const [sellerId, amount] of Object.entries(sellerAmounts)) {
-          const transactionRef = admin.firestore().collection("transactions").doc();
-          batch.set(transactionRef, {
+      // 2. Handle 'delivered' -> Credit Seller Net & Record Commission
+      if (newStatus === "delivered" && oldStatus !== "delivered") {
+        console.log(`Order ${orderId} delivered. Crediting sellers and recording commissions.`);
+
+        for (const [sellerId, totalAmount] of Object.entries(sellerAmounts)) {
+          // Skip platform fee for admin/store owned products
+          const isStoreOwned = sellerId === 'admin';
+          const commissionAmount = isStoreOwned ? 0 : totalAmount * (platformFeePercentage / 100);
+          const netSellerAmount = totalAmount - commissionAmount;
+
+          // A. Credit Seller (Net Amount)
+          const sellerTxRef = admin.firestore().collection("transactions").doc();
+          batch.set(sellerTxRef, {
             userId: sellerId,
-            amount: amount,
-            type: "credit", // Credit to seller
-            description: `Earnings for Order #${orderId}`,
+            amount: netSellerAmount,
+            type: "credit",
+            description: `Earnings for Order #${orderId}${commissionAmount > 0 ? ` (Net after ${platformFeePercentage}% fee)` : ''}`,
             status: "completed",
             referenceId: orderId,
+            metadata: {
+              orderId: orderId,
+              grossAmount: totalAmount,
+              platformFee: commissionAmount,
+              platformFeePercentage: platformFeePercentage
+            },
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+          });
+
+          // B. Record Commission (if any)
+          if (commissionAmount > 0) {
+            const commissionTxRef = admin.firestore().collection("transactions").doc();
+            batch.set(commissionTxRef, {
+              userId: "admin", // Standard admin/platform identifier
+              amount: commissionAmount,
+              type: "credit",
+              description: `Commission from Order #${orderId} (Seller: ${sellerId})`,
+              status: "completed",
+              referenceId: orderId,
+              metadata: {
+                orderId: orderId,
+                sellerId: sellerId,
+                type: "Order Commission", // For AdminFinancialScreen filtering
+                platformFee: commissionAmount, // For AdminFinancialScreen aggregation
+                platformFeePercentage: platformFeePercentage
+              },
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
+
+        // C. Credit Delivery Partner (if applicable)
+        const deliveryPartnerId = newData.deliveryPartnerId;
+        const deliveryFee = Number(newData.deliveryFee) || 0;
+        if (deliveryPartnerId && deliveryFee > 0) {
+          const deliveryTxRef = admin.firestore().collection("transactions").doc();
+          batch.set(deliveryTxRef, {
+            userId: deliveryPartnerId,
+            amount: deliveryFee,
+            type: "credit",
+            description: `Delivery Fee for Order #${orderId}`,
+            status: "completed",
+            referenceId: orderId,
+            metadata: {
+              orderId: orderId,
+              source: 'delivery_fee'
+            },
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
         }
       }
-      // 2. Handle 'returned' -> Debit Seller (Refund)
+      // 3. Handle 'returned' -> Debit Seller (Net) & Reverse Commission
       else if (newStatus === "returned" && oldStatus !== "returned") {
-        console.log(`Order ${orderId} returned. Debiting sellers.`);
+        console.log(`Order ${orderId} returned. Debiting sellers and reversing commissions.`);
 
-        for (const [sellerId, amount] of Object.entries(sellerAmounts)) {
-          const transactionRef = admin.firestore().collection("transactions").doc();
-          batch.set(transactionRef, {
+        for (const [sellerId, totalAmount] of Object.entries(sellerAmounts)) {
+          const isStoreOwned = sellerId === 'admin';
+          const commissionAmount = isStoreOwned ? 0 : totalAmount * (platformFeePercentage / 100);
+          const netSellerAmount = totalAmount - commissionAmount;
+
+          // A. Debit Seller (Net Amount)
+          const sellerTxRef = admin.firestore().collection("transactions").doc();
+          batch.set(sellerTxRef, {
             userId: sellerId,
-            amount: amount,
+            amount: netSellerAmount,
             type: "refund", // Debit/Refund from seller
-            description: `Refund for Order #${orderId}`,
+            description: `Refund for Order #${orderId}${commissionAmount > 0 ? ` (Net after ${platformFeePercentage}% fee reversal)` : ''}`,
             status: "completed",
             referenceId: orderId,
             createdAt: admin.firestore.FieldValue.serverTimestamp()
           });
+
+          // B. Reverse Commission (if any)
+          if (commissionAmount > 0) {
+            const commissionTxRef = admin.firestore().collection("transactions").doc();
+            batch.set(commissionTxRef, {
+              userId: "admin", 
+              amount: commissionAmount,
+              type: "refund", // Debit commission from admin
+              description: `Commission Reversal for Order #${orderId} (Seller: ${sellerId})`,
+              status: "completed",
+              referenceId: orderId,
+              metadata: {
+                orderId: orderId,
+                sellerId: sellerId,
+                type: "Order Commission", // Keep type for filtering
+                platformFee: -commissionAmount, // Negative for aggregation if needed, or just type 'refund'
+                platformFeePercentage: platformFeePercentage
+              },
+              createdAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
         }
       }
 
@@ -954,3 +1046,78 @@ exports.checkAndReturnExistingAccount = functions.https.onCall(async (data, cont
     );
   }
 });
+
+/**
+ * On Booking Update Trigger
+ * Handles automatic transaction recording when booking status changes to 'completed'.
+ * - Credit Provider Wallet (providerEarnings)
+ * - Record Service Fee (platformFeeAmount)
+ */
+exports.onBookingUpdate = functions.firestore
+  .document("bookings/{bookingId}")
+  .onUpdate(async (change, context) => {
+    const newData = change.after.data();
+    const oldData = change.before.data();
+    const bookingId = context.params.bookingId;
+
+    const newStatus = newData.status;
+    const oldStatus = oldData.status;
+
+    // Only proceed if status has changed to 'completed'
+    if (newStatus === "completed" && oldStatus !== "completed") {
+      console.log(`Booking ${bookingId} completed. Recording transactions.`);
+
+      const providerId = newData.providerId;
+      const providerEarnings = Number(newData.providerEarnings) || 0;
+      const platformFeeAmount = Number(newData.platformFeeAmount) || 0;
+      const serviceName = newData.serviceName || "Service";
+
+      const batch = admin.firestore().batch();
+
+      // 1. Credit Provider (Net Earnings)
+      if (providerId && providerEarnings > 0) {
+        const providerTxRef = admin.firestore().collection("transactions").doc();
+        batch.set(providerTxRef, {
+          userId: providerId,
+          amount: providerEarnings,
+          type: "credit",
+          description: `Earnings for Service: ${serviceName} (#${bookingId})`,
+          status: "completed",
+          referenceId: bookingId,
+          metadata: {
+            bookingId: bookingId,
+            serviceName: serviceName,
+            platformFee: platformFeeAmount
+          },
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      // 2. Record Service Fee (Commission)
+      if (platformFeeAmount > 0) {
+        const commissionTxRef = admin.firestore().collection("transactions").doc();
+        batch.set(commissionTxRef, {
+          userId: "admin",
+          amount: platformFeeAmount,
+          type: "credit",
+          description: `Service Fee for: ${serviceName} (#${bookingId})`,
+          status: "completed",
+          referenceId: bookingId,
+          metadata: {
+            bookingId: bookingId,
+            providerId: providerId,
+            type: "Service Fee", // For AdminFinancialScreen filtering
+            platformFee: platformFeeAmount, // For AdminFinancialScreen aggregation
+          },
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
+
+      try {
+        await batch.commit();
+        console.log(`Transaction records updated for Booking ${bookingId}`);
+      } catch (error) {
+        console.error(`Error in onBookingUpdate for ${bookingId}:`, error);
+      }
+    }
+  });

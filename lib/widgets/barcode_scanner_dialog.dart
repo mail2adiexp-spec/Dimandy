@@ -19,6 +19,40 @@ class _BarcodeScannerDialogState extends State<BarcodeScannerDialog> {
     super.dispose();
   }
 
+  void _showManualEntryDialog() {
+    final TextEditingController _manualController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Barcode Manually'),
+        content: TextField(
+          controller: _manualController,
+          decoration: const InputDecoration(
+            labelText: 'Barcode / Order ID',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final val = _manualController.text.trim();
+              if (val.isEmpty) return;
+              Navigator.pop(ctx); // Close manual dialog
+              _controller.stop();
+              Navigator.pop(context, val); // Return value to caller
+            },
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -61,6 +95,12 @@ class _BarcodeScannerDialogState extends State<BarcodeScannerDialog> {
               style: TextStyle(color: Colors.grey),
             ),
           ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.keyboard),
+            label: const Text('Enter Barcode Manually'),
+            onPressed: _showManualEntryDialog,
+          ),
+          const SizedBox(height: 16),
         ],
       ),
     );

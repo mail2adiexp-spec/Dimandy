@@ -8,6 +8,7 @@ import '../widgets/qr_code_display_dialog.dart';
 import '../widgets/payment_proof_upload_widget.dart';
 import '../widgets/barcode_scanner_screen.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../services/transaction_service.dart';
 import '../models/transaction_model.dart';
 import 'seller_wallet_screen.dart';
@@ -22,12 +23,14 @@ class DeliveryPartnerDashboardScreen extends StatefulWidget {
 }
 
 class _DeliveryPartnerDashboardScreenState
-    extends State<DeliveryPartnerDashboardScreen> with SingleTickerProviderStateMixin {
+    extends State<DeliveryPartnerDashboardScreen> with TickerProviderStateMixin {
   String _selectedFilter = 'assigned'; // assigned, in_progress, completed
   String _selectedDateFilter = 'all'; // all, today, week, month
   String? _servicePincode;
   bool _isLoadingPincode = true;
   late AnimationController _refreshController;
+  late TabController _tabController;
+  bool _isInitialized = false;
 
   // Cached streams to prevent "Unexpected state" errors
   Stream<QuerySnapshot>? _availableOrdersStream;
@@ -41,97 +44,136 @@ class _DeliveryPartnerDashboardScreenState
   @override
   void initState() {
     super.initState();
+    print('DEBUG: DeliveryPartnerDashboardScreen initState()');
     _refreshController = AnimationController(
       duration: const Duration(seconds: 1),
       vsync: this,
     );
-    _fetchServicePincode();
-    // Initialize my deliveries stream immediately as it only depends on user ID
-    // We'll update it in build once we have the ID, or here if possible.
-    // Better to do it when we have the ID.
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
   void dispose() {
+    print('DEBUG: DeliveryPartnerDashboardScreen dispose()');
     _refreshController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final auth = Provider.of<AuthProvider>(context);
     final deliveryPartnerId = auth.currentUser?.uid;
-    if (deliveryPartnerId != null) {
-      if (_myDeliveriesStream == null) {
-        _updateMyDeliveriesStream(deliveryPartnerId);
-      }
-      if (_statsStream == null) {
-        _statsStream = FirebaseFirestore.instance
-            .collection('orders')
-            .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
-            .snapshots();
-      }
-      if (_recentActivityStream == null) {
-        _recentActivityStream = FirebaseFirestore.instance
-            .collection('orders')
-            .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
-            .orderBy('createdAt', descending: true)
-            .limit(5)
-            .snapshots();
-      }
-      if (_totalEarningsStream == null) {
-        _totalEarningsStream = FirebaseFirestore.instance
-            .collection('orders')
-            .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
-            .where('deliveryStatus', isEqualTo: 'delivered')
-            .snapshots();
-      }
-      if (_returnsStream == null) {
-        _returnsStream = FirebaseFirestore.instance
-            .collection('orders')
-            .where('status', isEqualTo: 'return_requested')
-            //.where('deliveryPincode', isEqualTo: _servicePincode) // Ideally filter by pincode
-            .snapshots();
-      }
+    print('DEBUG: didChangeDependencies() - partnerId: $deliveryPartnerId, _isInitialized: $_isInitialized');
+
+    if (deliveryPartnerId != null && !_isInitialized) {
+      _isInitialized = true;
+      print('DEBUG: Initializing dashboard for partner: $deliveryPartnerId');
+      _fetchServicePincode();
+
+      // Initialize cached streams
+      print('DEBUG: Initializing other cached streams...');
+      _myDeliveriesStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
+          .snapshots();
+
+      _statsStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
+          .snapshots();
+
+      _recentActivityStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
+          .orderBy('createdAt', descending: true)
+          .limit(5)
+          .snapshots();
+
+      _totalEarningsStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
+          .where('deliveryStatus', isEqualTo: 'delivered')
+          .snapshots();
+
+      _returnsStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('status', isEqualTo: 'return_requested')
+          .snapshots();
+
+      // Final fallback to ensure Available Stream is triggered
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && (_availableOrdersStream == null || !_isInitialized)) {
+          print('DEBUG: addPostFrameCallback - re-triggering initialization');
+          _fetchServicePincode();
+        }
+      });
     }
   }
 
   void _updateMyDeliveriesStream(String partnerId) {
-    _myDeliveriesStream = _getOrdersStream(partnerId);
+    if (!mounted) return;
+    print('DEBUG: _updateMyDeliveriesStream called for partner: $partnerId');
+    setState(() {
+      _myDeliveriesStream = _getOrdersStream(partnerId);
+    });
   }
 
   void _updateAvailableOrdersStream() {
-    if (_servicePincode == null) return;
+    if (_servicePincode == null || _servicePincode!.isEmpty) {
+      print('DEBUG: _updateAvailableOrdersStream aborted - pincode is null/empty');
+      return;
+    }
+
+    print('DEBUG: Setting up _availableOrdersStream for pincode: $_servicePincode');
     
-    // Fetch all orders with matching pincode, then filter on client side
-    // This is because Firestore's isNull doesn't work well with empty strings
-    _availableOrdersStream = FirebaseFirestore.instance
-        .collection('orders')
-        .where('deliveryPincode', isEqualTo: _servicePincode)
-        .snapshots();
+    // Try querying as both String and Int to be safe
+    final pincodeStr = _servicePincode!;
+    final int? pincodeInt = int.tryParse(pincodeStr);
+
+    if (pincodeInt != null && pincodeInt != 0) {
+      _availableOrdersStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPincode', whereIn: [pincodeStr, pincodeInt])
+          .snapshots();
+    } else {
+      _availableOrdersStream = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPincode', isEqualTo: pincodeStr)
+          .snapshots();
+    }
   }
 
   Future<void> _fetchServicePincode() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final userId = auth.currentUser?.uid;
-    if (userId == null) return;
+    print('DEBUG: _fetchServicePincode starting for userId: $userId');
+    if (userId == null) {
+      if (mounted) setState(() => _isLoadingPincode = false);
+      return;
+    }
 
     try {
       final doc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
-          .get();
-      
+          .get()
+          .timeout(const Duration(seconds: 10));
+
+      print('DEBUG: User doc exists: ${doc.exists}');
       if (mounted) {
         setState(() {
-          _servicePincode = doc.data()?['service_pincode'];
+          final rawPincode = doc.data()?['service_pincode'];
+          print('DEBUG: Raw pincode from doc: $rawPincode (type: ${rawPincode.runtimeType})');
+          _servicePincode = rawPincode?.toString();
+          print('DEBUG: _servicePincode set to: $_servicePincode');
           _isLoadingPincode = false;
-          _updateAvailableOrdersStream(); // Initialize stream once pincode is available
+          _updateAvailableOrdersStream();
         });
       }
     } catch (e) {
-      print('Error fetching pincode: $e');
+      print('DEBUG: Error in _fetchServicePincode: $e');
       if (mounted) {
         setState(() => _isLoadingPincode = false);
       }
@@ -140,14 +182,11 @@ class _DeliveryPartnerDashboardScreenState
 
   @override
   Widget build(BuildContext context) {
+    print('DEBUG: DeliveryPartnerDashboardScreen build() called');
     final auth = Provider.of<AuthProvider>(context);
     final deliveryPartnerId = auth.currentUser?.uid;
-    print('DEBUG: Delivery Dashboard - ID: $deliveryPartnerId');
-    if (deliveryPartnerId != null) {
-      FirebaseFirestore.instance.collection('users').doc(deliveryPartnerId).get().then((doc) {
-        print('DEBUG: User Role from Firestore: ${doc.data()?['role']}');
-      });
-    }
+    print('DEBUG: partnerId: $deliveryPartnerId, _servicePincode: $_servicePincode, _isLoadingPincode: $_isLoadingPincode');
+    print('DEBUG: _availableOrdersStream is null: ${_availableOrdersStream == null}');
 
     if (deliveryPartnerId == null) {
       return Scaffold(
@@ -156,92 +195,57 @@ class _DeliveryPartnerDashboardScreenState
       );
     }
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Delivery Partner Dashboard'),
-          centerTitle: true,
-          bottom: TabBar(
-            tabs: [
-              Tab(text: 'Overview', icon: Icon(Icons.dashboard)),
-                StreamBuilder<QuerySnapshot>(
-                  stream: _availableOrdersStream,
-                  builder: (context, snapshot) {
-                    int count = 0;
-                    if (snapshot.hasData) {
-                      final allDocs = snapshot.data!.docs;
-                      count = allDocs.where((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        final status = data['status'] as String?;
-                        final deliveryPartnerId = data['deliveryPartnerId'];
-                        final isUnassigned = deliveryPartnerId == null || deliveryPartnerId == '';
-                        final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
-                        return isUnassigned && isValidStatus;
-                      }).length;
-                    }
-                    
-                    return Tab(
-                      icon: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          const Icon(Icons.notifications_active),
-                          if (count > 0)
-                            Positioned(
-                              right: -8,
-                              top: -8,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                                child: Text(
-                                  '$count',
-                                  style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                      text: 'Available',
-                    );
-                  },
-                ),
-              Tab(text: 'My Deliveries', icon: Icon(Icons.local_shipping)),
-              Tab(text: 'Returns', icon: Icon(Icons.assignment_return)),
-            ],
-          ),
-          actions: [
-            RotationTransition(
-              turns: _refreshController,
-              child: IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () async {
-                  _refreshController.repeat();
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Refreshing data...'), duration: Duration(seconds: 1)),
-                  );
-                  _fetchServicePincode();
-                  await Future.delayed(const Duration(seconds: 1));
-                  if (mounted) {
-                    setState(() {});
-                    _refreshController.stop();
-                    _refreshController.reset();
-                  }
-                },
-                tooltip: 'Refresh',
-              ),
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Delivery Partner Dashboard'),
+        centerTitle: true,
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: [
+            const Tab(text: 'Overview', icon: Icon(Icons.dashboard)),
+            Tab(
+              text: 'Available',
+              icon: _NotificationBadge(stream: _availableOrdersStream),
             ),
+            const Tab(text: 'My Deliveries', icon: Icon(Icons.local_shipping)),
+            const Tab(text: 'Returns', icon: Icon(Icons.assignment_return)),
           ],
         ),
-        body: TabBarView(
-          children: [
-            _buildOverviewTab(deliveryPartnerId),
-            _buildAvailableOrdersTab(deliveryPartnerId),
-            _buildMyDeliveriesTab(deliveryPartnerId),
-            _buildReturnsTab(deliveryPartnerId),
-          ],
-        ),
+        actions: [
+          RotationTransition(
+            turns: _refreshController,
+            child: IconButton(
+              icon: const Icon(Icons.refresh),
+              onPressed: () async {
+                _refreshController.repeat();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Refreshing data...'),
+                      duration: Duration(seconds: 1)),
+                );
+                _fetchServicePincode();
+                if (deliveryPartnerId != null) {
+                   _updateMyDeliveriesStream(deliveryPartnerId);
+                }
+                await Future.delayed(const Duration(seconds: 1));
+                if (mounted) {
+                  _refreshController.stop();
+                  _refreshController.reset();
+                }
+              },
+              tooltip: 'Refresh',
+            ),
+          ),
+        ],
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildOverviewTab(deliveryPartnerId),
+          _buildAvailableOrdersTab(deliveryPartnerId),
+          _buildMyDeliveriesTab(deliveryPartnerId),
+          _buildReturnsTab(deliveryPartnerId),
+        ],
       ),
     );
   }
@@ -276,51 +280,105 @@ class _DeliveryPartnerDashboardScreenState
     return Column(
       children: [
         Container(
+          width: double.infinity,
           padding: const EdgeInsets.all(12),
-          color: Colors.blue[50],
-          child: Row(
-            children: [
-              const Icon(Icons.location_on, color: Colors.blue),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Showing orders in Pincode: $_servicePincode',
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
+          color: Colors.blue.withOpacity(0.1),
+          child: Text(
+            'Showing orders in Pincode: ${_servicePincode ?? "All"}',
+            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
+            textAlign: TextAlign.center,
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _availableOrdersStream, // Use cached stream
+          child: _availableOrdersStream == null 
+          ? const Center(child: Text('Service area not properly set or loading...'))
+          : StreamBuilder<QuerySnapshot>(
+            stream: _availableOrdersStream,
             builder: (context, snapshot) {
+              print('DEBUG: AvailableOrders StreamBuilder state: ${snapshot.connectionState}, hasData: ${snapshot.hasData}, hasError: ${snapshot.hasError}');
+              
               if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
+                print('DEBUG: AvailableOrders ERROR: ${snapshot.error}');
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                        const SizedBox(height: 16),
+                        Text('Error loading orders: ${snapshot.error}'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: () => setState(() => _updateAvailableOrdersStream()),
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
               }
 
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
+              // If waiting but we have no data yet
+              if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
+                // Auto-retry if stuck for 3 seconds
+                Future.delayed(const Duration(seconds: 3), () {
+                  if (mounted && _availableOrdersStream != null && snapshot.connectionState == ConnectionState.waiting) {
+                    print('DEBUG: Auto-retry triggered for stalled stream');
+                    setState(() => _updateAvailableOrdersStream());
+                  }
+                });
+
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 24),
+                      Text('Searching for orders in $_servicePincode...', 
+                        style: const TextStyle(color: Colors.grey)),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                           print('DEBUG: Manual stream reset triggered');
+                           setState(() => _updateAvailableOrdersStream());
+                        },
+                        child: const Text('Tap to refresh manually'),
+                      ),
+                    ],
+                  ),
+                );
               }
 
-              // Client-side filter for unassigned orders + correct status
+              // Even if it's not "waiting", we might have no data if stream finished (rare)
+              if (!snapshot.hasData) {
+                return const Center(child: Text('Connecting to server...'));
+              }
+
               final allDocs = snapshot.data?.docs ?? [];
-              print('DEBUG Available Orders: Total docs from Firestore: ${allDocs.length}');
+              print('DEBUG: AvailableOrders - Total docs from Firestore: ${allDocs.length}');
               
               final docs = allDocs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final status = data['status'] as String?;
                 final deliveryPartnerId = data['deliveryPartnerId'];
-                final deliveryPincode = data['deliveryPincode'];
                 
-                final isUnassigned = deliveryPartnerId == null || deliveryPartnerId == '';
+                final isUnassigned = deliveryPartnerId == null || deliveryPartnerId == '' || deliveryPartnerId == 'null';
                 final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
                 
-                print('DEBUG Order ${doc.id}: status=$status, partnerId=$deliveryPartnerId, pincode=$deliveryPincode, unassigned=$isUnassigned, validStatus=$isValidStatus');
+                final match = isUnassigned && isValidStatus;
                 
-                return isUnassigned && isValidStatus;
+                if (!match) {
+                  print('DEBUG: Order ${doc.id} FILTERED OUT - status: $status, partnerId: $deliveryPartnerId, isUnassigned: $isUnassigned, isValidStatus: $isValidStatus');
+                } else {
+                  print('DEBUG: Order ${doc.id} MATCHED - status: $status');
+                }
+                
+                return match;
               }).toList();
-
+              
+              print('DEBUG: AvailableOrders - Filtered docs: ${docs.length}');
+              
               if (docs.isEmpty) {
                 return Center(
                   child: Column(
@@ -338,7 +396,7 @@ class _DeliveryPartnerDashboardScreenState
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final doc = docs[index];
@@ -416,23 +474,51 @@ class _DeliveryPartnerDashboardScreenState
               ],
             ),
             const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: () => _acceptOrder(order.id, partnerId),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: () => _acceptOrder(order.id, partnerId),
+                    icon: const Icon(Icons.check_circle_outline),
+                    label: const Text(
+                      'ACCEPT',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      elevation: 2,
+                    ),
                   ),
                 ),
-                child: const Text(
-                  'ACCEPT ORDER',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 1,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Request dismissed')),
+                      );
+                    },
+                    icon: const Icon(Icons.close, size: 18),
+                    label: const Text('REJECT'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red, width: 1.5),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
           ],
         ),
@@ -644,7 +730,7 @@ class _DeliveryPartnerDashboardScreenState
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                 itemCount: docs.length,
                 itemBuilder: (context, index) {
                   final doc = docs[index];
@@ -689,7 +775,7 @@ class _DeliveryPartnerDashboardScreenState
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Extra bottom padding
           itemCount: docs.length,
           itemBuilder: (context, index) {
             final doc = docs[index];
@@ -895,7 +981,7 @@ class _DeliveryPartnerDashboardScreenState
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () =>
-                          _updateOrderStatus(orderId, order.status),
+                          _updateOrderStatus(order, orderId, order.status),
                       icon: const Icon(Icons.check_circle),
                       label: Text(_getNextActionLabel(order.status)),
                       style: ElevatedButton.styleFrom(
@@ -1068,21 +1154,54 @@ class _DeliveryPartnerDashboardScreenState
       children: [
         Icon(icon, size: 18, color: Colors.grey[600]),
         const SizedBox(width: 8),
-        Text(
-          '$label: ',
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w500,
-          ),
-        ),
         Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w600),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$label: ',
+                style: TextStyle(
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                  fontSize: 12,
+                ),
+              ),
+              Text(
+                value,
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+            ],
           ),
         ),
+        if (label.toLowerCase().contains('phone') && value.isNotEmpty)
+          IconButton(
+            icon: const Icon(Icons.call, size: 20, color: Colors.blue),
+            onPressed: () => _makePhoneCall(value),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
       ],
     );
+  }
+
+  Future<void> _makePhoneCall(String phoneNumber) async {
+    final Uri launchUri = Uri(
+      scheme: 'tel',
+      path: phoneNumber,
+    );
+    try {
+      if (await canLaunchUrl(launchUri)) {
+        await launchUrl(launchUri);
+      } else {
+        throw 'Could not launch $launchUri';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error calling: $e')),
+        );
+      }
+    }
   }
 
   Color _getStatusColor(String status) {
@@ -1146,7 +1265,7 @@ class _DeliveryPartnerDashboardScreenState
     }
   }
 
-  Future<void> _updateOrderStatus(String orderId, String currentStatus) async {
+  Future<void> _updateOrderStatus(OrderModel order, String orderId, String currentStatus) async {
     final nextStatus = _getNextStatus(currentStatus);
 
     // If moving to 'shipped' (picked), 'delivered', or 'returned', require barcode scan first
@@ -1174,6 +1293,108 @@ class _DeliveryPartnerDashboardScreenState
       }
     }
 
+    if (nextStatus == 'delivered') {
+      // 1. Ensure proof is uploaded if required, BEFORE updating status
+      final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+      final latestData = orderDoc.data();
+      final latestPaymentProofUrl = latestData?['paymentProofUrl'];
+      final latestPaymentMethod = latestData?['paymentMethod'] ?? order.paymentMethod;
+
+      if (latestPaymentMethod == 'qr_code' && latestPaymentProofUrl == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Payment proof required! Please upload screenshot first.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return; // Exit immediately
+      }
+
+      // 2. Fetch Store QR Code
+      String? qrCodeUrl;
+      String? upiId;
+
+      if (latestPaymentMethod == 'qr_code' || latestPaymentMethod == 'cod' || latestPaymentMethod == 'cash_on_delivery') {
+        try {
+          final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+          if (settingsDoc.exists) {
+            qrCodeUrl = settingsDoc.data()?['upiQRCodeUrl'];
+            upiId = settingsDoc.data()?['upiId'];
+          }
+        } catch (e) {
+          debugPrint('Error fetching QR code: $e');
+        }
+      }
+
+      // 3. Show dialog
+      if (mounted) {
+        final paymentConfirmed = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            title: const Text('Payment Details'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Amount to Collect: ₹${order.totalAmount.toStringAsFixed(2)}', 
+                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  Text('Method: ${latestPaymentMethod?.replaceAll('_', ' ').toUpperCase() ?? "COD"}'),
+                  
+                  if (latestPaymentMethod == 'online' || latestPaymentMethod == 'prepaid') ...[
+                     const SizedBox(height: 8),
+                     const Text('Payment is Prepaid. No cash to collect.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                  ] else ...[
+                     const SizedBox(height: 8),
+                     const Text('Please collect payment from customer.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                     
+                     if (qrCodeUrl != null) ...[
+                       const SizedBox(height: 16),
+                       const Divider(),
+                       const Text('Store UPI QR Code:', style: TextStyle(fontWeight: FontWeight.bold)),
+                       const SizedBox(height: 8),
+                       Center(
+                         child: Image.network(
+                           qrCodeUrl,
+                           height: 200,
+                           width: 200,
+                           fit: BoxFit.contain,
+                           errorBuilder: (ctx, _, __) => const Icon(Icons.broken_image, size: 50),
+                         ),
+                       ),
+                       if (upiId != null) ...[
+                         const SizedBox(height: 8),
+                         Center(child: Text('UPI ID: $upiId', style: const TextStyle(fontWeight: FontWeight.bold))),
+                       ],
+                     ]
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel Delivery'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context, true),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                child: const Text('Payment Received & Deliver'),
+              ),
+            ],
+          ),
+        );
+
+        if (paymentConfirmed != true) {
+          return; // Delivery was cancelled by the delivery partner
+        }
+      }
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('orders')
@@ -1189,48 +1410,10 @@ class _DeliveryPartnerDashboardScreenState
               'deliveryStatus': 'delivered',
           });
 
-      // Record Transaction for Delivery Fee
-      if (nextStatus == 'delivered') {
-        final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
-        final data = orderDoc.data();
-        final deliveryFee = (data?['deliveryFee'] as num?)?.toDouble() ?? 0.0;
-        final deliveryPartnerId = data?['deliveryPartnerId'];
+      // Note: Transaction record for delivery fee is now handled automatically 
+      // by the 'onOrderUpdate' Cloud Function.
 
-        if (deliveryFee > 0 && deliveryPartnerId != null) {
-          await TransactionService().recordTransaction(
-            TransactionModel(
-              id: '',
-              userId: deliveryPartnerId,
-              amount: deliveryFee,
-              type: TransactionType.credit,
-              description: 'Delivery Fee for Order #${orderId.length >= 8 ? orderId.substring(0, 8) : orderId}',
-              status: TransactionStatus.completed,
-              referenceId: orderId,
-              createdAt: DateTime.now(),
-              metadata: {'source': 'delivery_fee'},
-            ),
-          );
-        }
-      }
-
-      // Special handling for QR payment verification
-      if (nextStatus == 'delivered') {
-        final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
-        if (orderDoc.exists) {
-          final data = orderDoc.data();
-          if (data != null && data['paymentMethod'] == 'qr_code' && data['paymentProofUrl'] == null) {
-            // Revert if payment proof missing for QR code payment
-             await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
-              'status': 'out_for_delivery',
-              'statusHistory.delivered': FieldValue.delete(),
-              'actualDelivery': FieldValue.delete(),
-              'deliveredAt': FieldValue.delete(),
-              'deliveryStatus': FieldValue.delete(),
-            });
-            throw 'Payment proof required for QR payment before marking delivered';
-          }
-        }
-      }
+      // Status and transaction completed successfully.
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1347,10 +1530,10 @@ class _DeliveryPartnerDashboardScreenState
                             title: const Text('Phone'),
                             subtitle: Text(order.phoneNumber),
                             contentPadding: EdgeInsets.zero,
-                            trailing: IconButton(
-                              icon: const Icon(Icons.call),
-                              onPressed: () {},
-                            ),
+                             trailing: IconButton(
+                               icon: const Icon(Icons.call, color: Colors.blue),
+                               onPressed: () => _makePhoneCall(order.phoneNumber),
+                             ),
                           ),
                         ],
                       ),
@@ -1445,7 +1628,7 @@ class _DeliveryPartnerDashboardScreenState
     final user = auth.currentUser;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Extra bottom padding
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2533,6 +2716,61 @@ class _DeliveryPartnerDashboardScreenState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _NotificationBadge extends StatelessWidget {
+  final Stream<QuerySnapshot>? stream;
+  const _NotificationBadge({this.stream});
+
+  @override
+  Widget build(BuildContext context) {
+    // Reduced logging to prevent terminal flooding
+    return StreamBuilder<QuerySnapshot>(
+      stream: stream,
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          print('DEBUG: _NotificationBadge error: ${snapshot.error}');
+        }
+        int count = 0;
+        if (snapshot.hasData) {
+          count = snapshot.data!.docs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            final status = data['status'] as String?;
+            final partnerId = data['deliveryPartnerId'];
+            final isUnassigned = partnerId == null || partnerId == '' || partnerId == 'null';
+            final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
+            return isUnassigned && isValidStatus;
+          }).length;
+        }
+
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            const Icon(Icons.notifications_active),
+            if (count > 0)
+              Positioned(
+                right: -8,
+                top: -8,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                      color: Colors.red, shape: BoxShape.circle),
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

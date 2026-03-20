@@ -186,12 +186,17 @@ class ShippingLabelGenerator {
                         borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                       ),
                       child: pw.BarcodeWidget(
-                        barcode: pw.Barcode.code128(),
+                        barcode: pw.Barcode.qrCode(),
                         data: orderId,
-                        width: 300,
-                        height: 80,
-                        drawText: true,
-                        textStyle: const pw.TextStyle(fontSize: 10),
+                        width: 120,
+                        height: 120,
+                      ),
+                    ),
+                    pw.SizedBox(height: 8),
+                    pw.Text(
+                      'Order ID: $orderId',
+                      style: const pw.TextStyle(
+                        fontSize: 12,
                       ),
                     ),
                   ],

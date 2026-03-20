@@ -12,6 +12,7 @@ import 'core_staff_dashboard_screen.dart';
 import 'store_manager_dashboard_screen.dart';
 import 'join_partner_screen.dart';
 import 'static_pages.dart';
+import 'manage_addresses_screen.dart';
 
 class AccountScreen extends StatefulWidget {
   static const routeName = '/account';
@@ -226,6 +227,21 @@ class _AccountScreenState extends State<AccountScreen> {
                                 Navigator.pushNamed(
                                   context,
                                   EditProfileScreen.routeName,
+                                );
+                              },
+                            ),
+                            const SizedBox(height: 12),
+
+                            // Saved Addresses
+                            _buildProfileCard(
+                              context: context,
+                              icon: Icons.location_on_outlined,
+                              title: 'Saved Addresses',
+                              subtitle: 'Manage delivery locations',
+                              onTap: () {
+                                Navigator.pushNamed(
+                                  context,
+                                  ManageAddressesScreen.routeName,
                                 );
                               },
                             ),
@@ -464,16 +480,6 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // 4. Email (Info Only - Medium Priority)
-                            _buildProfileCard(
-                              context: context,
-                              icon: Icons.email_outlined,
-                              title: 'Email',
-                              subtitle: auth.currentUser!.email,
-                              onTap: null,
-                            ),
-                            const SizedBox(height: 12),
-
                             // 5. GENERAL INFO - Lower Priority
                             _buildProfileCard(
                               context: context,
@@ -491,17 +497,6 @@ class _AccountScreenState extends State<AccountScreen> {
                               subtitle: 'Help & support',
                               onTap: () => Navigator.pushNamed(context, ContactScreen.routeName),
                             ),
-                            const SizedBox(height: 12),
-                            
-                            // 6. LEAST PRIORITY - Partner Signup (Only for regular users)
-                            if (auth.currentUser?.role == 'user')
-                               _buildProfileCard(
-                                context: context,
-                                icon: Icons.storefront,
-                                title: 'Become a Partner',
-                                subtitle: 'Sell on Dimandy',
-                                onTap: () => Navigator.pushNamed(context, JoinPartnerScreen.routeName),
-                              ),
 
                             const SizedBox(height: 20),
                             // Sign Out Button

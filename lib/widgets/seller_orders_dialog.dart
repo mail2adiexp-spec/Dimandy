@@ -294,12 +294,10 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                           borderRadius: BorderRadius.circular(6),
                                         ),
                                         child: BarcodeWidget(
-                                          barcode: Barcode.code128(),
+                                          barcode: Barcode.qrCode(),
                                           data: orderId,
-                                          width: 220,
-                                          height: 60,
-                                          drawText: true,
-                                          style: const TextStyle(fontSize: 10),
+                                          width: 150,
+                                          height: 150,
                                         ),
                                       ),
                                       const SizedBox(height: 8),
@@ -478,32 +476,9 @@ class _SellerOrdersDialogState extends State<SellerOrdersDialog> {
                                             'updatedBy': widget.user.uid,
                                           });
                                           
-                                          // Process Payments for ALL sellers in the order
-                                          final Map<String, double> sellerEarnings = {};
-                                          for (var item in items) {
-                                             final sid = item['sellerId'] as String?;
-                                             if (sid != null) {
-                                                final price = (item['price'] as num).toDouble();
-                                                final qty = (item['quantity'] as num).toInt();
-                                                sellerEarnings[sid] = (sellerEarnings[sid] ?? 0) + (price * qty);
-                                             }
-                                          }
-
-                                          // Create transaction records
-                                          for (var entry in sellerEarnings.entries) {
-                                             final tx = TransactionModel(
-                                                id: '',
-                                                userId: entry.key,
-                                                amount: entry.value,
-                                                type: TransactionType.credit,
-                                                status: TransactionStatus.completed,
-                                                description: 'Order earnings #${orderId.substring(0,8)}',
-                                                referenceId: orderId,
-                                                createdAt: DateTime.now(),
-                                                metadata: {'orderId': orderId},
-                                             );
-                                             await TransactionService().recordTransaction(tx);
-                                          }
+                                          // Note: Transaction records are now handled automatically by the 
+                                          // 'onOrderUpdate' Cloud Function to ensure platform fees/commissions 
+                                          // are correctly calculated and recorded.
 
                                           if (context.mounted) {
                                             showToast(context, '✓ Order Delivered & Wallets Credited');

@@ -371,31 +371,50 @@ class AuthProvider extends ChangeNotifier {
       if (!phoneNumber.startsWith('+')) {
         phoneNumber = '+91$phoneNumber'; // default to India
       }
-      await _auth.verifyPhoneNumber(
-        phoneNumber: phoneNumber,
-        verificationCompleted: (PhoneAuthCredential credential) async {
-          // Auto-resolution (Android only)
-          await _auth.signInWithCredential(credential);
-          if (!completer.isCompleted) completer.complete();
-        },
-        verificationFailed: (FirebaseAuthException e) {
-          debugPrint('🔴 Firebase Phone Auth Error: ${e.code} - ${e.message}');
-          if (!completer.isCompleted) {
-            completer.completeError(
-              Exception(e.message ?? 'Phone verification failed: ${e.code}'),
-            );
-          }
-        },
-        codeSent: (String verificationId, int? resendToken) {
-          _verificationId = verificationId;
-          if (!completer.isCompleted) completer.complete();
-          notifyListeners();
-        },
-        codeAutoRetrievalTimeout: (String verificationId) {
-          _verificationId = verificationId;
-          notifyListeners();
-        },
-      );
+      
+      try {
+        await _auth.setSettings(appVerificationDisabledForTesting: false);
+      } catch (e) {
+        debugPrint('Failed to set settings: $e');
+      }
+
+      if (kIsWeb) {
+        // On Web, use signInWithPhoneNumber which defaults to an invisible reCAPTCHA
+        final ConfirmationResult result = await _auth.signInWithPhoneNumber(
+          phoneNumber,
+        );
+        
+        _verificationId = result.verificationId;
+        if (!completer.isCompleted) completer.complete();
+        notifyListeners();
+      } else {
+        // Mobile platform handling
+        await _auth.verifyPhoneNumber(
+          phoneNumber: phoneNumber,
+          verificationCompleted: (PhoneAuthCredential credential) async {
+            // Auto-resolution (Android only)
+            await _auth.signInWithCredential(credential);
+            if (!completer.isCompleted) completer.complete();
+          },
+          verificationFailed: (FirebaseAuthException e) {
+            debugPrint('🔴 Firebase Phone Auth Error: ${e.code} - ${e.message}');
+            if (!completer.isCompleted) {
+              completer.completeError(
+                Exception(e.message ?? 'Phone verification failed: ${e.code}'),
+              );
+            }
+          },
+          codeSent: (String verificationId, int? resendToken) {
+            _verificationId = verificationId;
+            if (!completer.isCompleted) completer.complete();
+            notifyListeners();
+          },
+          codeAutoRetrievalTimeout: (String verificationId) {
+            _verificationId = verificationId;
+            notifyListeners();
+          },
+        );
+      }
       return completer.future;
     } catch (e) {
       if (!completer.isCompleted) completer.completeError(e);

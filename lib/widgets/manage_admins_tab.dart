@@ -371,7 +371,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
           return AlertDialog(
             title: Text(isEditing ? 'Edit Administrator' : 'Add Administrator'),
             content: SizedBox(
-              width: 450,
+              width: MediaQuery.of(context).size.width * 0.9, // Responsive width
               child: Form(
                 key: formKey,
                 child: SingleChildScrollView(
@@ -380,11 +380,12 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                     children: [
                        if (!isEditing) ...[
                          Row(
+                           crossAxisAlignment: CrossAxisAlignment.start,
                            children: [
                              Expanded(
                                child: RadioListTile<bool>(
-                                 title: const Text('Promote Existing'),
-                                 subtitle: const Text('User already has app account'),
+                                 title: const Text('Promote', style: TextStyle(fontSize: 13)),
+                                 subtitle: const Text('Existing', style: TextStyle(fontSize: 11)),
                                  value: false,
                                  groupValue: createNewUser,
                                  onChanged: (val) => setState(() { 
@@ -396,14 +397,14 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                              ),
                              Expanded(
                                child: RadioListTile<bool>(
-                                 title: const Text('Create New'),
-                                 subtitle: const Text('Create fresh account'),
+                                 title: const Text('Create', style: TextStyle(fontSize: 13)),
+                                 subtitle: const Text('New', style: TextStyle(fontSize: 11)),
                                  value: true,
                                  groupValue: createNewUser,
                                  onChanged: (val) => setState(() { 
                                    createNewUser = val!; 
                                    errorMsg = null;
-                                 }),
+                                  }),
                                  contentPadding: EdgeInsets.zero,
                                ),
                              ),
@@ -421,8 +422,8 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                            border: const OutlineInputBorder(),
                            prefixIcon: const Icon(Icons.email),
                            suffixIcon: (!isEditing && !createNewUser) 
-                              ? IconButton(onPressed: checkUser, icon: const Icon(Icons.search, color: Colors.deepPurple))
-                              : null,
+                               ? IconButton(onPressed: checkUser, icon: const Icon(Icons.search, color: Colors.deepPurple))
+                               : null,
                          ),
                          enabled: !isEditing, // Lock email if editing
                          validator: (value) => value == null || value.isEmpty ? 'Enter email' : null,
@@ -445,12 +446,19 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                               children: [
                                 const Icon(Icons.check_circle, color: Colors.green),
                                 const SizedBox(width: 8),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text('Found: $verifiedUserName', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                    if (verifiedUserPhone != null) Text('Phone: $verifiedUserPhone', style: const TextStyle(fontSize: 12)),
-                                  ],
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text('Found: $verifiedUserName', 
+                                        style: const TextStyle(fontWeight: FontWeight.bold),
+                                        overflow: TextOverflow.ellipsis),
+                                      if (verifiedUserPhone != null) 
+                                        Text('Phone: $verifiedUserPhone', 
+                                          style: const TextStyle(fontSize: 12),
+                                          overflow: TextOverflow.ellipsis),
+                                    ],
+                                  ),
                                 )
                               ],
                             ),
@@ -505,12 +513,16 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                        // 4. Role Selection
                        DropdownButtonFormField<String>(
                          value: selectedRole,
+                         isExpanded: true,
                          decoration: const InputDecoration(
                            labelText: 'Select Admin Role',
                            border: OutlineInputBorder(),
                            prefixIcon: Icon(Icons.badge),
                          ),
-                         items: _adminRoles.map((r) => DropdownMenuItem(value: r, child: Text(r))).toList(),
+                         items: _adminRoles.map((r) => DropdownMenuItem(
+                           value: r, 
+                           child: Text(r, overflow: TextOverflow.ellipsis)
+                         )).toList(),
                          onChanged: (val) => setState(() => selectedRole = val!),
                        ),
                   
@@ -520,12 +532,16 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
                        if (selectedRole == 'State Admin')
                          DropdownButtonFormField<String>(
                            value: selectedState,
+                           isExpanded: true,
                            decoration: const InputDecoration(
                              labelText: 'Assign State',
                              border: OutlineInputBorder(),
                              prefixIcon: Icon(Icons.map),
                            ),
-                           items: _indianStates.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+                           items: _indianStates.map((s) => DropdownMenuItem(
+                             value: s, 
+                             child: Text(s, overflow: TextOverflow.ellipsis)
+                           )).toList(),
                            onChanged: (val) => setState(() => selectedState = val),
                            validator: (value) => value == null ? 'Select a state' : null,
                          ),

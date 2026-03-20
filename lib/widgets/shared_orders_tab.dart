@@ -502,23 +502,31 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                             );
 
                                             if (scannedCode == null) return; // Cancelled
+                                            final normalizedScannedCode = scannedCode.trim().toLowerCase();
 
                                             // Verify barcode
-                                            // As verified in plan, we check match against items.
-                                            // Assuming items have 'id' which acts as barcode or 'productId'.
-                                            // We allow ANY item match from the order to pass (or checking all? User said "product bar code verify").
-                                            // Simplest verified approach: Check if scannedCode matches any productId in items.
+                                            // As verified in plan, we check match against items or the Order ID itself.
+                                            // Shipping labels often contain the Order ID as a barcode.
                                             
                                             // data['items'] is List<dynamic>
                                             final items = data['items'] as List<dynamic>? ?? [];
                                             bool matchFound = false;
-                                            for (var item in items) {
-                                               // Check 'productId' or 'id'
-                                               final pId = item['productId']?.toString() ?? item['id']?.toString() ?? '';
-                                               if (pId == scannedCode) {
-                                                 matchFound = true;
-                                                 break;
-                                               }
+
+                                            // 1. Check against Order ID (Shipping Label Barcode)
+                                            if (orderId.trim().toLowerCase() == normalizedScannedCode) {
+                                              matchFound = true;
+                                            }
+
+                                            // 2. Check against Product IDs if no Order ID match
+                                            if (!matchFound) {
+                                              for (var item in items) {
+                                                 // Check 'productId' or 'id'
+                                                 final pId = (item['productId']?.toString() ?? item['id']?.toString() ?? '').trim().toLowerCase();
+                                                 if (pId == normalizedScannedCode) {
+                                                   matchFound = true;
+                                                   break;
+                                                 }
+                                              }
                                             }
 
                                             if (!matchFound) {

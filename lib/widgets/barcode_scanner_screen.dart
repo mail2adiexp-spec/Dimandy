@@ -14,13 +14,107 @@ class BarcodeScannerScreen extends StatefulWidget {
 }
 
 class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
-  final MobileScannerController controller = MobileScannerController();
+  final MobileScannerController controller = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+    // By restricting formats, the scanner engine doesn't waste CPU checking for 15+ other barcode types,
+    // which makes QR Code scanning significantly faster.
+    formats: const [
+      BarcodeFormat.qrCode,
+      BarcodeFormat.code128, // Common for order packaging barcodes as well
+    ],
+  );
   bool isScanned = false;
 
   @override
   void dispose() {
     controller.dispose();
     super.dispose();
+  }
+
+  void _showErrorDialog(String scannedValue) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red),
+            SizedBox(width: 8),
+            Text('Invalid Barcode'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Entered barcode does not match the order.'),
+            const SizedBox(height: 12),
+            Text(
+              'Expected: ${widget.expectedOrderId}',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Entered: $scannedValue',
+              style: const TextStyle(fontSize: 12, color: Colors.red),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.pop(context, false);
+            },
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              setState(() => isScanned = false);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Try Again'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showManualEntryDialog() {
+    final TextEditingController _manualController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Barcode Manually'),
+        content: TextField(
+          controller: _manualController,
+          decoration: const InputDecoration(
+            labelText: 'Barcode / Order ID',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final val = _manualController.text.trim();
+              if (val.isEmpty) return;
+              Navigator.pop(ctx);
+              
+              if (val.toLowerCase() == widget.expectedOrderId.trim().toLowerCase()) {
+                Navigator.pop(context, true);
+              } else {
+                _showErrorDialog(val);
+              }
+            },
+            child: const Text('Verify'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onBarcodeDetect(BarcodeCapture capture) {
@@ -34,57 +128,10 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
 
     setState(() => isScanned = true);
 
-    // Check if scanned barcode matches the expected order ID
-    if (scannedValue == widget.expectedOrderId) {
-      // Success
+    if (scannedValue.trim().toLowerCase() == widget.expectedOrderId.trim().toLowerCase()) {
       Navigator.pop(context, true);
     } else {
-      // Failed - show error and allow retry
-      showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.error_outline, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Invalid Barcode'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Scanned barcode does not match the order.'),
-              const SizedBox(height: 12),
-              Text(
-                'Expected: ${widget.expectedOrderId}',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Scanned: $scannedValue',
-                style: const TextStyle(fontSize: 12, color: Colors.red),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context, false);
-              },
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                setState(() => isScanned = false);
-                Navigator.pop(ctx);
-              },
-              child: const Text('Scan Again'),
-            ),
-          ],
-        ),
-      );
+      _showErrorDialog(scannedValue);
     }
   }
 
@@ -92,7 +139,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Scan Order Barcode'),
+        title: const Text('Scan or Enter Barcode'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -188,7 +235,16 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.keyboard),
+                  label: const Text('Enter Barcode Manually'),
+                  onPressed: _showManualEntryDialog,
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Container(
                   margin: const EdgeInsets.symmetric(horizontal: 40),
                   padding: const EdgeInsets.all(16),

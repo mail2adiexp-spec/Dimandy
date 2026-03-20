@@ -1884,6 +1884,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
 
   // View Bookings Dialog
   Future<bool> _showQRScanner(BuildContext context, String expectedBookingId) async {
+    final TextEditingController _manualController = TextEditingController();
     bool? result = await showDialog<bool>(
       barrierDismissible: false,
       context: context,
@@ -1891,7 +1892,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         child: SizedBox(
           width: 300,
-          height: 450,
+          height: 520,
           child: Column(
             children: [
               AppBar(
@@ -1916,6 +1917,48 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                 padding: EdgeInsets.all(16),
                 child: Text('Scan the QR code on the customer\'s app to verify and complete the service.', textAlign: TextAlign.center),
               ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.keyboard),
+                label: const Text('Enter Code Manually'),
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (innerCtx) => AlertDialog(
+                      title: const Text('Enter Booking Code'),
+                      content: TextField(
+                        controller: _manualController,
+                        decoration: const InputDecoration(
+                          labelText: 'Booking ID',
+                          border: OutlineInputBorder(),
+                        ),
+                        autofocus: true,
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(innerCtx),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            final val = _manualController.text.trim();
+                            if (val.isEmpty) return;
+                            Navigator.pop(innerCtx); // close manual dialog
+                            if (val == expectedBookingId) {
+                              Navigator.pop(ctx, true); // close scanner returning true
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Invalid Booking ID'), backgroundColor: Colors.red),
+                              );
+                            }
+                          },
+                          child: const Text('Verify'),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
             ],
           ),
         ),

@@ -713,15 +713,6 @@ class _MoreSheetContent extends StatelessWidget {
             );
           },
         ),
-        _settingTile(
-          AppStrings.get('addresses', context.read<SettingsProvider>().language),
-          AppStrings.get('manage_delivery_addresses', context.read<SettingsProvider>().language),
-          Icons.location_on_outlined,
-          onTap: () {
-            Navigator.pop(context); // Close bottom sheet
-            Navigator.of(context).pushNamed(ManageAddressesScreen.routeName);
-          },
-        ),
         const SizedBox(height: 16),
         Text(
           AppStrings.get('app_version', context.read<SettingsProvider>().language),
