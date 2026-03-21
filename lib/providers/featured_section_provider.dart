@@ -18,8 +18,10 @@ class FeaturedSectionProvider with ChangeNotifier {
 
   // Fetch all featured sections from Firestore
   Future<void> fetchSections() async {
-    _isLoading = true;
-    notifyListeners();
+    if (_sections.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
 
     try {
       final snapshot = await _firestore

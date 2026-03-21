@@ -13,8 +13,10 @@ class CategoryProvider with ChangeNotifier {
   List<Category> get categories => [..._categories];
 
   void startListening() {
-    _isLoading = true;
-    notifyListeners();
+    if (_categories.isEmpty) {
+      _isLoading = true;
+      notifyListeners();
+    }
     _sub?.cancel();
     print('🏷️ Starting realtime listener for categories...');
     _sub = _firestore

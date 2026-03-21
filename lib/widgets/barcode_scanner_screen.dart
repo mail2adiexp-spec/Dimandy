@@ -100,14 +100,22 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              final val = _manualController.text.trim();
+              final val = _manualController.text.trim().toLowerCase().replaceAll('#', '');
               if (val.isEmpty) return;
               Navigator.pop(ctx);
               
-              if (val.toLowerCase() == widget.expectedOrderId.trim().toLowerCase()) {
+              final expected = widget.expectedOrderId.trim().toLowerCase();
+              
+              // Flexible match: 
+              // 1. Full match
+              // 2. Input matches start of expected (at least 6 chars)
+              // 3. Expected matches start of input (if user typed extra long for some reason)
+              bool match = val == expected || (expected.startsWith(val) && val.length >= 6);
+              
+              if (match) {
                 Navigator.pop(context, true);
               } else {
-                _showErrorDialog(val);
+                _showErrorDialog(_manualController.text.trim());
               }
             },
             child: const Text('Verify'),
@@ -126,9 +134,15 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     final scannedValue = barcodes.first.rawValue;
     if (scannedValue == null || scannedValue.isEmpty) return;
 
+    final val = scannedValue.trim().toLowerCase().replaceAll('#', '');
+    final expected = widget.expectedOrderId.trim().toLowerCase();
+
     setState(() => isScanned = true);
 
-    if (scannedValue.trim().toLowerCase() == widget.expectedOrderId.trim().toLowerCase()) {
+    // Flexible match (same logic as manual entry)
+    bool match = val == expected || (expected.startsWith(val) && val.length >= 6);
+
+    if (match) {
       Navigator.pop(context, true);
     } else {
       _showErrorDialog(scannedValue);

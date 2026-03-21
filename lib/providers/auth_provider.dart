@@ -254,6 +254,32 @@ class AuthProvider extends ChangeNotifier {
     String? pincode,
   }) async {
     try {
+      final trimmedPhone = phoneNumber.trim();
+      
+      // 1. Check if phone number is already in use by another account
+      final existingDocs = await FirebaseFirestore.instance
+          .collection('users')
+          .where('phoneNumber', isEqualTo: trimmedPhone)
+          .get();
+
+      if (existingDocs.docs.isNotEmpty) {
+        throw Exception(
+          'This phone number is already associated with another account.',
+        );
+      }
+
+      // Also check the 'phone' field (legacy or alternative field name used in cloud functions)
+      final existingDocsAlt = await FirebaseFirestore.instance
+          .collection('users')
+          .where('phone', isEqualTo: trimmedPhone)
+          .get();
+
+      if (existingDocsAlt.docs.isNotEmpty) {
+        throw Exception(
+          'This phone number is already associated with another account.',
+        );
+      }
+
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
         password: password,
@@ -363,6 +389,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   String? _verificationId;
+  ConfirmationResult? _webConfirmationResult;
   String? get verificationId => _verificationId;
 
   Future<void> requestOTP(String phoneNumber) async {
@@ -379,11 +406,18 @@ class AuthProvider extends ChangeNotifier {
       }
 
       if (kIsWeb) {
-        // On Web, use signInWithPhoneNumber which defaults to an invisible reCAPTCHA
-        final ConfirmationResult result = await _auth.signInWithPhoneNumber(
-          phoneNumber,
+        // On Web, use an explicit RecaptchaVerifier for better reliability
+        final verifier = RecaptchaVerifier(
+          container: 'recaptcha-container',
+          auth: _auth as dynamic,
         );
         
+        final ConfirmationResult result = await _auth.signInWithPhoneNumber(
+          phoneNumber,
+          verifier,
+        );
+        
+        _webConfirmationResult = result;
         _verificationId = result.verificationId;
         if (!completer.isCompleted) completer.complete();
         notifyListeners();
@@ -427,14 +461,19 @@ class AuthProvider extends ChangeNotifier {
       throw Exception('Verification ID is missing. Request OTP again.');
     }
 
+    UserCredential? userCredential;
     try {
-      final credential = PhoneAuthProvider.credential(
-        verificationId: _verificationId!,
-        smsCode: otpCode,
-      );
-
-      final userCredential = await _auth.signInWithCredential(credential);
-      final tempUser = userCredential.user;
+      if (kIsWeb && _webConfirmationResult != null) {
+        userCredential = await _webConfirmationResult!.confirm(otpCode);
+      } else {
+        final credential = PhoneAuthProvider.credential(
+          verificationId: _verificationId!,
+          smsCode: otpCode,
+        );
+        userCredential = await _auth.signInWithCredential(credential);
+      }
+      
+      final tempUser = userCredential?.user;
 
       if (tempUser != null) {
         // We successfully signed in with Phone Auth.
@@ -477,7 +516,7 @@ class AuthProvider extends ChangeNotifier {
         // 3. The cloud function failed so we fallback.
         
         // If it's a completely new user without any existing account
-        if (userCredential.additionalUserInfo?.isNewUser == true) {
+        if (userCredential?.additionalUserInfo?.isNewUser == true) {
           final displayId = await _generateNextUserId();
           await FirebaseFirestore.instance.collection('users').doc(tempUser.uid).set({
             'id': tempUser.uid,

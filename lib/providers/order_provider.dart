@@ -200,6 +200,16 @@ class OrderProvider extends ChangeNotifier {
 
   Future<void> updateOrderStatus(String orderId, String newStatus, {Map<String, dynamic>? refundDetails}) async {
     try {
+      // Fetch current status to prevent updating cancelled orders
+      final currentOrderDoc = await _firestore.collection('orders').doc(orderId).get();
+      if (currentOrderDoc.exists) {
+        final currentStatus = currentOrderDoc.data()?['status'];
+        if (currentStatus == 'cancelled') {
+          debugPrint('OrderProvider: Cannot update status of a cancelled order ($orderId)');
+          throw Exception('This order is cancelled and cannot be updated.');
+        }
+      }
+
       final Map<String, dynamic> updates = {
         'status': newStatus,
         'statusHistory.$newStatus': DateTime.now().toIso8601String(),

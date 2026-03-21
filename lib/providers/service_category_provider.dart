@@ -15,7 +15,7 @@ class ServiceCategoryProvider with ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   void startListening({bool silent = false}) {
-    if (!silent) {
+    if (!silent && _serviceCategories.isEmpty) {
       _isLoading = true;
       notifyListeners();
     }

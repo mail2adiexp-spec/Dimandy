@@ -404,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: productProvider.isLoading
+      body: (productProvider.isLoading && productProvider.products.isEmpty)
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [

@@ -122,13 +122,15 @@ service cloud.firestore {
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_manager') ||
         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_partner')
       ); 
-      allow update: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || 
-        isAdmin() || 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller') || 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_manager') ||
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_partner')
-      );
+      allow update: if isAuthenticated() && 
+        resource.data.status != 'cancelled' && 
+        (
+          resource.data.userId == request.auth.uid || 
+          isAdmin() || 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'seller') || 
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'store_manager') ||
+          (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'delivery_partner')
+        );
     }
 
     // --- Services ---

@@ -491,8 +491,8 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                           value: s, 
                                           child: Text(s.replaceAll('_', ' ').toUpperCase()),
                                         )).toList(),
-                                        onChanged: (val) async {
-                                          if (val == null) return;
+                                        onChanged: status == 'cancelled' ? null : (val) async {
+                                          if (val == null || status == 'cancelled') return;
                                           
                                           // Barcode Verification for 'Packed'
                                           if (val == 'packed') {
@@ -512,8 +512,10 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                             final items = data['items'] as List<dynamic>? ?? [];
                                             bool matchFound = false;
 
-                                            // 1. Check against Order ID (Shipping Label Barcode)
-                                            if (orderId.trim().toLowerCase() == normalizedScannedCode) {
+                                            // 1. Check against Order ID (Shipping Label Barcode) with flexible logic
+                                            final expectedOrderId = orderId.trim().toLowerCase();
+                                            if (normalizedScannedCode.replaceAll('#', '') == expectedOrderId || 
+                                                (expectedOrderId.startsWith(normalizedScannedCode.replaceAll('#', '')) && normalizedScannedCode.replaceAll('#', '').length >= 6)) {
                                               matchFound = true;
                                             }
 
@@ -644,6 +646,52 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     ),
                                   ),
+                                  if (['pending', 'confirmed', 'packed'].contains(status)) ...[
+                                    const SizedBox(width: 8),
+                                    OutlinedButton.icon(
+                                      icon: const Icon(Icons.cancel_outlined, size: 18),
+                                      label: const Text('Reject Order', style: TextStyle(color: Colors.red)),
+                                      onPressed: () async {
+                                        final confirmed = await showDialog<bool>(
+                                          context: context,
+                                          builder: (context) => AlertDialog(
+                                            title: const Text('Reject Order?'),
+                                            content: const Text('Are you sure you want to reject this order? This action cannot be undone.'),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
+                                              ElevatedButton(
+                                                onPressed: () => Navigator.pop(context, true),
+                                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                                child: const Text('Yes, Reject'),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (confirmed == true) {
+                                          try {
+                                            await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+                                              'status': 'cancelled',
+                                              'statusHistory.cancelled': FieldValue.serverTimestamp(),
+                                              'rejectedBy': Provider.of<AuthProvider>(context, listen: false).currentUser?.uid,
+                                            });
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order Rejected Successfully')));
+                                            }
+                                          } catch (e) {
+                                            if (context.mounted) {
+                                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to reject order: $e')));
+                                            }
+                                          }
+                                        }
+                                      },
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: Colors.red,
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                        side: const BorderSide(color: Colors.red),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                                 if (status == 'returned') ...[
                                   const SizedBox(width: 8),

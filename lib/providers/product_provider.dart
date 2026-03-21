@@ -51,20 +51,21 @@ class ProductProvider with ChangeNotifier {
   Future<void> fetchProducts({bool refresh = false}) async {
     if (refresh) {
       _lastDocument = null;
-      _products.clear();
       _hasMore = true;
-      _currentCategory = null; // Reset category filter
+      _currentCategory = null; 
     }
 
     if (!_hasMore) return;
     if (_isLoading || _isFetchingMore) return;
 
     if (refresh) {
-      _isLoading = true;
-      notifyListeners();
+      if (_products.isEmpty) {
+        _isLoading = true;
+        notifyListeners();
+      }
     } else {
       _isFetchingMore = true;
-      notifyListeners(); // Optional: to show bottom loader
+      notifyListeners();
     }
 
     try {
@@ -78,6 +79,10 @@ class ProductProvider with ChangeNotifier {
       }
 
       final snapshot = await query.get();
+
+      if (refresh && snapshot.docs.isNotEmpty) {
+        _products.clear();
+      }
 
       if (snapshot.docs.isNotEmpty) {
         _lastDocument = snapshot.docs.last;
