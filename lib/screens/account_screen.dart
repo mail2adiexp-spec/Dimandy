@@ -351,7 +351,7 @@ class _AccountScreenState extends State<AccountScreen> {
                               ),
 
                             // Administrator Dashboard
-                            if (auth.isAdministrator)
+                            if (auth.isSuperAdmin)
                               Column(
                                 children: [
                                   _buildProfileCard(
@@ -461,7 +461,7 @@ class _AccountScreenState extends State<AccountScreen> {
                               ),
 
                             // Admin Panel (legacy)
-                            if (auth.isAdmin && !auth.isAdministrator)
+                            if (auth.isAdmin)
                               Column(
                                 children: [
                                   _buildProfileCard(

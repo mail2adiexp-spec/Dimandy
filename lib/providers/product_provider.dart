@@ -227,16 +227,91 @@ class ProductProvider with ChangeNotifier {
       debugPrint('Error fetching home section ($sectionName): $e');
     }
   }
+
+  // Generate keywords for search (lowercase, word-based + prefixes)
+  List<String> _generateSearchKeywords(String name) {
+    final List<String> keywords = [];
+    final String lowerName = name.toLowerCase();
+    
+    // Add full name
+    keywords.add(lowerName);
+    
+    // Split by spaces and special characters
+    final List<String> words = lowerName.split(RegExp(r'[\s\-_,.]+')).where((w) => w.isNotEmpty).toList();
+    
+    for (final word in words) {
+      // Add each word
+      if (!keywords.contains(word)) keywords.add(word);
+      
+      // Add prefixes of each word (for instant search)
+      for (int i = 1; i <= word.length; i++) {
+        final prefix = word.substring(0, i);
+        if (!keywords.contains(prefix)) keywords.add(prefix);
+      }
+    }
+    
+    return keywords;
+  }
+
+  // Global search using Firestore array-contains
+  Future<List<Product>> searchProductsGlobal(String query) async {
+    if (query.trim().isEmpty) return [];
+    
+    final String lowerQuery = query.trim().toLowerCase();
+    
+    try {
+      final snapshot = await _firestore
+          .collection('products')
+          .where('searchKeywords', arrayContains: lowerQuery)
+          .limit(20)
+          .get();
+          
+      return snapshot.docs.map((doc) {
+        return Product.fromMap(doc.id, doc.data() as Map<String, dynamic>);
+      }).toList();
+    } catch (e) {
+      debugPrint('Error in global search: $e');
+      // If error (like missing index), fallback to local search
+      return searchProducts(query);
+    }
+  }
   
   // No changes to CRUD methods
   Future<void> addProduct(Product product) async {
     try {
-      await _firestore.collection('products').doc(product.id).set(product.toMap());
+      // Generate keywords before saving
+      final productWithKeywords = Product(
+        id: product.id,
+        sellerId: product.sellerId,
+        name: product.name,
+        description: product.description,
+        price: product.price,
+        basePrice: product.basePrice,
+        imageUrl: product.imageUrl,
+        imageUrls: product.imageUrls,
+        category: product.category,
+        unit: product.unit,
+        mrp: product.mrp,
+        isFeatured: product.isFeatured,
+        isHotDeal: product.isHotDeal,
+        isCustomerChoice: product.isCustomerChoice,
+        salesCount: product.salesCount,
+        viewCount: product.viewCount,
+        stock: product.stock,
+        minimumQuantity: product.minimumQuantity,
+        storeIds: product.storeIds,
+        state: product.state,
+        searchKeywords: _generateSearchKeywords(product.name),
+        createdAt: product.createdAt,
+        updatedAt: product.updatedAt,
+      );
+
+      await _firestore.collection('products').doc(product.id).set(productWithKeywords.toMap());
       // Add to local lists if it matches current view
       if (_currentCategory == product.category) {
-         _categoryProducts.insert(0, product);
+         _categoryProducts.insert(0, productWithKeywords);
       }
-      _products.insert(0, product);
+      _products.insert(0, productWithKeywords);
       notifyListeners();
     } catch (e) {
       rethrow;
@@ -245,17 +320,43 @@ class ProductProvider with ChangeNotifier {
 
   Future<void> updateProduct(String id, Product updatedProduct) async {
     try {
-      final Map<String, dynamic> data = updatedProduct.toMap();
+      final productWithKeywords = Product(
+        id: updatedProduct.id,
+        sellerId: updatedProduct.sellerId,
+        name: updatedProduct.name,
+        description: updatedProduct.description,
+        price: updatedProduct.price,
+        basePrice: updatedProduct.basePrice,
+        imageUrl: updatedProduct.imageUrl,
+        imageUrls: updatedProduct.imageUrls,
+        category: updatedProduct.category,
+        unit: updatedProduct.unit,
+        mrp: updatedProduct.mrp,
+        isFeatured: updatedProduct.isFeatured,
+        isHotDeal: updatedProduct.isHotDeal,
+        isCustomerChoice: updatedProduct.isCustomerChoice,
+        salesCount: updatedProduct.salesCount,
+        viewCount: updatedProduct.viewCount,
+        stock: updatedProduct.stock,
+        minimumQuantity: updatedProduct.minimumQuantity,
+        storeIds: updatedProduct.storeIds,
+        state: updatedProduct.state,
+        searchKeywords: _generateSearchKeywords(updatedProduct.name),
+        createdAt: updatedProduct.createdAt,
+        updatedAt: updatedProduct.updatedAt,
+      );
+
+      final Map<String, dynamic> data = productWithKeywords.toMap();
       data.remove('createdAt'); 
       await _firestore.collection('products').doc(id).update(data);
       
       final index = _products.indexWhere((p) => p.id == id);
       if (index >= 0) {
-        _products[index] = updatedProduct;
+        _products[index] = productWithKeywords;
       }
       final catIndex = _categoryProducts.indexWhere((p) => p.id == id);
       if (catIndex >= 0) {
-        _categoryProducts[catIndex] = updatedProduct;
+        _categoryProducts[catIndex] = productWithKeywords;
       }
       notifyListeners();
     } catch (e) {

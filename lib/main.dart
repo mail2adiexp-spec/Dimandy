@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:provider/provider.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:ecommerce_app/screens/main_navigation_screen.dart';
 import 'package:ecommerce_app/screens/cart_screen.dart';
 import 'package:ecommerce_app/screens/checkout_screen.dart';
@@ -25,6 +26,7 @@ import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
 import 'package:ecommerce_app/screens/provider_details_screen.dart';
 import 'package:ecommerce_app/screens/select_services_screen.dart';
 import 'package:ecommerce_app/screens/static_pages.dart';
+import 'package:ecommerce_app/screens/splash_screen.dart'; // Add this line
 import 'package:ecommerce_app/models/service_category_model.dart';
 
 import 'package:ecommerce_app/screens/booking_tracking_screen.dart';
@@ -45,6 +47,7 @@ import 'package:ecommerce_app/providers/gift_provider.dart';
 import 'package:ecommerce_app/services/recommendation_service.dart';
 import 'package:ecommerce_app/providers/settings_provider.dart';
 import 'package:flutter_web_plugins/url_strategy.dart'; // Add this for web url strategy
+import 'package:ecommerce_app/services/notification_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -52,6 +55,14 @@ void main() async {
   usePathUrlStrategy(); // Configure clean URLs (remove #)
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseFirestore.instance.settings = const Settings(persistenceEnabled: true);
+  
+  // Initialize Push Notifications
+  try {
+    await NotificationService().initPushNotifications();
+  } catch (e) {
+    debugPrint("Failed to initialize push notifications: $e");
+  }
+  
   runApp(const MyApp());
 }
 
@@ -192,7 +203,14 @@ class MyApp extends StatelessWidget {
               ),
               fontFamily: 'NotoSans',
             ),
-            home: const MainNavigationScreen(),
+            home: Consumer<AuthProvider>(
+              builder: (ctx, auth, _) {
+                if (!auth.isInitialized) {
+                  return const SplashScreen();
+                }
+                return const MainNavigationScreen();
+              },
+            ),
             routes: {
               CartScreen.routeName: (_) => const CartScreen(),
               CheckoutScreen.routeName: (_) => const CheckoutScreen(),

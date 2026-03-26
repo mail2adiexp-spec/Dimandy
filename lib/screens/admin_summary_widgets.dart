@@ -1,4 +1,10 @@
   Widget _buildFinancialOverview() {
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final todayStartTs = Timestamp.fromDate(todayStart);
+    final todayEndTs = Timestamp.fromDate(todayEnd);
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 600;
@@ -11,113 +17,111 @@
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Financial Overview',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                Row(
+                  children: [
+                    const Icon(Icons.today, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    const Text(
+                      "Today's Summary",
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 20),
                 Flex(
                   direction: isMobile ? Axis.vertical : Axis.horizontal,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Total Revenue (Orders + Bookings)
+
+                    // 1. Today's Booked Services
                     Expanded(
                       flex: isMobile ? 0 : 1,
                       child: StreamBuilder<QuerySnapshot>(
-                        stream: _ordersStream,
-                        builder: (context, orderSnapshot) {
-                          return StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('bookings').where('status', isEqualTo: 'completed').snapshots(),
-                            builder: (context, bookingSnapshot) {
-                              double totalRevenue = 0;
-                              
-                              // Calculate from Orders
-                              if (orderSnapshot.hasData) {
-                                for (var doc in orderSnapshot.data!.docs) {
-                                  final data = doc.data() as Map<String, dynamic>;
-                                  if (data['status'] == 'delivered' || data['status'] == 'completed') {
-                                     totalRevenue += (data['totalAmount'] as num?)?.toDouble() ?? 0;
-                                  }
-                                }
-                              }
-
-                              // Calculate from Bookings
-                              if (bookingSnapshot.hasData) {
-                                for (var doc in bookingSnapshot.data!.docs) {
-                                   final data = doc.data() as Map<String, dynamic>;
-                                   totalRevenue += (data['totalCost'] as num?)?.toDouble() ?? 0;
-                                }
-                              }
-
-                              return _buildStatItem(
-                                'Total Revenue (GMV)',
-                                '₹${totalRevenue.toStringAsFixed(0)}',
-                                Icons.currency_rupee,
-                                Colors.green,
-                              );
-                            }
+                        stream: FirebaseFirestore.instance
+                            .collection('bookings')
+                            .where('createdAt', isGreaterThanOrEqualTo: todayStartTs)
+                            .where('createdAt', isLessThanOrEqualTo: todayEndTs)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                          return _buildStatItem(
+                            "Today's Services Booked",
+                            '$count',
+                            Icons.design_services,
+                            Colors.blue,
                           );
-                        }
+                        },
                       ),
                     ),
                     if (isMobile) const SizedBox(height: 16),
-                    
-                    // Platform Revenue (Assume 10% commission for demo)
-                     Expanded(
-                      flex: isMobile ? 0 : 1,
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: _ordersStream,
-                        builder: (context, orderSnapshot) {
-                           return StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('bookings').where('status', isEqualTo: 'completed').snapshots(),
-                            builder: (context, bookingSnapshot) {
-                              double totalRevenue = 0;
-                              if (orderSnapshot.hasData) {
-                                for (var doc in orderSnapshot.data!.docs) {
-                                  final data = doc.data() as Map<String, dynamic>;
-                                  if (data['status'] == 'delivered' || data['status'] == 'completed') {
-                                     totalRevenue += (data['totalAmount'] as num?)?.toDouble() ?? 0;
-                                  }
-                                }
-                              }
-                              if (bookingSnapshot.hasData) {
-                                for (var doc in bookingSnapshot.data!.docs) {
-                                   final data = doc.data() as Map<String, dynamic>;
-                                   totalRevenue += (data['totalCost'] as num?)?.toDouble() ?? 0;
-                                }
-                              }
-                              // Assuming 10% commission
-                              final platformRevenue = totalRevenue * 0.10;
 
-                              return _buildStatItem(
-                                'Est. Platform Revenue (10%)',
-                                '₹${platformRevenue.toStringAsFixed(0)}',
-                                Icons.account_balance_wallet,
-                                Colors.blue,
-                              );
-                            }
-                           );
-                        }
-                      ),
-                    ),
-                    if (isMobile) const SizedBox(height: 16),
-                    
-                    // Active Users
+                    // 2. Today's Completed Orders
                     Expanded(
                       flex: isMobile ? 0 : 1,
                       child: StreamBuilder<QuerySnapshot>(
-                        stream: _usersStream,
-                         builder: (context, snapshot) {
-                            int count = snapshot.hasData ? snapshot.data!.docs.length : 0;
-                            return _buildStatItem(
-                              'Total Users',
-                              '$count',
-                              Icons.people,
-                              Colors.purple,
-                            );
-                         }
+                        stream: FirebaseFirestore.instance
+                            .collection('orders')
+                            .where('orderDate', isGreaterThanOrEqualTo: todayStartTs)
+                            .where('orderDate', isLessThanOrEqualTo: todayEndTs)
+                            .where('status', isEqualTo: 'delivered')
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          final count = snapshot.hasData ? snapshot.data!.docs.length : 0;
+                          return _buildStatItem(
+                            "Today's Completed Orders",
+                            '$count',
+                            Icons.check_circle_outline,
+                            Colors.green,
+                          );
+                        },
                       ),
                     ),
+                    if (isMobile) const SizedBox(height: 16),
+
+                    // 3. Today's Total Revenue
+                    Expanded(
+                      flex: isMobile ? 0 : 1,
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('orders')
+                            .where('orderDate', isGreaterThanOrEqualTo: todayStartTs)
+                            .where('orderDate', isLessThanOrEqualTo: todayEndTs)
+                            .where('status', isEqualTo: 'delivered')
+                            .snapshots(),
+                        builder: (context, orderSnap) {
+                          return StreamBuilder<QuerySnapshot>(
+                            stream: FirebaseFirestore.instance
+                                .collection('bookings')
+                                .where('createdAt', isGreaterThanOrEqualTo: todayStartTs)
+                                .where('createdAt', isLessThanOrEqualTo: todayEndTs)
+                                .where('status', isEqualTo: 'completed')
+                                .snapshots(),
+                            builder: (context, bookingSnap) {
+                              double revenue = 0;
+                              if (orderSnap.hasData) {
+                                for (var doc in orderSnap.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  revenue += (data['totalAmount'] as num?)?.toDouble() ?? 0;
+                                }
+                              }
+                              if (bookingSnap.hasData) {
+                                for (var doc in bookingSnap.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  revenue += (data['totalCost'] as num?)?.toDouble() ?? 0;
+                                }
+                              }
+                              return _buildStatItem(
+                                "Today's Revenue",
+                                '₹${revenue.toStringAsFixed(0)}',
+                                Icons.currency_rupee,
+                                Colors.orange,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+
                   ],
                 ),
               ],

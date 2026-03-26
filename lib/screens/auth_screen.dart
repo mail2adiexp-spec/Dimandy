@@ -88,7 +88,7 @@ class _SignInFormState extends State<_SignInForm> {
   final _otpCtrl = TextEditingController();
   bool _loading = false;
   bool _isPasswordVisible = false;
-  bool _isOtpLogin = true; // Default to OTP login
+  bool _isOtpLogin = false; // Default to Email login
   bool _isOtpSent = false;
 
   @override
@@ -145,35 +145,29 @@ class _SignInFormState extends State<_SignInForm> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              // Toggle Login Mode
+              // Toggle between OTP and Email login
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   ChoiceChip(
-                    label: const Text('Login with OTP'),
-                    selected: _isOtpLogin,
-                    onSelected: (val) {
-                      setState(() {
-                         _isOtpLogin = true;
-                         _isOtpSent = false;
-                         _otpCtrl.clear();
-                      });
-                    },
+                    label: const Text('Email & Pass'),
+                    selected: !_isOtpLogin,
+                    onSelected: (_) => setState(() { _isOtpLogin = false; }),
                   ),
                   const SizedBox(width: 12),
                   ChoiceChip(
-                    label: const Text('Email & Pass'),
-                    selected: !_isOtpLogin,
-                    onSelected: (val) {
-                      setState(() {
-                         _isOtpLogin = false;
-                      });
-                    },
+                    label: const Text('OTP Login'),
+                    selected: _isOtpLogin,
+                    onSelected: (_) => setState(() {
+                      _isOtpLogin = true;
+                      _isOtpSent = false;
+                      _otpCtrl.clear();
+                    }),
                   ),
                 ],
               ),
               const SizedBox(height: 20),
-              
+
               if (_isOtpLogin) ...[
                 TextFormField(
                   controller: _phoneCtrl,
@@ -186,8 +180,9 @@ class _SignInFormState extends State<_SignInForm> {
                   enabled: !_isOtpSent,
                   maxLength: 10,
                   validator: (v) {
+                    if (!_isOtpLogin) return null;
                     if (v == null || v.isEmpty) return 'Enter phone number';
-                    if (!RegExp(r'^[0-9]{10}$').hasMatch(v)) return 'Enter valid 10-digit number';
+                    if (!RegExp(r'^[0-9]{10}$').hasMatch(v)) return 'Enter 10-digit number';
                     return null;
                   },
                 ),
@@ -201,15 +196,15 @@ class _SignInFormState extends State<_SignInForm> {
                     ),
                     keyboardType: TextInputType.number,
                     maxLength: 6,
-                    validator: (v) => (v == null || v.length < 6) ? 'Enter 6-digit OTP' : null,
+                    validator: (v) => (_isOtpLogin && _isOtpSent && (v == null || v.length < 6))
+                        ? 'Enter 6-digit OTP'
+                        : null,
                   ),
                   Align(
                     alignment: Alignment.centerRight,
                     child: TextButton(
-                      onPressed: () {
-                        setState(() { _isOtpSent = false; _otpCtrl.clear(); });
-                      },
-                      child: const Text('Change Phone Number'),
+                      onPressed: () => setState(() { _isOtpSent = false; _otpCtrl.clear(); }),
+                      child: const Text('Change Number'),
                     ),
                   ),
                 ],
@@ -221,7 +216,7 @@ class _SignInFormState extends State<_SignInForm> {
                     prefixIcon: Icon(Icons.email_outlined),
                   ),
                   keyboardType: TextInputType.emailAddress,
-                  validator: (v) => (v == null || v.isEmpty || !v.contains('@'))
+                  validator: (v) => (!_isOtpLogin && (v == null || v.isEmpty || !v.contains('@')))
                       ? 'Enter a valid email'
                       : null,
                 ),
@@ -232,23 +227,17 @@ class _SignInFormState extends State<_SignInForm> {
                     labelText: 'Password',
                     prefixIcon: const Icon(Icons.lock_outline),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible;
-                        });
-                      },
+                      icon: Icon(_isPasswordVisible ? Icons.visibility : Icons.visibility_off),
+                      onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                     ),
                   ),
                   obscureText: !_isPasswordVisible,
-                  validator: (v) => (v == null || v.isEmpty)
+                  validator: (v) => (!_isOtpLogin && (v == null || v.isEmpty))
                       ? 'Please enter your password'
                       : null,
                 ),
               ],
-              
+
               const SizedBox(height: 20),
               Row(
                 children: [
@@ -257,12 +246,11 @@ class _SignInFormState extends State<_SignInForm> {
                       onPressed: _loading ? null : _submit,
                       child: _loading
                           ? const SizedBox(
-                              height: 20,
-                              width: 20,
+                              height: 20, width: 20,
                               child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                             )
-                          : Text(_isOtpLogin 
-                              ? (_isOtpSent ? 'Verify OTP' : 'Send OTP') 
+                          : Text(_isOtpLogin
+                              ? (_isOtpSent ? 'Verify OTP' : 'Send OTP')
                               : 'Sign In'),
                     ),
                   ),
@@ -289,10 +277,8 @@ class _SignInFormState extends State<_SignInForm> {
                             },
                       icon: Image.network(
                         'https://cdn1.iconfinder.com/data/icons/google-s-logo/150/Google_Icons-09-512.png',
-                        height: 20,
-                        width: 20,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(Icons.public, size: 20),
+                        height: 20, width: 20,
+                        errorBuilder: (_, __, ___) => const Icon(Icons.public, size: 20),
                       ),
                       label: const Text('Google'),
                       style: OutlinedButton.styleFrom(
@@ -308,10 +294,7 @@ class _SignInFormState extends State<_SignInForm> {
                   alignment: Alignment.centerRight,
                   child: TextButton(
                     onPressed: () => _showForgotPasswordDialog(context),
-                    child: const Text(
-                      'Forgot Password?',
-                      style: TextStyle(fontSize: 14),
-                    ),
+                    child: const Text('Forgot Password?', style: TextStyle(fontSize: 14)),
                   ),
                 ),
               ],

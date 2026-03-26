@@ -23,6 +23,7 @@ android {
     ndkVersion = "27.0.12077973"  // Use locally available NDK r27 for 16 KB page size support
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -38,8 +39,8 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion  // Required for mobile_scanner
         targetSdk = 35
-        versionCode = flutter.versionCode
-        versionName = "1.1.9.30"
+        versionCode = 35
+        versionName = "1.1.10.35"
 
         externalNativeBuild {
             cmake {
@@ -67,11 +68,16 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            useLegacyPackaging = false
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.google.android.play:integrity:1.4.0")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

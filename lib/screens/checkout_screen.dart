@@ -461,6 +461,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _placeOrder() async {
+    if (_isPlacingOrder) return;
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -494,6 +496,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           productName: cartItem.product.name,
           quantity: cartItem.quantity,
           price: cartItem.product.price,
+          basePrice: cartItem.product.basePrice, // New: Capture buying price
           imageUrl: cartItem.product.imageUrl,
           metadata: cartItem.metadata,
         );

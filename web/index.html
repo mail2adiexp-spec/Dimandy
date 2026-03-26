@@ -118,7 +118,36 @@
 
 <body>
   <div id="recaptcha-container"></div>
+  <!-- PWA Install Prompt Handler -->
+  <script>
+    window.pwaInstallReady = false;
+    window._pwaInstallPrompt = null;
+
+    window.addEventListener('beforeinstallprompt', function(e) {
+      e.preventDefault();
+      window._pwaInstallPrompt = e;
+      window.pwaInstallReady = true;
+      // Notify Flutter if it registered a callback
+      if (typeof window._onPwaReady === 'function') {
+        window._onPwaReady();
+      }
+    });
+
+    window.triggerPWAInstall = function() {
+      if (window._pwaInstallPrompt) {
+        window._pwaInstallPrompt.prompt();
+        window._pwaInstallPrompt.userChoice.then(function(choiceResult) {
+          if (choiceResult.outcome === 'accepted') {
+            window.pwaInstallReady = false;
+            window._pwaInstallPrompt = null;
+          }
+        });
+      }
+    };
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
+
 </body>
 
 </html>

@@ -154,6 +154,7 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
               }
 
               return ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16, top: 16),
                 itemCount: filteredDocs.length,
                 itemBuilder: (context, index) {

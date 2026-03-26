@@ -14,11 +14,13 @@ import '../utils/locations_data.dart'; // Import locations data
 class SharedProductsTab extends StatefulWidget {
   final bool canManage;
   final String? sellerId; // If provided, limits to specific seller (e.g. for seller dashboard)
+  final String? storeId; // If provided, limits to specific store (e.g. for store manager dashboard)
 
   const SharedProductsTab({
     Key? key,
     this.canManage = true,
     this.sellerId,
+    this.storeId,
   }) : super(key: key);
 
   @override
@@ -47,6 +49,8 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
   // Image Picker
   final ImagePicker _picker = ImagePicker();
+  List<Uint8List> _selectedImages = [];
+  final List<String> _availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
   late Stream<QuerySnapshot> _productsStream;
 
@@ -59,7 +63,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
   @override
   void didUpdateWidget(SharedProductsTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.sellerId != oldWidget.sellerId) {
+    if (widget.sellerId != oldWidget.sellerId || widget.storeId != oldWidget.storeId) {
       _initializeStream();
     }
   }
@@ -72,6 +76,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
     if (widget.sellerId != null) {
       query = query.where('sellerId', isEqualTo: widget.sellerId);
+    } else if (widget.storeId != null) {
+      // Filter by Store ID (array-contains because storeIds is a list in product model)
+      query = query.where('storeIds', arrayContains: widget.storeId);
     } else if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
       // Filter by state for State Admins
       // Note: This requires an index on 'state' and 'createdAt'
@@ -79,6 +86,45 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     }
 
     _productsStream = query.snapshots();
+  }
+
+  Future<void> pickImages(StateSetter setState) async {
+    try {
+      final List<XFile> images = await _picker.pickMultiImage();
+      if (images.isNotEmpty && images.length <= 6) {
+        final List<Uint8List> imageBytes = [];
+        for (var image in images) {
+          final bytes = await image.readAsBytes();
+          imageBytes.add(bytes);
+        }
+        setState(() {
+          _selectedImages = imageBytes;
+        });
+      } else if (images.length > 6) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum 6 images allowed')));
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
+      }
+    }
+  }
+
+  Future<List<String>> uploadImages(String productId) async {
+    List<String> imageUrls = [];
+    for (int i = 0; i < _selectedImages.length; i++) {
+      try {
+        final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('image_$i.jpg');
+        await ref.putData(_selectedImages[i]);
+        final url = await ref.getDownloadURL();
+        imageUrls.add(url);
+      } catch (e) {
+        debugPrint('Error uploading image $i: $e');
+      }
+    }
+    return imageUrls;
   }
 
   @override
@@ -107,6 +153,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
         products = _filterProducts(products);
 
         return CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             // Header with Search, Filters, and Actions
             SliverToBoxAdapter(
@@ -458,7 +505,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                          children: [
                            Expanded(
                              child: TextField(
-                               decoration: const InputDecoration(labelText: 'Min Price', prefixText: '₹', border: OutlineInputBorder(), isDense: true),
+                               decoration: const InputDecoration(labelText: 'Min Price', prefixText: '\u20B9', border: OutlineInputBorder(), isDense: true),
                                keyboardType: TextInputType.number,
                                onChanged: (v) => setState(() => _minProductPrice = double.tryParse(v)),
                              ),
@@ -466,7 +513,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                            const SizedBox(width: 16),
                            Expanded(
                                child: TextField(
-                                 decoration: const InputDecoration(labelText: 'Max Price', prefixText: '₹', border: OutlineInputBorder(), isDense: true),
+                                 decoration: const InputDecoration(labelText: 'Max Price', prefixText: '\u20B9', border: OutlineInputBorder(), isDense: true),
                                  keyboardType: TextInputType.number,
                                  onChanged: (v) => setState(() => _maxProductPrice = double.tryParse(v)),
                                ),
@@ -587,7 +634,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
   Widget _buildProductsGrid(List<QueryDocumentSnapshot> products) {
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Added 80 bottom padding
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100), // Increased to 100 bottom padding
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: MediaQuery.of(context).size.width < 600 
@@ -664,7 +711,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         children: [
                           Text(data['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
                           const SizedBox(height: 4),
-                          Text(NumberFormat.currency(locale: 'en_IN', symbol: '₹').format(data['price'] ?? 0), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
+                          Text(NumberFormat.currency(locale: 'en_IN', symbol: '\u20B9').format(data['price'] ?? 0), style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 14)),
                           const SizedBox(height: 4),
                           Row(
                             children: [
@@ -788,80 +835,27 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       }
   }
 
-  void _showAddProductDialog() {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController(text: '\u2022 '); // Start with dot
-    final priceCtrl = TextEditingController();
-    final basePriceCtrl = TextEditingController(); // Added
-    final mrpCtrl = TextEditingController();
-    final stockCtrl = TextEditingController();
-    final minQtyCtrl = TextEditingController(text: '1');
-    
-    final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
-    final categories = categoryProvider.categories.map((c) => c.name).toList();
-    
-    String selectedCategory = categories.isNotEmpty 
-        ? (categories.contains('Daily Needs') ? 'Daily Needs' : categories.first) 
-        : 'Daily Needs';
-        
-    if (categories.isEmpty) {
-       // Fallback logic
-    }
-    
-    String selectedUnit = 'Pic';
-    bool isFeatured = false;
-    bool isHotDeal = false;
-    bool isCustomerChoice = false;
-    bool isLoading = false;
-    List<Uint8List> selectedImages = [];
-    List<String> selectedStoreIds = []; // Added for store linking
-
-    // State Selection
-    // State Selection
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    // Use user's state or assignedState if available (Seller or State Admin) as default
-    String? selectedState = auth.currentUser?.state ?? auth.currentUser?.assignedState;
-    final List<String> availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
-
-    Future<void> pickImages(StateSetter setState) async {
-      try {
-        final List<XFile> images = await _picker.pickMultiImage();
-        if (images.isNotEmpty && images.length <= 6) {
-          final List<Uint8List> imageBytes = [];
-          for (var image in images) {
-            final bytes = await image.readAsBytes();
-            imageBytes.add(bytes);
-          }
-          setState(() {
-            selectedImages = imageBytes;
-          });
-        } else if (images.length > 6) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum 6 images allowed')));
-          }
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
-        }
-      }
-    }
-
-    Future<List<String>> uploadImages(String productId) async {
-       List<String> imageUrls = [];
-       for (int i = 0; i < selectedImages.length; i++) {
-         try {
-           final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('image_$i.jpg');
-           await ref.putData(selectedImages[i]);
-           final url = await ref.getDownloadURL();
-           imageUrls.add(url);
-         } catch (e) {
-           debugPrint('Error uploading image $i: $e');
-         }
-       }
-       return imageUrls;
-    }
+    void _showAddProductDialog() {
+       final formKey = GlobalKey<FormState>();
+       final nameCtrl = TextEditingController();
+       final descCtrl = TextEditingController(text: '\u2022 ');
+       final basePriceCtrl = TextEditingController();
+       final mrpCtrl = TextEditingController();
+       final priceCtrl = TextEditingController();
+       final stockCtrl = TextEditingController();
+       final minQtyCtrl = TextEditingController(text: '1');
+       final maxQtyCtrl = TextEditingController(text: '0');
+       
+       String selectedCategory = Provider.of<CategoryProvider>(context, listen: false).categories.isNotEmpty 
+           ? Provider.of<CategoryProvider>(context, listen: false).categories.first.name 
+           : '';
+       String selectedUnit = 'Pic';
+       bool isFeatured = false;
+       bool isHotDeal = false;
+       bool isLoading = false;
+        _selectedImages = []; // Reset for new product
+       List<String> selectedStoreIds = [];
+        String? selectedState = Provider.of<AuthProvider>(context, listen: false).currentUser?.state;
 
     showDialog(
       context: context,
@@ -912,7 +906,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         Expanded(
                           child: TextFormField(
                             controller: basePriceCtrl,
-                            decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '₹'),
+                            decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '\u20B9'),
                             keyboardType: TextInputType.number,
                             validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
                           ),
@@ -921,7 +915,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         Expanded(
                           child: TextFormField(
                             controller: mrpCtrl,
-                            decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
+                            decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '\u20B9'),
                             keyboardType: TextInputType.number,
                             onChanged: (val) {
                                 final p = double.tryParse(priceCtrl.text) ?? 0;
@@ -935,43 +929,20 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       ],
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
-                            onChanged: (val) {
-                                final p = double.tryParse(val) ?? 0;
-                                final m = double.tryParse(mrpCtrl.text) ?? 0;
-                                if (m > p && p > 0) {
-                                   setState(() => isHotDeal = true);
-                                }
-                            }
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
-                          ),
-                        ),
-                      ],
+                    TextFormField(
+                       controller: priceCtrl,
+                       decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '\u20B9'),
+                       keyboardType: TextInputType.number,
+                       validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
+                       onChanged: (val) {
+                           final p = double.tryParse(val) ?? 0;
+                           final m = double.tryParse(mrpCtrl.text) ?? 0;
+                           if (m > p && p > 0) {
+                              setState(() => isHotDeal = true);
+                           }
+                       },
                     ),
                     const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: selectedUnit,
-                      decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                      isExpanded: true,
-                      items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                      onChanged: (v) => setState(() => selectedUnit = v!),
-                    ),
-                    const SizedBox(height: 8),
                     // Platform Fee & Listing Price Preview
                     FutureBuilder<DocumentSnapshot>(
                       future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
@@ -1007,12 +978,12 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                         children: [
                                           TextSpan(text: 'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
                                           TextSpan(
-                                            text: '₹${platformFee.toStringAsFixed(2)}',
+                                            text: '\u20B9${platformFee.toStringAsFixed(2)}',
                                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
                                           ),
                                           const TextSpan(text: '  |  Listing Price: '),
                                           TextSpan(
-                                            text: '₹${listingPrice.toStringAsFixed(2)}',
+                                            text: '\u20B9${listingPrice.toStringAsFixed(2)}',
                                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                                           ),
                                         ],
@@ -1028,11 +999,44 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       }
                     ),
                     const SizedBox(height: 16),
+                    const Divider(),
+                    const Text('Inventory Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: selectedUnit,
+                      decoration: const InputDecoration(labelText: 'Product Unit', border: OutlineInputBorder()),
+                      isExpanded: true,
+                      items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                      onChanged: (v) => setState(() => selectedUnit = v!),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                             controller: stockCtrl,
+                             decoration: InputDecoration(labelText: 'Stock *', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                             keyboardType: TextInputType.number,
+                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextFormField(
+                             controller: minQtyCtrl,
+                             decoration: InputDecoration(labelText: 'Min Order Qty', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                             keyboardType: TextInputType.number,
+                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                     TextFormField(
-                       controller: minQtyCtrl,
-                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                       controller: maxQtyCtrl,
+                       decoration: InputDecoration(labelText: 'Max Order Qty (0 for no limit)', border: const OutlineInputBorder(), suffixText: selectedUnit),
                        keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v!) < 0) ? 'Invalid' : null,
                     ),
                     const SizedBox(height: 16),
                      MediaQuery.of(context).size.width < 600
@@ -1058,21 +1062,21 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     OutlinedButton.icon(
                       onPressed: () => pickImages(setState),
                       icon: const Icon(Icons.image),
-                      label: Text(selectedImages.isEmpty ? 'Select Images (Max 6)' : '${selectedImages.length} image(s) selected'),
+                      label: Text(_selectedImages.isEmpty ? 'Select Images (Max 6)' : '${_selectedImages.length} image(s) selected'),
                     ),
-                    if (selectedImages.isNotEmpty) ...[
+                    if (_selectedImages.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       SizedBox(
                         height: 80,
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
-                          itemCount: selectedImages.length,
+                          itemCount: _selectedImages.length,
                           itemBuilder: (context, index) => Padding(
                             padding: const EdgeInsets.only(right: 8),
                             child: Stack(
                               children: [
-                                Image.memory(selectedImages[index], width: 80, height: 80, fit: BoxFit.cover),
-                                Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => setState(() => selectedImages.removeAt(index)), style: IconButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, minimumSize: const Size(24, 24)))),
+                                Image.memory(_selectedImages[index], width: 80, height: 80, fit: BoxFit.cover),
+                                Positioned(top: 0, right: 0, child: IconButton(icon: const Icon(Icons.close, size: 16), onPressed: () => setState(() => _selectedImages.removeAt(index)), style: IconButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, minimumSize: const Size(24, 24)))),
                               ],
                             ),
                           ),
@@ -1194,29 +1198,46 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             if (!formKey.currentState!.validate()) return;
                             setState(() => isLoading = true);
                             try {
+                              // Fetch current platform fee
+                              double platformFeePercent = 0.05; // Default 5%
+                              try {
+                                final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+                                if (settingsDoc.exists) {
+                                  final data = settingsDoc.data();
+                                  platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                                     (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
+                                  platformFeePercent = platformFeePercent / 100;
+                                }
+                              } catch (e) {
+                                debugPrint('Error fetching platform fee for save: $e');
+                              }
+
+                              final sellerPrice = double.parse(priceCtrl.text);
+                              final listingPrice = sellerPrice * (1 + platformFeePercent);
+
                                final docRef = await FirebaseFirestore.instance.collection('products').add({
                                  'name': nameCtrl.text,
                                  'description': descCtrl.text,
                                  'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
-                                 'price': double.parse(priceCtrl.text),
+                                 'price': listingPrice, // Store Listing Price (Customer Price)
+                                 'sellerPrice': sellerPrice, // Preserve Seller's intended price
                                  'stock': int.parse(stockCtrl.text),
                                  'minimumQuantity': int.parse(minQtyCtrl.text),
+                                 'maximumQuantity': int.parse(maxQtyCtrl.text),
                                  'mrp': double.tryParse(mrpCtrl.text) ?? 0.0,
                                  'category': selectedCategory,
                                  'unit': selectedUnit,
                                  'isFeatured': isFeatured,
-                                 'isHotDeal': (double.tryParse(mrpCtrl.text) ?? 0) > double.parse(priceCtrl.text),
+                                 'isHotDeal': (double.tryParse(mrpCtrl.text) ?? 0) > listingPrice,
                                  'isCustomerChoice': false, // sales based
                                  'salesCount': 0,
                                  'sellerId': 'admin', // Or current user? Admin panel implies admin.
                                  'createdAt': FieldValue.serverTimestamp(),
                                  'updatedAt': FieldValue.serverTimestamp(),
-                                 'createdAt': FieldValue.serverTimestamp(),
-                                 'updatedAt': FieldValue.serverTimestamp(),
                                  'storeIds': selectedStoreIds,
                                  'state': selectedState, // Save selected state
                                });
-                               if (selectedImages.isNotEmpty) {
+                               if (_selectedImages.isNotEmpty) {
                                  final urls = await uploadImages(docRef.id);
                                  await docRef.update({
                                    'imageUrls': urls, // Standardized key
@@ -1252,10 +1273,11 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       final nameCtrl = TextEditingController(text: productData['name']);
       final descCtrl = TextEditingController(text: productData['description']);
       final priceCtrl = TextEditingController(text: productData['price'].toString());
-      final basePriceCtrl = TextEditingController(text: (productData['basePrice'] ?? 0.0).toString()); // Added
+      final basePriceCtrl = TextEditingController(text: (productData['basePrice'] ?? 0.0).toString());
       final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
       final stockCtrl = TextEditingController(text: productData['stock'].toString());
       final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
+      final maxQtyCtrl = TextEditingController(text: (productData['maximumQuantity'] ?? 0).toString());
       
       final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
       final categories = categoryProvider.categories.map((c) => c.name).toList();
@@ -1267,23 +1289,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       String selectedUnit = productData['unit'] ?? 'Pic';
       bool isFeatured = productData['isFeatured'] ?? false;
       bool isHotDeal = productData['isHotDeal'] ?? false;
-      bool isCustomerChoice = productData['isCustomerChoice'] ?? false;
       bool isLoading = false;
 
       List<String> selectedStoreIds = List<String>.from(productData['storeIds'] ?? []);
-      
-      // State Selection
       final auth = Provider.of<AuthProvider>(context, listen: false);
-      // Use user's state or assignedState if available as default
       String? selectedState = productData['state'] ?? auth.currentUser?.state ?? auth.currentUser?.assignedState;
-      final List<String> availableStates = LocationsData.cities.map((e) => e.state).toSet().toList()..sort();
 
       showDialog(
         context: context,
         builder: (context) => StatefulBuilder(
           builder: (context, setState) => Dialog(
             child: Container(
-              width: 600,
+              width: MediaQuery.of(context).size.width > 700 ? 700 : double.maxFinite,
               padding: const EdgeInsets.all(24),
               child: Form(
                 key: formKey,
@@ -1320,15 +1337,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       const SizedBox(height: 16),
                       Row(
                         children: [
-                          Expanded(child: TextFormField(
+                          Expanded(
+                            child: TextFormField(
                               controller: basePriceCtrl,
-                              decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '₹'),
+                              decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '\u20B9'),
                               keyboardType: TextInputType.number,
-                          )),
+                            ),
+                          ),
                           const SizedBox(width: 16),
-                          Expanded(child: TextFormField(
+                          Expanded(
+                            child: TextFormField(
                               controller: mrpCtrl,
-                              decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
+                              decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '\u20B9'),
                               keyboardType: TextInputType.number,
                               onChanged: (val) {
                                 final p = double.tryParse(priceCtrl.text) ?? 0;
@@ -1336,39 +1356,26 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 if (m > p && p > 0) {
                                    setState(() => isHotDeal = true);
                                 }
-                              }
-                          )),
+                              },
+                            ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(child: TextFormField(
-                              controller: priceCtrl,
-                              decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '₹'),
-                              keyboardType: TextInputType.number,
-                              validator: (v) => double.tryParse(v ?? '') != null ? null : 'Invalid',
-                              onChanged: (val) {
-                                final p = double.tryParse(val) ?? 0;
-                                final m = double.tryParse(mrpCtrl.text) ?? 0;
-                                if (m > p && p > 0) {
-                                   setState(() => isHotDeal = true);
-                                }
-                              }
-                          )),
-                          const SizedBox(width: 16),
-                          Expanded(child: TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => int.tryParse(v ?? '') != null ? null : 'Invalid')),
-                        ],
-                      ),
+                      TextFormField(
+                           controller: priceCtrl,
+                           decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '\u20B9'),
+                           keyboardType: TextInputType.number,
+                           validator: (v) => double.tryParse(v ?? '') != null ? null : 'Invalid',
+                           onChanged: (val) {
+                             final p = double.tryParse(val) ?? 0;
+                             final m = double.tryParse(mrpCtrl.text) ?? 0;
+                             if (m > p && p > 0) {
+                                setState(() => isHotDeal = true);
+                             }
+                           },
+                       ),
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: selectedUnit,
-                        items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                        onChanged: (v) => setState(() => selectedUnit = v!),
-                        isExpanded: true,
-                        decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                      ),
-                    const SizedBox(height: 8),
                     // Platform Fee & Listing Price Preview
                     FutureBuilder<DocumentSnapshot>(
                       future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
@@ -1404,12 +1411,12 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                         children: [
                                           TextSpan(text: 'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
                                           TextSpan(
-                                            text: '₹${platformFee.toStringAsFixed(2)}',
+                                            text: '\u20B9${platformFee.toStringAsFixed(2)}',
                                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
                                           ),
                                           const TextSpan(text: '  |  Listing Price: '),
                                           TextSpan(
-                                            text: '₹${listingPrice.toStringAsFixed(2)}',
+                                            text: '\u20B9${listingPrice.toStringAsFixed(2)}',
                                             style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
                                           ),
                                         ],
@@ -1425,13 +1432,46 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       }
                     ),
                       const SizedBox(height: 16),
-                       TextFormField(
-                          controller: minQtyCtrl,
-                          decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
-                          keyboardType: TextInputType.number,
-                          validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                       const Divider(),
+                       const Text('Inventory Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                       const SizedBox(height: 8),
+                       DropdownButtonFormField<String>(
+                         value: selectedUnit,
+                         decoration: const InputDecoration(labelText: 'Product Unit', border: OutlineInputBorder()),
+                         isExpanded: true,
+                         items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                         onChanged: (v) => setState(() => selectedUnit = v!),
                        ),
-                      const SizedBox(height: 16),
+                       const SizedBox(height: 16),
+                       Row(
+                         children: [
+                           Expanded(
+                             child: TextFormField(
+                                controller: stockCtrl,
+                                decoration: InputDecoration(labelText: 'Stock *', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                                keyboardType: TextInputType.number,
+                                validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
+                             ),
+                           ),
+                           const SizedBox(width: 16),
+                           Expanded(
+                             child: TextFormField(
+                                controller: minQtyCtrl,
+                                decoration: InputDecoration(labelText: 'Min Order Qty', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                                keyboardType: TextInputType.number,
+                                validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                             ),
+                           ),
+                         ],
+                       ),
+                       const SizedBox(height: 16),
+                       TextFormField(
+                          controller: maxQtyCtrl,
+                          decoration: InputDecoration(labelText: 'Max Order Qty (0 for no limit)', border: const OutlineInputBorder(), suffixText: selectedUnit),
+                          keyboardType: TextInputType.number,
+                          validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v!) < 0) ? 'Invalid' : null,
+                       ),
+                       const SizedBox(height: 16),
                       MediaQuery.of(context).size.width < 600
                       ? DropdownButtonFormField(
                           initialValue: selectedCategory,
@@ -1458,7 +1498,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           decoration: const InputDecoration(labelText: 'Product State', border: OutlineInputBorder()),
                           items: [
                              const DropdownMenuItem(value: null, child: Text('Global / No State')),
-                             ...availableStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
+                             ..._availableStates.map((s) => DropdownMenuItem(value: s, child: Text(s))),
                           ],
                           onChanged: (v) => setState(() => selectedState = v),
                         ),
@@ -1574,29 +1614,44 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: isLoading ? null : () async {
-                              if (!formKey.currentState!.validate()) return;
-                              setState(() => isLoading = true);
+                            if (!formKey.currentState!.validate()) return;
+                            setState(() => isLoading = true);
+                            try {
+                              // Fetch current platform fee
+                              double platformFeePercent = 0.05; // Default 5%
                               try {
-                                await FirebaseFirestore.instance.collection('products').doc(productId).update({
-                                  'name': nameCtrl.text,
-                                  'description': descCtrl.text,
-                                  'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
-                                  'price': double.parse(priceCtrl.text),
-                                  'stock': int.parse(stockCtrl.text),
-                                  'minimumQuantity': int.parse(minQtyCtrl.text),
-                                  'mrp': double.tryParse(mrpCtrl.text) ?? 0.0,
-                                  'category': selectedCategory,
-                                  'unit': selectedUnit,
-                                  'isFeatured': isFeatured,
-                                  'isHotDeal': (double.tryParse(mrpCtrl.text) ?? 0) > double.parse(priceCtrl.text),
-                                  // isCustomerChoice not updated manually anymore
-                                  // isCustomerChoice not updated manually anymore
-                                  'updatedAt': FieldValue.serverTimestamp(),
-                                  // isCustomerChoice not updated manually anymore
-                                  'updatedAt': FieldValue.serverTimestamp(),
-                                  'storeIds': selectedStoreIds,
-                                  'state': selectedState, // Update state
-                                });
+                                final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+                                if (settingsDoc.exists) {
+                                  final data = settingsDoc.data();
+                                  platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                                     (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
+                                  platformFeePercent = platformFeePercent / 100;
+                                }
+                              } catch (e) {
+                                debugPrint('Error fetching platform fee for update: $e');
+                              }
+
+                              final sellerPrice = double.parse(priceCtrl.text);
+                              final listingPrice = sellerPrice * (1 + platformFeePercent);
+
+                              await FirebaseFirestore.instance.collection('products').doc(productId).update({
+                                'name': nameCtrl.text,
+                                'description': descCtrl.text,
+                                'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
+                                'price': listingPrice, // Store Listing Price
+                                'sellerPrice': sellerPrice, // Preserve Seller's price
+                                'stock': int.parse(stockCtrl.text),
+                                'minimumQuantity': int.parse(minQtyCtrl.text),
+                                'maximumQuantity': int.parse(maxQtyCtrl.text),
+                                'mrp': double.tryParse(mrpCtrl.text) ?? 0.0,
+                                'category': selectedCategory,
+                                'unit': selectedUnit,
+                                'isFeatured': isFeatured,
+                                'isHotDeal': (double.tryParse(mrpCtrl.text) ?? 0) > listingPrice,
+                                'storeIds': selectedStoreIds,
+                                'state': selectedState,
+                                'updatedAt': FieldValue.serverTimestamp(),
+                              });
                                 if (mounted) {
                                   Navigator.pop(context);
                                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated successfully')));
@@ -1700,7 +1755,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     if (editType == 'price') ...[
                       DropdownButtonFormField<String>(initialValue: priceAction, items: const [DropdownMenuItem(value: 'add_percent', child: Text('Increase by %')), DropdownMenuItem(value: 'subtract_percent', child: Text('Decrease by %')), DropdownMenuItem(value: 'set_fixed', child: Text('Set to Fixed Value'))], onChanged: (v) => setState(() => priceAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),
                       const SizedBox(height: 16),
-                      TextFormField(controller: priceCtrl, decoration: InputDecoration(labelText: priceAction == 'set_fixed' ? 'New Price' : 'Percentage', border: const OutlineInputBorder(), prefixText: priceAction == 'set_fixed' ? '₹' : '', suffixText: priceAction != 'set_fixed' ? '%' : ''), keyboardType: TextInputType.number),
+                      TextFormField(controller: priceCtrl, decoration: InputDecoration(labelText: priceAction == 'set_fixed' ? 'New Price' : 'Percentage', border: const OutlineInputBorder(), prefixText: priceAction == 'set_fixed' ? '\u20B9' : '', suffixText: priceAction != 'set_fixed' ? '%' : ''), keyboardType: TextInputType.number),
                     ],
                     if (editType == 'stock') ...[
                        DropdownButtonFormField<String>(initialValue: stockAction, items: const [DropdownMenuItem(value: 'add', child: Text('Add to Stock')), DropdownMenuItem(value: 'subtract', child: Text('Subtract from Stock')), DropdownMenuItem(value: 'set', child: Text('Set to Value'))], onChanged: (v) => setState(() => stockAction = v!), decoration: const InputDecoration(labelText: 'Action', border: OutlineInputBorder())),

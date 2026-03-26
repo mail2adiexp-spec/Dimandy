@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/transaction_model.dart';
+import '../models/order_model.dart';
 import '../utils/locations_data.dart';
 
 class AdminFinancialScreen extends StatefulWidget {
@@ -17,11 +18,16 @@ class AdminFinancialScreen extends StatefulWidget {
 class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _enhancedTransactions = [];
-  double _totalEarnings = 0;
-  double _sellerEarnings = 0;
-  double _storeProfit = 0; // New variable for Direct Store Sales
-  double _serviceEarnings = 0;
-  double _deliveryCosts = 0;
+  
+  // 8 Metrics
+  double _storeProfit = 0;
+  double _sellerCommission = 0;
+  double _serviceCommission = 0;
+  double _deliveryCost = 0;
+  double _totalProfit = 0;
+  double _totalPurchase = 0;
+  double _totalSell = 0;
+  int _totalServices = 0;
 
   // Filters
   String? _selectedState;
@@ -46,12 +52,6 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
     });
   }
 
-  int _orderCount = 0;
-  int _serviceCount = 0;
-  int _deliveryCount = 0;
-
-
-
   Future<void> _fetchFinancialData() async {
     setState(() => _isLoading = true);
     try {
@@ -59,7 +59,6 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
           .collection('transactions')
           .orderBy('createdAt', descending: true);
 
-      // Date Filter
       if (_selectedDateRange != null) {
         query = query
             .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.start))
@@ -70,120 +69,134 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
 
       final querySnapshot = await query.get();
 
-      final List<Map<String, dynamic>> enhancedTxns = [];
-      double sellerTotal = 0; 
-      double storeTotal = 0;  
-      double serviceTotal = 0;
-      double deliveryTotal = 0;
-      
-      int orders = 0;
-      int services = 0;
-      int deliveries = 0;
+      // Initialize totals
+      double storeRevenue = 0;
+      double storePurchaseCost = 0;
+      double sellerComm = 0;
+      double serviceComm = 0;
+      double deliveryFeePaid = 0;
+      double totalSalesRevenue = 0;
+      int serviceCount = 0;
 
-      final Map<String, Map<String, String>> _storeCache = {}; 
+      final List<Map<String, dynamic>> enhancedTxns = [];
+      final Map<String, Map<String, dynamic>> _userCache = {};
+      final Map<String, Map<String, dynamic>> _orderCache = {};
 
       for (var doc in querySnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final tx = TransactionModel.fromMap(data, doc.id);
         final metadata = tx.metadata ?? {};
         
-        // Temporary holding vars
         bool isRelevant = false;
-        double tempAmount = 0.0;
-        String tempType = '';
+        double amount = tx.amount;
+        String typeLabel = '';
         
-        // 1. Identify Type & Potential Amount
-        if (metadata.containsKey('platformFee')) {
-          final fee = (metadata['platformFee'] as num?)?.toDouble() ?? 0.0;
-          if (fee > 0) {
-            isRelevant = true;
-            tempAmount = fee;
-            if (metadata.containsKey('isPlatformOwned') && metadata['isPlatformOwned'] == true) {
-               tempType = 'Store Owned Earnings';
-            } else if (metadata.containsKey('orderId')) {
-              tempType = 'Order Commission';
-            } else if (metadata.containsKey('bookingId')) {
-              tempType = 'Service Fee';
-            }
-          }
-        } else if (metadata['source'] == 'delivery_fee') {
+        // --- 1. Identify Logic ---
+        
+        // Delivery Cost
+        if (metadata['source'] == 'delivery_fee' || tx.description.toLowerCase().contains('delivery payout')) {
           isRelevant = true;
-          tempAmount = tx.amount;
-          tempType = 'Delivery Payout';
+          typeLabel = 'Delivery Cost';
+          deliveryFeePaid += tx.amount;
+        } 
+        
+        // Order Related
+        else if (metadata.containsKey('orderId')) {
+          isRelevant = true;
+          final orderId = metadata['orderId'];
+          
+          // Check if it's a commission (debit from seller) or payment
+          if (tx.description.contains('Commission') || metadata.containsKey('platformFee')) {
+            // It's a commission
+            final fee = (metadata['platformFee'] as num?)?.toDouble() ?? tx.amount;
+            if (metadata['isPlatformOwned'] == true) {
+               // Should not happen for commissions usually, but handle if so
+               typeLabel = 'Store Owned';
+            } else {
+               typeLabel = 'Seller Commission';
+               sellerComm += fee;
+            }
+          } else if (tx.type == TransactionType.credit) {
+            // It's a direct payment
+             typeLabel = 'Order Payment';
+             totalSalesRevenue += tx.amount;
+             
+             // Check ownership via seller profile
+             final sellerId = metadata['sellerId'] ?? tx.userId;
+             Map<String, dynamic>? uData;
+             if (_userCache.containsKey(sellerId)) {
+               uData = _userCache[sellerId];
+             } else {
+               final uDoc = await FirebaseFirestore.instance.collection('users').doc(sellerId).get();
+               if (uDoc.exists) {
+                 uData = uDoc.data();
+                 _userCache[sellerId] = uData!;
+               }
+             }
+
+             final role = (uData?['role'] as String? ?? '').toLowerCase();
+             final platformRoles = ['admin', 'super_admin', 'state_admin', 'store_manager', 'core_staff', 'manager'];
+             
+             if (platformRoles.contains(role)) {
+               typeLabel = 'Store Owned';
+               storeRevenue += tx.amount;
+               
+               // Calculate Purchase Cost for this order
+               if (!_orderCache.containsKey(orderId)) {
+                 final oDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+                 if (oDoc.exists) {
+                   _orderCache[orderId] = oDoc.data()!;
+                 }
+               }
+               
+               if (_orderCache.containsKey(orderId)) {
+                 final oData = _orderCache[orderId]!;
+                 final items = (oData['items'] as List<dynamic>?) ?? [];
+                 for (var item in items) {
+                    final itemBasePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+                    final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                    storePurchaseCost += (itemBasePrice * qty);
+                 }
+               }
+             }
+          }
+        }
+        
+        // Service Related
+        else if (metadata.containsKey('bookingId')) {
+          isRelevant = true;
+          serviceCount++;
+          if (tx.description.contains('Commission') || metadata.containsKey('platformFee')) {
+            final fee = (metadata['platformFee'] as num?)?.toDouble() ?? tx.amount;
+            typeLabel = 'Service Commission';
+            serviceComm += fee;
+          } else {
+            typeLabel = 'Service Payment';
+            totalSalesRevenue += tx.amount;
+          }
         }
 
         if (!isRelevant) continue;
 
-        // 2. Resolve State/Store
-        String storeName = 'N/A';
-        String state = 'Unknown';
-          
-        if (metadata.containsKey('sellerId')) {
-            final sellerId = metadata['sellerId'];
-            if (_storeCache.containsKey(sellerId)) {
-              storeName = _storeCache[sellerId]!['name']!;
-              state = _storeCache[sellerId]!['state']!;
-            } else {
-              try {
-                 final userDoc = await FirebaseFirestore.instance.collection('users').doc(sellerId).get();
-                 if (userDoc.exists) {
-                   final storeId = userDoc.data()?['storeId'];
-                   if (storeId != null) {
-                     final storeDoc = await FirebaseFirestore.instance.collection('stores').doc(storeId).get();
-                     if (storeDoc.exists) {
-                       final sData = storeDoc.data()!;
-                       storeName = sData['name'] ?? 'Unknown Store';
-                       state = sData['state'] ?? 'Unknown';
-                     }
-                   }
-                 }
-                 _storeCache[sellerId] = {'name': storeName, 'state': state};
-              } catch (e) { }
-            }
-        }
-
-        // 3. Apply State Filter
-        if (_selectedState != null && state != _selectedState && state != 'Unknown') {
-          continue; 
-        }
-
-        // 4. Add to Totals and List
-        if (tempType == 'Store Owned Earnings') {
-            storeTotal += tempAmount;
-            orders++;
-        } else if (tempType == 'Order Commission') {
-            sellerTotal += tempAmount;
-            orders++;
-        } else if (tempType == 'Service Fee') {
-            serviceTotal += tempAmount;
-            services++;
-        } else if (tempType == 'Delivery Payout') {
-            deliveryTotal += tempAmount;
-            deliveries++;
-        }
-
         enhancedTxns.add({
-            'tx': tx,
-            'type': tempType,
-            'amount': tempAmount,
-            'storeName': storeName,
-            'state': state,
-            'metadata': metadata,
-            'isDelivery': tempType == 'Delivery Payout',
+          'tx': tx,
+          'type': typeLabel,
+          'amount': amount,
+          'storeName': metadata['storeName'] ?? 'N/A',
         });
       }
 
       if (mounted) {
         setState(() {
           _enhancedTransactions = enhancedTxns;
-          _sellerEarnings = sellerTotal;
-          _storeProfit = storeTotal;
-          _serviceEarnings = serviceTotal;
-          _deliveryCosts = deliveryTotal;
-          _totalEarnings = (sellerTotal + storeTotal + serviceTotal) - deliveryTotal;
-          _orderCount = orders;
-          _serviceCount = services;
-          _deliveryCount = deliveries;
+          _storeProfit = storeRevenue - storePurchaseCost;
+          _sellerCommission = sellerComm;
+          _serviceCommission = serviceComm;
+          _deliveryCost = deliveryFeePaid;
+          _totalPurchase = storePurchaseCost;
+          _totalSell = totalSalesRevenue;
+          _totalServices = serviceCount;
+          _totalProfit = _storeProfit + _sellerCommission + _serviceCommission - _deliveryCost;
           _isLoading = false;
         });
       }
@@ -214,73 +227,65 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
         pageFormat: PdfPageFormat.a4,
         build: (context) => [
           pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                children: [
-                  pw.Text('Financial Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
-                  pw.Text('Generated by Admin Panel', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
-                ],
-              ),
-              pw.Column(
-                crossAxisAlignment: pw.CrossAxisAlignment.end,
-                children: [
-                   pw.Text('Date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
-                   if (_selectedState != null) pw.Text('Region: $_selectedState'),
-                ],
-              )
-            ]
-          ),
-          pw.SizedBox(height: 20),
-          
-          // KPIs
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceAround,
-            children: [
-              _pdfKpiCard('Total Orders', _orderCount.toString(), PdfColors.blue),
-              _pdfKpiCard('Total Services', _serviceCount.toString(), PdfColors.orange),
-              _pdfKpiCard('Deliveries', _deliveryCount.toString(), PdfColors.red),
-            ]
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Financial Report', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Generated by Admin Panel', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text('Date: ${DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now())}'),
+                    if (_selectedState != null) pw.Text('Region: $_selectedState'),
+                  ],
+                )
+              ]
           ),
           pw.SizedBox(height: 20),
 
-          // Summary Table
+          // KPIs Summary
           pw.Table.fromTextArray(
-            headers: ['Category', 'Amount'],
+            headers: ['Category', 'Amount / Count'],
             data: [
-              ['Net Earnings', 'INR ${_totalEarnings.toStringAsFixed(2)}'],
-              ['Store Owned Earnings', 'INR ${_storeProfit.toStringAsFixed(2)}'],
-              ['Commissions', 'INR ${_sellerEarnings.toStringAsFixed(2)}'],
-              ['Service Fees', 'INR ${_serviceEarnings.toStringAsFixed(2)}'],
-              ['Delivery Costs', '(INR ${_deliveryCosts.toStringAsFixed(2)})'],
+              ['Total Profit', 'INR ${_totalProfit.toStringAsFixed(2)}'],
+              ['Store Profit', 'INR ${_storeProfit.toStringAsFixed(2)}'],
+              ['Seller Commission', 'INR ${_sellerCommission.toStringAsFixed(2)}'],
+              ['Service Commission', 'INR ${_serviceCommission.toStringAsFixed(2)}'],
+              ['Delivery Cost', '(INR ${_deliveryCost.toStringAsFixed(2)})'],
+              ['Total Purchase (Buying Cost)', 'INR ${_totalPurchase.toStringAsFixed(2)}'],
+              ['Total Sell (Revenue)', 'INR ${_totalSell.toStringAsFixed(2)}'],
+              ['Total Services Booked', _totalServices.toString()],
             ],
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             cellAlignment: pw.Alignment.centerLeft,
             cellAlignments: {1: pw.Alignment.centerRight},
           ),
           pw.SizedBox(height: 20),
-          
+
           pw.Header(level: 1, child: pw.Text('Recent Transactions')),
           pw.Table.fromTextArray(
-            headers: ['Date', 'Type', 'Store', 'Amount'],
+            headers: ['Date', 'Type', 'Store/Description', 'Amount'],
             data: _enhancedTransactions.take(100).map((e) {
               final tx = e['tx'] as TransactionModel;
               return [
                 DateFormat('yyyy-MM-dd').format(tx.createdAt),
                 e['type'],
                 e['storeName'],
-                '${e['isDelivery'] ? '-' : '+'} INR ${e['amount'].toStringAsFixed(2)}',
+                'INR ${e['amount'].toStringAsFixed(2)}',
               ];
             }).toList(),
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
             cellStyle: const pw.TextStyle(fontSize: 10),
           ),
-          pw.Divider(), 
+          pw.Divider(),
           pw.SizedBox(height: 10),
           pw.Align(
-             alignment: pw.Alignment.centerRight,
-             child: pw.Text('Authorized Computer Generated Report', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
+            alignment: pw.Alignment.centerRight,
+            child: pw.Text('Authorized Computer Generated Report', style: pw.TextStyle(fontSize: 8, fontStyle: pw.FontStyle.italic)),
           ),
         ],
       ),
@@ -289,22 +294,6 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
     await Printing.layoutPdf(
       onLayout: (format) async => pdf.save(),
       name: 'Financial_Report.pdf',
-    );
-  }
-
-  pw.Widget _pdfKpiCard(String label, String value, PdfColor color) {
-    return pw.Container(
-      padding: const pw.EdgeInsets.all(10),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: color),
-        borderRadius: pw.BorderRadius.circular(5),
-      ),
-      child: pw.Column(
-        children: [
-          pw.Text(label, style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
-          pw.Text(value, style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: color)),
-        ]
-      )
     );
   }
 
@@ -341,6 +330,8 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
         ),
         const SizedBox(height: 16),
         Card(
+          elevation: 0,
+          color: Colors.grey[100],
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             child: Row(
@@ -381,32 +372,27 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
           ),
         ),
         const SizedBox(height: 20),
-        Column(
+        
+        // 8 KPI Grid
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          childAspectRatio: 1.5,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
           children: [
-            Row(
-              children: [
-                Expanded(child: _buildSummaryCard('Net Earnings', _totalEarnings, _totalEarnings >= 0 ? Colors.green : Colors.red)),
-                const SizedBox(width: 16),
-                Expanded(child: _buildSummaryCard('Store Owned Earnings', _storeProfit, Colors.blue)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(child: _buildSummaryCard('Commissions', _sellerEarnings, Colors.deepPurple)),
-                const SizedBox(width: 16),
-                Expanded(child: _buildSummaryCard('Service Fees', _serviceEarnings, Colors.orange)),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(child: _buildSummaryCard('Delivery Costs', _deliveryCosts, Colors.redAccent)),
-                Expanded(child: Container()),
-              ],
-            ),
+            _buildKpiCard('Total Profit', _totalProfit, Icons.account_balance_wallet, Colors.green),
+            _buildKpiCard('Store Profit', _storeProfit, Icons.storefront, Colors.blue),
+            _buildKpiCard('Seller Commission', _sellerCommission, Icons.people, Colors.deepPurple),
+            _buildKpiCard('Service Commission', _serviceCommission, Icons.build, Colors.orange),
+            _buildKpiCard('Delivery Cost', _deliveryCost, Icons.local_shipping, Colors.red),
+            _buildKpiCard('Total Purchase', _totalPurchase, Icons.shopping_basket, Colors.blueGrey),
+            _buildKpiCard('Total Sell', _totalSell, Icons.trending_up, Colors.indigo),
+            _buildKpiCard('Total Services', _totalServices.toDouble(), Icons.event_available, Colors.teal, isCount: true),
           ],
         ),
+
         const SizedBox(height: 32),
         Text(
           'Transactions (${_enhancedTransactions.length})',
@@ -414,6 +400,8 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
         ),
         const SizedBox(height: 16),
         Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           child: _enhancedTransactions.isEmpty
               ? const Center(
                   child: Padding(
@@ -425,33 +413,23 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
                   children: List.generate(_enhancedTransactions.length, (index) {
                     final item = _enhancedTransactions[index];
                     final tx = item['tx'] as TransactionModel;
-                    final isDelivery = item['isDelivery'] as bool;
                     final amount = item['amount'] as double;
+                    final type = item['type'] as String;
                     
                     return Column(
                       children: [
                         ListTile(
                           leading: CircleAvatar(
-                            backgroundColor: isDelivery ? Colors.red[50] : Colors.green[50],
-                            child: Icon(
-                              isDelivery ? Icons.local_shipping : Icons.attach_money, 
-                              color: isDelivery ? Colors.red : Colors.green,
-                              size: 20,
-                            ),
+                            backgroundColor: _getColorForType(type).withValues(alpha: 0.1),
+                            child: Icon(_getIconForType(type), color: _getColorForType(type), size: 20),
                           ),
-                          title: Text(item['storeName'] != 'N/A' ? item['storeName'] : item['type']),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('${DateFormat('MMM d, yyyy HH:mm').format(tx.createdAt)} • ${item['state']}'),
-                              if (item['storeName'] != 'N/A') Text(item['type'], style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                            ],
-                          ),
+                          title: Text(item['storeName'] != 'N/A' ? item['storeName'] : type),
+                          subtitle: Text(DateFormat('MMM d, yyyy HH:mm').format(tx.createdAt)),
                           trailing: Text(
-                            '${isDelivery ? '-' : '+'}₹${amount.toStringAsFixed(2)}',
+                            '₹${amount.toStringAsFixed(2)}',
                             style: TextStyle(
                               fontWeight: FontWeight.bold, 
-                              color: isDelivery ? Colors.red : Colors.green, 
+                              color: tx.type == TransactionType.debit ? Colors.red : Colors.green, 
                               fontSize: 16
                             ),
                           ),
@@ -462,44 +440,44 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
                   }),
                 ),
         ),
-        const SizedBox(height: 80), // Extra bottom padding to ensure FAB or navigation doesn't block
+        const SizedBox(height: 80),
       ],
     );
   }
 
-  Widget _buildSummaryCard(String title, double amount, Color color) {
+  Widget _buildKpiCard(String title, double value, IconData icon, Color color, {bool isCount = false}) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(color: Colors.grey.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 4)),
-        ],
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Row(
             children: [
-              Icon(Icons.monetization_on, color: color, size: 20),
-              const SizedBox(width: 8),
+              Icon(icon, color: color, size: 16),
+              const SizedBox(width: 6),
               Expanded(
                 child: Text(
                   title,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.bold),
                   overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           Text(
-            '₹${amount.toStringAsFixed(2)}',
+            isCount ? value.toInt().toString() : '₹${value.toStringAsFixed(2)}',
             style: TextStyle(
-              fontSize: 24, 
+              fontSize: 18, 
               fontWeight: FontWeight.bold,
               color: color,
             ),
@@ -507,5 +485,21 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
         ],
       ),
     );
+  }
+
+  Color _getColorForType(String type) {
+    if (type.contains('Delivery')) return Colors.red;
+    if (type.contains('Store')) return Colors.blue;
+    if (type.contains('Seller')) return Colors.deepPurple;
+    if (type.contains('Service')) return Colors.orange;
+    return Colors.green;
+  }
+
+  IconData _getIconForType(String type) {
+    if (type.contains('Delivery')) return Icons.local_shipping;
+    if (type.contains('Store')) return Icons.store;
+    if (type.contains('Seller')) return Icons.people;
+    if (type.contains('Service')) return Icons.build;
+    return Icons.attach_money;
   }
 }

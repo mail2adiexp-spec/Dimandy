@@ -13,6 +13,7 @@ class SharedOrdersTab extends StatefulWidget {
   final String? sellerId; // Optional: to filter orders for a specific seller
   final bool isDeliveryPartner; // Optional: for Delivery Partner dashboard specific view
   final List<String>? matchStatuses; // Optional: to show only specific orders
+  final List<String>? pincodes; // Optional: to filter orders for a specific store service area
 
   const SharedOrdersTab({
     Key? key, 
@@ -20,6 +21,7 @@ class SharedOrdersTab extends StatefulWidget {
     this.sellerId,
     this.isDeliveryPartner = false,
     this.matchStatuses,
+    this.pincodes,
   }) : super(key: key);
 
   @override
@@ -44,7 +46,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
   late Stream<QuerySnapshot> _ordersStream;
 
   // Filter States
-  String _selectedDateFilter = 'All Time'; // 7 Days, 30 Days, 1 Year, Custom, All Time
+  String _selectedDateFilter = 'Today'; // 7 Days, 30 Days, 1 Year, Custom, All Time
   DateTime? _customStartDate;
   DateTime? _customEndDate;
   String _selectedStatusFilter = 'All'; // All, pending, confirmed, ...
@@ -70,7 +72,9 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
   @override
   void didUpdateWidget(SharedOrdersTab oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.sellerId != oldWidget.sellerId || widget.isDeliveryPartner != oldWidget.isDeliveryPartner) {
+    if (widget.sellerId != oldWidget.sellerId || 
+        widget.isDeliveryPartner != oldWidget.isDeliveryPartner ||
+        widget.pincodes != oldWidget.pincodes) {
       _initializeStream();
     }
   }
@@ -84,6 +88,13 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
       query = query.where('state', isEqualTo: auth.currentUser!.assignedState);
     }
     
+    // Store Manager / Pincodes Filter
+    if (widget.pincodes != null && widget.pincodes!.isNotEmpty) {
+      // Note: This requires an index on deliveryPincode (or whichever field stores the pincode)
+      // Usually, it's 'deliveryPincode' or 'pincode' in order data
+      query = query.where('deliveryPincode', whereIn: widget.pincodes);
+    }
+    
     query = query.orderBy('orderDate', descending: true);
     
     if (widget.isDeliveryPartner) {
@@ -95,7 +106,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
 
   void _resetFilters() {
     setState(() {
-      _selectedDateFilter = 'All Time';
+      _selectedDateFilter = 'Today';
       _customStartDate = null;
       _customEndDate = null;
       _selectedStatusFilter = 'All';
@@ -151,7 +162,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                       const SizedBox(width: 8),
                       const Text('Filters', style: TextStyle(fontWeight: FontWeight.bold)),
                       const Spacer(),
-                      if (_selectedDateFilter != 'All Time' || _selectedStatusFilter != 'All')
+                      if (_selectedDateFilter != 'Today' || _selectedStatusFilter != 'All')
                         TextButton.icon(
                           onPressed: _resetFilters,
                           icon: const Icon(Icons.clear, size: 16),
@@ -380,6 +391,8 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                 }
 
                 return ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.only(bottom: 100),
                   itemCount: docs.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 12),
                   itemBuilder: (context, index) {
@@ -619,86 +632,92 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                             const SizedBox(height: 16),
                             // Footer: Actions
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.info_outline, size: 18),
-                                  label: const Text('Details'),
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) => OrderDetailsDialog(orderId: orderId, orderData: data),
-                                    );
-                                  },
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                  ),
-                                ),
-                                if (widget.canManage && !widget.isDeliveryPartner) ...[
-                                  const SizedBox(width: 8),
-                                  OutlinedButton.icon(
-                                    icon: const Icon(Icons.person_add_outlined, size: 18),
-                                    label: const Text('Assign Runner'),
-                                    onPressed: () => _showAssignDeliveryPartnerDialog(orderId, data),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.info_outline, size: 14),
+                                    label: const Text('Details', style: TextStyle(fontSize: 11)),
+                                    onPressed: () {
+                                      showDialog(
+                                        context: context,
+                                        builder: (context) => OrderDetailsDialog(orderId: orderId, orderData: data),
+                                      );
+                                    },
                                     style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     ),
                                   ),
+                                ),
+                                if (widget.canManage && !widget.isDeliveryPartner) ...[
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      icon: const Icon(Icons.person_add_outlined, size: 14),
+                                      label: const Text('Assign', style: TextStyle(fontSize: 11)),
+                                      onPressed: () => _showAssignDeliveryPartnerDialog(orderId, data),
+                                      style: OutlinedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                      ),
+                                    ),
+                                  ),
                                   if (['pending', 'confirmed', 'packed'].contains(status)) ...[
-                                    const SizedBox(width: 8),
-                                    OutlinedButton.icon(
-                                      icon: const Icon(Icons.cancel_outlined, size: 18),
-                                      label: const Text('Reject Order', style: TextStyle(color: Colors.red)),
-                                      onPressed: () async {
-                                        final confirmed = await showDialog<bool>(
-                                          context: context,
-                                          builder: (context) => AlertDialog(
-                                            title: const Text('Reject Order?'),
-                                            content: const Text('Are you sure you want to reject this order? This action cannot be undone.'),
-                                            actions: [
-                                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
-                                              ElevatedButton(
-                                                onPressed: () => Navigator.pop(context, true),
-                                                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                                                child: const Text('Yes, Reject'),
-                                              ),
-                                            ],
-                                          ),
-                                        );
-                                        if (confirmed == true) {
-                                          try {
-                                            await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
-                                              'status': 'cancelled',
-                                              'statusHistory.cancelled': FieldValue.serverTimestamp(),
-                                              'rejectedBy': Provider.of<AuthProvider>(context, listen: false).currentUser?.uid,
-                                            });
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order Rejected Successfully')));
-                                            }
-                                          } catch (e) {
-                                            if (context.mounted) {
-                                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to reject order: $e')));
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: OutlinedButton.icon(
+                                        icon: const Icon(Icons.cancel_outlined, size: 14),
+                                        label: const Text('Reject', style: TextStyle(fontSize: 11, color: Colors.red)),
+                                        onPressed: () async {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Reject Order?'),
+                                              content: const Text('Are you sure you want to reject this order? This action cannot be undone.'),
+                                              actions: [
+                                                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('No')),
+                                                ElevatedButton(
+                                                  onPressed: () => Navigator.pop(context, true),
+                                                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                                                  child: const Text('Yes, Reject'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed == true) {
+                                            try {
+                                              await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+                                                'status': 'cancelled',
+                                                'statusHistory.cancelled': FieldValue.serverTimestamp(),
+                                                'rejectedBy': Provider.of<AuthProvider>(context, listen: false).currentUser?.uid,
+                                              });
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Order Rejected Successfully')));
+                                              }
+                                            } catch (e) {
+                                              if (context.mounted) {
+                                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to reject order: $e')));
+                                              }
                                             }
                                           }
-                                        }
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.red,
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                                        side: const BorderSide(color: Colors.red),
+                                        },
+                                        style: OutlinedButton.styleFrom(
+                                          foregroundColor: Colors.red,
+                                          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                                          side: const BorderSide(color: Colors.red),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ],
                                 if (status == 'returned') ...[
-                                  const SizedBox(width: 8),
-                                  ElevatedButton.icon(
-                                    icon: const Icon(Icons.replay_circle_filled, size: 18),
-                                    label: const Text('Refund'),
-                                    onPressed: () async {
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      icon: const Icon(Icons.replay_circle_filled, size: 14),
+                                      label: const Text('Refund', style: TextStyle(fontSize: 11)),
+                                      onPressed: () async {
                                       // ... Refund Logic (Keep existing logic but formatted) ...
                                       final confirm = await showDialog<bool>(
                                         context: context,
@@ -773,14 +792,15 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                                     ),
                                   ),
-                                ],
+                                ),
                               ],
-                            ),
-                          ],
-                        ),
+                            ],
+                          ),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  );
+                },
                 );
               },
             ),

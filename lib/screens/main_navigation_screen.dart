@@ -3,6 +3,7 @@ import 'home_screen.dart';
 import 'services_screen.dart';
 import 'static_pages.dart';
 import '../widgets/more_bottom_sheet.dart';
+import '../widgets/pwa_install_banner.dart';
 
 class MainNavigationScreen extends StatefulWidget {
   final int initialIndex;
@@ -43,7 +44,15 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: _screens),
+      body: Column(
+        children: [
+          const PwaInstallBanner(),
+          Expanded(
+            child: IndexedStack(index: _currentIndex, children: _screens),
+          ),
+        ],
+      ),
+
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: _onTabTapped,

@@ -2,12 +2,14 @@ import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:io';
+// Conditional import for File to avoid web conflicts
+import 'dart:io' as io; 
 import 'dart:typed_data';
 import 'dart:async';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:ecommerce_app/services/notification_service.dart';
 
 // Role constants
 class UserRole {
@@ -15,7 +17,6 @@ class UserRole {
   static const String seller = 'seller';
   static const String serviceProvider = 'service_provider';
   static const String coreStaff = 'core_staff';
-  static const String administrator = 'administrator';
   static const String storeManager = 'store_manager';
   static const String manager = 'manager';
   static const String deliveryPartner = 'delivery_partner';
@@ -61,9 +62,10 @@ class AppUser {
 }
 
 class AuthProvider extends ChangeNotifier {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
+  late final FirebaseAuth _auth;
   AppUser? _currentUser;
   bool _isAdmin = false;
+  bool _isInitialized = false; // Add this line
 
   // Simple fallback allowlist for admin emails
   // NOTE: For better security, move these to Firestore 'admins' collection or Firebase Custom Claims
@@ -75,12 +77,14 @@ class AuthProvider extends ChangeNotifier {
   };
 
   AuthProvider() {
+    _auth = FirebaseAuth.instance;
     _auth.authStateChanges().listen(_onAuthStateChanged);
   }
 
   AppUser? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
   bool get isAdmin => _isAdmin;
+  bool get isInitialized => _isInitialized; // Add this getter
 
   bool get isSeller {
     if (_currentUser == null) return false;
@@ -98,10 +102,6 @@ class AuthProvider extends ChangeNotifier {
     return _currentUser!.role == UserRole.coreStaff;
   }
 
-  bool get isAdministrator {
-    if (_currentUser == null) return false;
-    return _currentUser!.role == UserRole.administrator || _isAdmin;
-  }
 
   bool get isStoreManager {
     if (_currentUser == null) return false;
@@ -136,7 +136,7 @@ class AuthProvider extends ChangeNotifier {
 
   // Checking if user has ANY admin privileges (Super or State)
   bool get hasAdminAccess {
-    return isSuperAdmin || isStateAdmin || isAdministrator;
+    return isSuperAdmin || isStateAdmin;
   }
 
   Future<void> _onAuthStateChanged(User? firebaseUser) async {
@@ -211,6 +211,21 @@ class AuthProvider extends ChangeNotifier {
 
         _isAdmin = hasAdminClaim || hasAdminRole || isAllowedEmail;
         debugPrint('👑 Admin status: $_isAdmin');
+        
+        // Handle Admin Topic Subscription
+        if (hasAdminAccess || isStoreManager) {
+           try {
+             await NotificationService().subscribeToAdminOrders();
+           } catch (e) {
+             debugPrint('Failed to subscribe to admin topic: $e');
+           }
+        } else {
+           try {
+             await NotificationService().unsubscribeFromAdminOrders();
+           } catch (e) {
+             debugPrint('Failed to unsubscribe from admin topic: $e');
+           }
+        }
       } catch (e) {
         debugPrint('Error checking admin status: $e');
         _isAdmin = false;
@@ -218,7 +233,18 @@ class AuthProvider extends ChangeNotifier {
     } else {
       _currentUser = null;
       _isAdmin = false;
+      try {
+        await NotificationService().unsubscribeFromAdminOrders();
+      } catch (e) {
+        debugPrint('Failed to unsubscribe on logout: $e');
+      }
     }
+    
+    // Mark as initialized after the first run (whether user is null or not)
+    if (!_isInitialized) {
+      _isInitialized = true;
+    }
+    
     notifyListeners();
   }
 
@@ -253,37 +279,48 @@ class AuthProvider extends ChangeNotifier {
     String? state,
     String? pincode,
   }) async {
+    UserCredential? credential;
     try {
       final trimmedPhone = phoneNumber.trim();
       
-      // 1. Check if phone number is already in use by another account
+      // 1. Create the Auth account FIRST so the user is authenticated 
+      // for the subsequent Firestore uniqueness checks.
+      credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      
+      // USER IS NOW AUTHENTICATED - satisfying 'isAuthenticated()' in Firestore Rules
+
+      // 2. Check if phone number is already in use by another account
       final existingDocs = await FirebaseFirestore.instance
           .collection('users')
           .where('phoneNumber', isEqualTo: trimmedPhone)
           .get();
 
       if (existingDocs.docs.isNotEmpty) {
+        // Cleanup: Delete the newly created Auth account if phone is taken
+        await credential.user?.delete();
         throw Exception(
           'This phone number is already associated with another account.',
         );
       }
 
-      // Also check the 'phone' field (legacy or alternative field name used in cloud functions)
+      // Also check the 'phone' field (legacy or alternative field name)
       final existingDocsAlt = await FirebaseFirestore.instance
           .collection('users')
           .where('phone', isEqualTo: trimmedPhone)
           .get();
 
       if (existingDocsAlt.docs.isNotEmpty) {
+        // Cleanup
+        await credential.user?.delete();
         throw Exception(
           'This phone number is already associated with another account.',
         );
       }
 
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
+      // Update basic profile info in Auth
       await credential.user?.updateDisplayName(name.trim());
       await credential.user?.reload();
 
@@ -337,6 +374,10 @@ class AuthProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
+      // If we encounter any error after account creation (like Firestore permission or duplicate phone)
+      // we already handled it by throwing an Exception and optionally deleting the user. 
+      // If an unexpected error occurs here, rethrow as-is if it's already an Exception.
+      if (e is Exception) rethrow;
       throw Exception(
         'Network error. Please check your internet connection and try again.',
       );
@@ -382,6 +423,7 @@ class AuthProvider extends ChangeNotifier {
         );
       }
     } catch (e) {
+      if (e is Exception) rethrow;
       throw Exception(
         'Network error. Please check your internet connection and try again.',
       );
@@ -392,50 +434,42 @@ class AuthProvider extends ChangeNotifier {
   ConfirmationResult? _webConfirmationResult;
   String? get verificationId => _verificationId;
 
+  /// Request OTP for the given phone number.
+  /// Handles both Mobile (Firebase Phone Auth) and Web (invisible reCAPTCHA).
   Future<void> requestOTP(String phoneNumber) async {
     final completer = Completer<void>();
     try {
-      if (!phoneNumber.startsWith('+')) {
-        phoneNumber = '+91$phoneNumber'; // default to India
-      }
-      
-      try {
-        await _auth.setSettings(appVerificationDisabledForTesting: false);
-      } catch (e) {
-        debugPrint('Failed to set settings: $e');
+      // Ensure phone number has country code (default to +91 if missing)
+      String formattedPhone = phoneNumber.trim();
+      if (!formattedPhone.startsWith('+')) {
+        formattedPhone = '+91$formattedPhone';
       }
 
       if (kIsWeb) {
-        // On Web, use an explicit RecaptchaVerifier for better reliability
-        final verifier = RecaptchaVerifier(
-          container: 'recaptcha-container',
-          auth: _auth as dynamic,
-        );
-        
-        final ConfirmationResult result = await _auth.signInWithPhoneNumber(
-          phoneNumber,
-          verifier,
-        );
-        
-        _webConfirmationResult = result;
-        _verificationId = result.verificationId;
+        // On Web: call signInWithPhoneNumber WITHOUT a RecaptchaVerifier.
+        // Firebase Web SDK automatically uses invisible reCAPTCHA.
+        // This avoids the FirebaseAuth/FirebaseAuthPlatform type conflict.
+        _webConfirmationResult = await _auth.signInWithPhoneNumber(formattedPhone);
+        _verificationId = _webConfirmationResult!.verificationId;
         if (!completer.isCompleted) completer.complete();
         notifyListeners();
       } else {
-        // Mobile platform handling
+        // Mobile (Android/iOS): use verifyPhoneNumber
         await _auth.verifyPhoneNumber(
-          phoneNumber: phoneNumber,
+          phoneNumber: formattedPhone,
+          timeout: const Duration(seconds: 60),
           verificationCompleted: (PhoneAuthCredential credential) async {
-            // Auto-resolution (Android only)
+            // Auto-retrieval on Android
             await _auth.signInWithCredential(credential);
             if (!completer.isCompleted) completer.complete();
           },
           verificationFailed: (FirebaseAuthException e) {
-            debugPrint('🔴 Firebase Phone Auth Error: ${e.code} - ${e.message}');
+            debugPrint('❌ Phone Auth Failed: ${e.code} - ${e.message}');
             if (!completer.isCompleted) {
-              completer.completeError(
-                Exception(e.message ?? 'Phone verification failed: ${e.code}'),
-              );
+              String msg = 'OTP failed. Try again.';
+              if (e.code == 'too-many-requests') msg = 'Too many attempts. Try again later.';
+              if (e.code == 'invalid-phone-number') msg = 'Invalid phone number.';
+              completer.completeError(Exception(msg));
             }
           },
           codeSent: (String verificationId, int? resendToken) {
@@ -445,96 +479,92 @@ class AuthProvider extends ChangeNotifier {
           },
           codeAutoRetrievalTimeout: (String verificationId) {
             _verificationId = verificationId;
-            notifyListeners();
           },
         );
       }
       return completer.future;
     } catch (e) {
+      debugPrint('❌ requestOTP Error: $e');
       if (!completer.isCompleted) completer.completeError(e);
       return completer.future;
     }
   }
 
+  /// Verify the OTP code and sign in.
+  /// Handles platform-specific credential confirmation.
   Future<void> verifyOTP(String otpCode) async {
-    if (_verificationId == null) {
-      throw Exception('Verification ID is missing. Request OTP again.');
-    }
-
-    UserCredential? userCredential;
     try {
+      UserCredential userCredential;
+      
       if (kIsWeb && _webConfirmationResult != null) {
+        // Confirm for Web
         userCredential = await _webConfirmationResult!.confirm(otpCode);
-      } else {
+      } else if (_verificationId != null) {
+        // Confirm for Mobile
         final credential = PhoneAuthProvider.credential(
           verificationId: _verificationId!,
           smsCode: otpCode,
         );
         userCredential = await _auth.signInWithCredential(credential);
+      } else {
+        throw Exception('Verification session expired. Please request OTP again.');
       }
-      
-      final tempUser = userCredential?.user;
 
-      if (tempUser != null) {
-        // We successfully signed in with Phone Auth.
-        // Now let's check if this phone number already belongs to an existing account.
-        try {
-          final HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('checkAndReturnExistingAccount');
-          final result = await callable.call();
-          final data = result.data as Map<dynamic, dynamic>;
+      final user = userCredential.user;
+      if (user != null) {
+        // 1. Check if an account already exists for this phone number
+        // We use a safe lookup first
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+           // Existing OTP user
+           await user.reload();
+           await _onAuthStateChanged(user);
+        } else {
+           // Check if there's any OTHER user with this phone number (legacy/merged)
+           final existingUsers = await FirebaseFirestore.instance
+               .collection('users')
+               .where('phoneNumber', isEqualTo: user.phoneNumber)
+               .limit(1)
+               .get();
 
-          if (data['exists'] == true && data['customToken'] != null) {
-            final customToken = data['customToken'] as String;
-            final originalUid = data['originalUid'] as String;
-
-            if (tempUser.uid != originalUid) {
-               // We need to switch to the original account
-               debugPrint('🔄 Existing account found. Switching from Phone Auth ID ${tempUser.uid} to original ID $originalUid');
-               
-               // Sign out of the temporary phone auth account
-               await _auth.signOut();
-               
-               // Sign in to the original account using the custom token
-               final newCredential = await _auth.signInWithCustomToken(customToken);
-               final finalUser = newCredential.user;
-               if (finalUser != null) {
-                 await finalUser.reload();
-                 await _onAuthStateChanged(finalUser);
-               }
-               return; // Successfully logged into existing account
-            }
-          }
-        } catch (e) {
-          debugPrint('⚠️ Warning: Cloud function checkAndReturnExistingAccount failed: $e');
-          // If the cloud function fails (e.g., no internet, or not deployed yet), 
-          // we fallback to the normal flow (just continue with the Phone Auth user).
-        }
-
-        // If we reach here, it either means:
-        // 1. The cloud function returned false (genuinely new user).
-        // 2. The temporary phone auth ID is actually the same as the original ID.
-        // 3. The cloud function failed so we fallback.
-        
-        // If it's a completely new user without any existing account
-        if (userCredential?.additionalUserInfo?.isNewUser == true) {
-          final displayId = await _generateNextUserId();
-          await FirebaseFirestore.instance.collection('users').doc(tempUser.uid).set({
-            'id': tempUser.uid,
-            'displayId': displayId,
-            'name': 'User',
-            'phoneNumber': tempUser.phoneNumber ?? '',
-            'role': UserRole.user,
-            'createdAt': FieldValue.serverTimestamp(),
-            'lastLogin': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-
-          await tempUser.reload();
-          await _onAuthStateChanged(tempUser);
+           if (existingUsers.docs.isNotEmpty) {
+             // Merging logic: This number is already linked to another UID (e.g. Email/Pass account)
+             final existingData = existingUsers.docs.first.data();
+             debugPrint('🔗 Syncing Phone Auth with existing Email account: ${existingUsers.docs.first.id}');
+             
+             // In a perfect world, we'd link credentials, but for now, we just ensure 
+             // the Firestore document is consistent or the user is aware.
+             // We'll update the existing document to have the latest login info.
+             await FirebaseFirestore.instance.collection('users').doc(existingUsers.docs.first.id).update({
+                'lastLogin': FieldValue.serverTimestamp(),
+             });
+           } else {
+             // New User - Initialize Profile
+             final displayId = await _generateNextUserId();
+             await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+               'id': user.uid,
+               'displayId': displayId,
+               'name': 'Customer',
+               'phoneNumber': user.phoneNumber ?? '',
+               'role': UserRole.user,
+               'createdAt': FieldValue.serverTimestamp(),
+               'lastLogin': FieldValue.serverTimestamp(),
+             }, SetOptions(merge: true));
+           }
+           
+           await user.reload();
+           await _onAuthStateChanged(user);
         }
       }
+    } on FirebaseAuthException catch (e) {
+      debugPrint('❌ verifyOTP Error: ${e.code} - ${e.message}');
+      if (e.code == 'invalid-verification-code') {
+        throw Exception('Incorrect OTP code. Please check and try again.');
+      }
+      throw Exception(e.message ?? 'Verification failed.');
     } catch (e) {
-      debugPrint('🔴 verifyOTP Error: $e');
-      throw Exception('Invalid OTP. Please try again.');
+      debugPrint('❌ verifyOTP Technical Error: $e');
+      throw Exception('Verification failed. Please try again.');
     }
   }
 
@@ -772,7 +802,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> updateProfileImage({
-    File? imageFile,
+    dynamic imageFile, // Using dynamic to avoid hard dart:io dependency on Web
     Uint8List? imageBytes,
     String? fileName,
   }) async {
@@ -789,8 +819,14 @@ class AuthProvider extends ChangeNotifier {
         debugPrint('❌ No image provided');
         throw Exception('No image provided');
       }
-
-      final imageSize = imageBytes?.length ?? await imageFile!.length();
+      
+      int imageSize = 0;
+      if (imageBytes != null) {
+        imageSize = imageBytes.length;
+      } else if (!kIsWeb && imageFile != null) {
+        imageSize = await (imageFile as io.File).length();
+      }
+      
       debugPrint('📦 Image size: ${(imageSize / 1024).toStringAsFixed(2)} KB');
 
       // Upload to Firebase Storage using default bucket
@@ -821,15 +857,17 @@ class AuthProvider extends ChangeNotifier {
             cacheControl: 'public, max-age=3600',
           ),
         );
-      } else {
+      } else if (!kIsWeb && imageFile != null) {
         debugPrint('📱 Uploading via file (Mobile/Desktop)...');
         uploadTask = storageRef.putFile(
-          imageFile!,
+          imageFile as io.File,
           SettableMetadata(
             contentType: contentType,
             cacheControl: 'public, max-age=3600',
           ),
         );
+      } else {
+        throw Exception('Image upload not supported on this platform without bytes.');
       }
 
       debugPrint('⏳ Waiting for upload to complete...');

@@ -364,7 +364,7 @@ class _DeliveryPartnerDashboardScreenState
                 final deliveryPartnerId = data['deliveryPartnerId'];
                 
                 final isUnassigned = deliveryPartnerId == null || deliveryPartnerId == '' || deliveryPartnerId == 'null';
-                final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
+                final isValidStatus = status == 'packed';
                 
                 final match = isUnassigned && isValidStatus;
                 
@@ -544,7 +544,6 @@ class _DeliveryPartnerDashboardScreenState
 
         transaction.update(orderRef, {
           'deliveryPartnerId': partnerId,
-          'status': 'confirmed', // Ensure it's in a valid state for delivery
           'statusHistory.assigned': FieldValue.serverTimestamp(),
         });
       });
@@ -834,10 +833,26 @@ class _DeliveryPartnerDashboardScreenState
 
   Future<void> _acceptReturnPickup(String orderId, String partnerId) async {
     try {
-      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
-        'status': 'out_for_pickup',
-        'deliveryPartnerId': partnerId,
-        'statusHistory.out_for_pickup': DateTime.now().toIso8601String(),
+      await FirebaseFirestore.instance.runTransaction((transaction) async {
+        final orderRef = FirebaseFirestore.instance.collection('orders').doc(orderId);
+        final orderDoc = await transaction.get(orderRef);
+
+        if (!orderDoc.exists) {
+          throw Exception("Order does not exist!");
+        }
+
+        final data = orderDoc.data() as Map<String, dynamic>;
+        
+        // Safety check: Ensure it's not already taken
+        if (data['deliveryPartnerId'] != null && data['deliveryPartnerId'] != '') {
+          throw Exception("Return pickup already taken by another partner!");
+        }
+
+        transaction.update(orderRef, {
+          'status': 'out_for_pickup',
+          'deliveryPartnerId': partnerId,
+          'statusHistory.out_for_pickup': DateTime.now().toIso8601String(),
+        });
       });
       if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Pickup Accepted!')));
@@ -2740,7 +2755,7 @@ class _NotificationBadge extends StatelessWidget {
             final status = data['status'] as String?;
             final partnerId = data['deliveryPartnerId'];
             final isUnassigned = partnerId == null || partnerId == '' || partnerId == 'null';
-            final isValidStatus = status == 'pending' || status == 'confirmed' || status == 'packed';
+            final isValidStatus = status == 'packed';
             return isUnassigned && isValidStatus;
           }).length;
         }

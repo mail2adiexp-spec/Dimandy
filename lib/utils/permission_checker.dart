@@ -22,7 +22,7 @@ class PermissionChecker {
     return PermissionChecker(permissions: permissions, role: role);
   }
 
-  bool get isAdmin => role == 'admin' || role == 'administrator';
+  bool get isAdmin => role == 'admin' || role == 'super_admin';
   bool get isCoreStaff => role == 'core_staff';
 
   // Dashboard Access

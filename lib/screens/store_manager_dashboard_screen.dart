@@ -3,16 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
 import '../providers/auth_provider.dart';
-import '../providers/order_provider.dart';
-import '../providers/product_provider.dart';
 import '../models/store_model.dart';
-import '../models/order_model.dart';
-import '../models/product_model.dart';
-import '../providers/category_provider.dart';
-import 'dart:typed_data'; // Added for Uint8List
-import 'package:image_picker/image_picker.dart'; // Added for ImagePicker
-import 'package:firebase_storage/firebase_storage.dart'; // Added for Storage
+import '../widgets/shared_orders_tab.dart';
+import '../widgets/shared_products_tab.dart';
+import '../widgets/barcode_scanner_dialog.dart';
+import '../utils/locations_data.dart';
 
 class StoreManagerDashboardScreen extends StatefulWidget {
   static const routeName = '/store-manager-dashboard';
@@ -31,7 +28,7 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchStoreDetails();
     });
@@ -45,7 +42,6 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
 
   Future<void> _fetchStoreDetails() async {
     final auth = context.read<AuthProvider>();
-    // Refresh user data to ensure we have the latest storeId assignment
     await auth.refreshUser();
     final storeId = auth.currentUser?.storeId;
 
@@ -79,7 +75,6 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
     }
 
     if (_store == null) {
-      final auth = context.read<AuthProvider>(); // Define auth here for use in the debug info
       return Scaffold(
         appBar: AppBar(title: const Text('Store Manager Dashboard')),
         body: Center(
@@ -92,77 +87,17 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
                 const SizedBox(height: 24),
                 const Text(
                   'No Store Assigned',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'Your account has the "Store Manager" role, but no specific store is linked to your profile.',
+                  'Your account is not linked to any store. Please contact an Admin.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                const SizedBox(height: 32),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.red.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.red.shade200),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Debug Information:',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-                      ),
-                      const SizedBox(height: 8),
-                      Text('UID: ${auth.currentUser?.uid ?? "null"}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                      Text('Role: ${auth.currentUser?.role ?? "null"}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                      Text('Store ID (User): ${auth.currentUser?.storeId?.trim() ?? "Missing"}', 
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 12, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 12),
-                      const Divider(),
-                      const SizedBox(height: 8),
-                      const Text('Available Stores in DB (Test):', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-                      const SizedBox(height: 4),
-                      FutureBuilder<QuerySnapshot>(
-                        future: FirebaseFirestore.instance.collection('stores').limit(5).get(),
-                        builder: (context, snapshot) {
-                          if (snapshot.hasError) return Text('Error reading stores: ${snapshot.error}', style: const TextStyle(color: Colors.red, fontSize: 10));
-                          if (!snapshot.hasData) return const Text('Loading...', style: TextStyle(fontSize: 10));
-                          if (snapshot.data!.docs.isEmpty) return const Text('NO STORES FOUND IN DB', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red, fontSize: 10));
-                          
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: snapshot.data!.docs.map((doc) {
-                              final data = doc.data() as Map<String, dynamic>;
-                              final name = data['name'] ?? 'Unknown';
-                              final match = doc.id == auth.currentUser?.storeId;
-                              return Text(
-                                '- ${doc.id} ($name) ${match ? "[MATCH!]" : ""}', 
-                                style: TextStyle(
-                                  fontFamily: 'monospace', 
-                                  fontSize: 10,
-                                  color: match ? Colors.green : Colors.black87,
-                                  fontWeight: match ? FontWeight.bold : FontWeight.normal
-                                )
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
                 ),
                 const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // Trigger a reload of the user profile
-                     Provider.of<AuthProvider>(context, listen: false).refreshUser();
-                     _fetchStoreDetails(); 
-                  },
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Refresh Profile'),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Back to Home'),
                 ),
               ],
             ),
@@ -176,136 +111,268 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Store Manager Dashboard', style: TextStyle(fontSize: 16)),
-            Text(_store!.name, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text(_store!.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text('Store ID: ${_store!.id}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
           ],
         ),
         bottom: TabBar(
           controller: _tabController,
-          tabs: [
-            Tab(
-              child: Builder(
-                builder: (context) {
-                   final pincodes = _store?.pincodes.where((p) => p.isNotEmpty).take(10).toList();
-                   if (pincodes == null || pincodes.isEmpty) {
-                      return const Row(children: [Icon(Icons.list_alt), SizedBox(width: 8), Text('Orders')]);
-                   }
-                   
-                   return StreamBuilder<QuerySnapshot>(
-                    stream: FirebaseFirestore.instance
-                        .collection('orders')
-                        .where('deliveryPincode', whereIn: pincodes)
-                        .snapshots(),
-                    builder: (context, snapshot) {
-                      int count = 0;
-                      if (snapshot.hasData) {
-                        count = snapshot.data!.docs.where((doc) {
-                           final data = doc.data() as Map<String, dynamic>;
-                           return data['status'] == 'pending';
-                        }).length;
-                      }
-                      
-                      if (count == 0) return const Row(children: [Icon(Icons.list_alt), SizedBox(width: 8), Text('Orders')]);
-                      
-                      return Row(
-                        children: [
-                           const Icon(Icons.list_alt),
-                           const SizedBox(width: 8),
-                           const Text('Orders'),
-                           const SizedBox(width: 4),
-                           Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                              child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
-                           ),
-                        ],
-                      );
-                    },
-                  );
-                }
-              ),
-            ),
-            Tab(icon: Icon(Icons.inventory_2), text: 'Products'),
+          isScrollable: true,
+          tabs: const [
+            Tab(text: 'Dashboard', icon: Icon(Icons.dashboard_outlined)),
+            Tab(text: 'Orders', icon: Icon(Icons.receipt_long_outlined)),
+            Tab(text: 'Inventory', icon: Icon(Icons.inventory_2_outlined)),
+            Tab(text: 'Settings', icon: Icon(Icons.settings_outlined)),
           ],
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => context.read<AuthProvider>().signOut(),
+            icon: const Icon(Icons.qr_code_scanner),
+            onPressed: () => _openScanner(context),
+            tooltip: 'Quick Scan',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _fetchStoreDetails,
           ),
         ],
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          _OrdersTab(store: _store!),
-          _ProductsTab(store: _store!),
+          _DashboardTab(store: _store!),
+          SharedOrdersTab(canManage: true, pincodes: _store!.pincodes),
+          SharedProductsTab(canManage: true, storeId: _store!.id),
+          _SettingsTab(store: _store!, onUpdate: _fetchStoreDetails),
         ],
       ),
     );
   }
+
+  void _openScanner(BuildContext context) async {
+    final scannedCode = await showDialog<String>(
+      context: context,
+      builder: (context) => const BarcodeScannerDialog(),
+    );
+    
+    if (scannedCode != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Scanned: $scannedCode. Processing feature coming soon.')),
+      );
+    }
+  }
 }
 
-class _OrdersTab extends StatelessWidget {
+class _DashboardTab extends StatelessWidget {
   final StoreModel store;
-
-  const _OrdersTab({required this.store});
+  const _DashboardTab({required this.store});
 
   @override
   Widget build(BuildContext context) {
-    // We want to show orders where deliveryPincode is in store.pincodes
-    return Consumer<OrderProvider>(
-      builder: (context, orderProvider, _) {
-        final allOrders = orderProvider.orders; // Assuming this fetches all orders, might need optimization for scale
-        
-        // Filter orders relevant to this store
-        // Logic: Order pincode matches one of the store's pincodes
-        final storeOrders = allOrders.where((order) {
-           if (order.deliveryPincode == null) return false;
-           return store.pincodes.contains(order.deliveryPincode);
-        }).toList();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSummaryCards(),
+          const SizedBox(height: 24),
+          const Text('7-Day Sales Trend', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildPerformanceChart(context),
+          const SizedBox(height: 24),
+          const Text('Top Selling Products', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildTopProductsList(sortBy: 'salesCount', icon: Icons.trending_up, iconColor: Colors.green),
+          const SizedBox(height: 24),
+          const Text('Top Viewed Products', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildTopProductsList(sortBy: 'viewCount', icon: Icons.visibility, iconColor: Colors.blue),
+          const SizedBox(height: 24),
+          const Text('Inventory Alerts (Low Stock)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _buildLowStockList(),
+        ],
+      ),
+    );
+  }
 
-        // Sort by date desc
-        storeOrders.sort((a, b) => b.orderDate.compareTo(a.orderDate));
+  Widget _buildSummaryCards() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPincode', whereIn: store.pincodes)
+          .snapshots(),
+      builder: (context, snapshot) {
+        int totalOrders = snapshot.data?.docs.length ?? 0;
+        int pendingOrders = snapshot.data?.docs.where((d) => ['pending', 'confirmed', 'packed'].contains(d['status'])).length ?? 0;
+        double totalRevenue = snapshot.data?.docs.fold(0.0, (sum, d) => sum! + (d['totalAmount'] ?? 0.0)) ?? 0.0;
 
-        if (storeOrders.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.assignment_outlined, size: 64, color: Colors.grey[300]),
-                const SizedBox(height: 16),
-                Text('No orders for pincodes: ${store.pincodes.join(", ")}', 
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey[600]),
+        return GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          childAspectRatio: 1.6,
+          children: [
+            _Card(title: 'Total Revenue', value: '₹${NumberFormat('#,##,###').format(totalRevenue)}', icon: Icons.currency_rupee, color: Colors.green, bgColor: Colors.green.shade50),
+            _Card(title: 'Total Orders', value: '$totalOrders', icon: Icons.shopping_bag, color: Colors.blue, bgColor: Colors.blue.shade50),
+            _Card(title: 'Pending', value: '$pendingOrders', icon: Icons.pending_actions, color: Colors.orange, bgColor: Colors.orange.shade50),
+            _Card(title: 'Service Areas', value: '${store.pincodes.length}', icon: Icons.map, color: Colors.purple, bgColor: Colors.purple.shade50),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildPerformanceChart(BuildContext context) {
+    final now = DateTime.now();
+    final sevenDaysAgo = now.subtract(const Duration(days: 7));
+
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        height: 250,
+        padding: const EdgeInsets.all(16),
+        child: StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('orders')
+              .where('deliveryPincode', whereIn: store.pincodes)
+              .where('orderDate', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day)))
+              .snapshots(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            final orders = snapshot.data?.docs ?? [];
+            final dailyTotals = <DateTime, double>{};
+            
+            // Initialize last 7 days with 0
+            for (int i = 0; i < 7; i++) {
+              final date = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+              dailyTotals[date] = 0.0;
+            }
+
+            for (var doc in orders) {
+              final date = (doc['orderDate'] as Timestamp).toDate();
+              final day = DateTime(date.year, date.month, date.day);
+              if (dailyTotals.containsKey(day)) {
+                dailyTotals[day] = dailyTotals[day]! + (doc['totalAmount'] ?? 0.0);
+              }
+            }
+
+            final sortedDays = dailyTotals.keys.toList()..sort();
+            final barGroups = sortedDays.asMap().entries.map((entry) {
+              final day = entry.value;
+              final amount = dailyTotals[day] ?? 0.0;
+              return BarChartGroupData(
+                x: entry.key,
+                barRods: [
+                  BarChartRodData(
+                    toY: amount,
+                    color: Colors.blue,
+                    width: 16,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                ],
+              );
+            }).toList();
+
+            return BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: (dailyTotals.values.isEmpty ? 1000 : dailyTotals.values.reduce((a, b) => a > b ? a : b)) * 1.2,
+                barGroups: barGroups,
+                gridData: const FlGridData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (value, meta) {
+                        final date = sortedDays[value.toInt()];
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(DateFormat('dd').format(date), style: const TextStyle(fontSize: 10)),
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ],
-            ),
-          );
+                borderData: FlBorderData(show: false),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopProductsList({required String sortBy, required IconData icon, required Color iconColor}) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .where('storeIds', arrayContains: store.id)
+          .orderBy(sortBy, descending: true)
+          .limit(5)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('No data available.')));
         }
+        return Column(
+          children: snapshot.data!.docs.map((doc) {
+             final data = doc.data() as Map<String, dynamic>;
+             final count = data[sortBy] ?? 0;
+             return Card(
+               margin: const EdgeInsets.only(bottom: 8),
+               child: ListTile(
+                 leading: CircleAvatar(
+                   backgroundColor: iconColor.withValues(alpha: 0.1),
+                   child: Text('$count', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: iconColor)),
+                 ),
+                 title: Text(data['name'] ?? 'Unknown'),
+                 subtitle: Text('Price: ₹${data['price']}'),
+                 trailing: Icon(icon, color: iconColor, size: 16),
+               ),
+             );
+          }).toList(),
+        );
+      },
+    );
+  }
 
+  Widget _buildLowStockList() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('products')
+          .where('storeIds', arrayContains: store.id)
+          .where('stock', isLessThanOrEqualTo: 10)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const Center(child: Padding(padding: EdgeInsets.all(20), child: Text('All stock levels are healthy.')));
+        }
         return ListView.builder(
-          itemCount: storeOrders.length,
-          padding: const EdgeInsets.all(12),
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: snapshot.data!.docs.length,
           itemBuilder: (context, index) {
-            final order = storeOrders[index];
-            return Card(
-              margin: const EdgeInsets.only(bottom: 12),
-              child: ListTile(
-                title: Text('Order #${order.id.substring(0, 8)}...'),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Amount: ₹${order.totalAmount.toStringAsFixed(2)}'),
-                    Text('Pincode: ${order.deliveryPincode}'),
-                    Text('Date: ${DateFormat('dd MMM HH:mm').format(order.orderDate)}'),
-                  ],
-                ),
-                trailing: Chip(
-                  label: Text(order.status.toUpperCase()),
-                  backgroundColor: _getStatusColor(order.status).withValues(alpha: 0.1),
-                  labelStyle: TextStyle(color: _getStatusColor(order.status), fontSize: 10),
-                ),
+            final doc = snapshot.data!.docs[index];
+            final stock = doc['stock'] ?? 0;
+            return ListTile(
+              leading: Icon(Icons.warning_amber_rounded, color: stock <= 0 ? Colors.red : Colors.orange),
+              title: Text(doc['name']),
+              subtitle: Text('Current Stock: $stock'),
+              trailing: TextButton(
+                onPressed: () {
+                  // TODO: Navigate to inventory tab or show quick restock dialog
+                }, 
+                child: const Text('RESTOCK')
               ),
             );
           },
@@ -313,721 +380,158 @@ class _OrdersTab extends StatelessWidget {
       },
     );
   }
-  
-  Color _getStatusColor(String status) {
-    switch(status) {
-      case 'pending': return Colors.orange;
-      case 'confirmed': return Colors.blue;
-      case 'delivered': return Colors.green;
-      case 'cancelled': return Colors.red;
-      default: return Colors.grey;
-    }
-  }
 }
 
-class _ProductsTab extends StatefulWidget {
-  final StoreModel store;
-
-  const _ProductsTab({required this.store});
+class _Card extends StatelessWidget {
+  final String title;
+  final String value;
+  final IconData icon;
+  final Color color;
+  final Color bgColor;
+  const _Card({required this.title, required this.value, required this.icon, required this.color, required this.bgColor});
 
   @override
-  State<_ProductsTab> createState() => _ProductsTabState();
-}
-
-
-class _ProductsTabState extends State<_ProductsTab> {
-  // Add Product Dialog Logic
-  void _showAddProductDialog(BuildContext context) {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController(text: '\u2022 ');
-    final basePriceCtrl = TextEditingController(); // Added Base Price
-    final priceCtrl = TextEditingController();
-    final stockCtrl = TextEditingController();
-    final minQtyCtrl = TextEditingController(text: '1');
-    
-    // Default categories if provider is empty (fallback)
-    final categoryProvider = Provider.of<CategoryProvider>(context, listen: false); 
-    final categories = categoryProvider.categories.isNotEmpty 
-        ? categoryProvider.categories.map((c) => c.name).toList() 
-        : ['Daily Needs', 'Vegetables', 'Fruits', 'Groceries'];
-        
-    String selectedCategory = categories.first;
-    String selectedUnit = 'Pic';
-    bool isLoading = false;
-    
-    // Image Picking State
-    final ImagePicker picker = ImagePicker();
-    List<Uint8List> selectedImagesBytes = []; // For preview
-    List<XFile> selectedXFiles = []; // For uploading
-    
-    Future<void> pickImages(StateSetter setDialogState) async {
-      try {
-        final List<XFile> images = await picker.pickMultiImage();
-        if (images.isNotEmpty) {
-           if (selectedXFiles.length + images.length > 6) {
-             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum 6 images allowed')));
-             return;
-           }
-           
-           for (var image in images) {
-             final bytes = await image.readAsBytes();
-             selectedXFiles.add(image);
-             selectedImagesBytes.add(bytes);
-           }
-           setDialogState(() {});
-        }
-      } catch (e) {
-        debugPrint('Error picking images: $e');
-      }
-    }
-
-    Future<List<String>> uploadImages(String productId) async {
-      List<String> downloadUrls = [];
-      for (int i = 0; i < selectedImagesBytes.length; i++) {
-        try {
-          // Create reference: products/{id}/image_{i}.jpg
-          final ref = FirebaseStorage.instance
-              .ref()
-              .child('products')
-              .child(productId)
-              .child('image_$i.jpg');
-          
-          await ref.putData(selectedImagesBytes[i], SettableMetadata(contentType: 'image/jpeg'));
-          final url = await ref.getDownloadURL();
-          downloadUrls.add(url);
-        } catch (e) {
-          debugPrint('Error uploading image $i: $e');
-        }
-      }
-      return downloadUrls;
-    }
-
-    showDialog(
-      context: context,
-      barrierDismissible: false, // Prevent accidental close during upload
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Add Product to Store'),
-          content: SizedBox(
-            width: 550, 
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(labelText: 'Product Name', border: OutlineInputBorder()),
-                      validator: (v) => (v?.isEmpty ?? true) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
-                      maxLines: 2,
-                      onChanged: (value) {
-                          if (value.endsWith('\n')) {
-                            descCtrl.text = '$value\u2022 ';
-                            descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
-                          } else if (value.isEmpty) {
-                            descCtrl.text = '\u2022 ';
-                            descCtrl.selection = TextSelection.fromPosition(TextPosition(offset: descCtrl.text.length));
-                          }
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    // PRICE ROW
-                    Row(
-                      children: [
-                         Expanded(child: TextFormField(
-                          controller: basePriceCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Base Price (₹)', 
-                            border: OutlineInputBorder(),
-                            helperText: 'MPR / Original Price'
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (v) => (double.tryParse(v ?? '') == null) ? 'Invalid' : null,
-                        )),
-                        const SizedBox(width: 12),
-                        Expanded(child: TextFormField(
-                          controller: priceCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Selling Price (₹)', 
-                            border: OutlineInputBorder(),
-                            helperText: 'Final Price for Customer'
-                          ),
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                             final p = double.tryParse(v ?? '');
-                             final b = double.tryParse(basePriceCtrl.text.trim()) ?? 0;
-                             if (p == null) return 'Invalid';
-                             if (p > b && b > 0) return 'Selling > Base';
-                             return null;
-                          },
-                        )),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(child: TextFormField(
-                          controller: stockCtrl,
-                          decoration: const InputDecoration(labelText: 'Stock', border: OutlineInputBorder()),
-                          keyboardType: TextInputType.number,
-                          validator: (v) => (int.tryParse(v ?? '') == null) ? 'Invalid' : null,
-                        )),
-                         const SizedBox(width: 12),
-                         Expanded(child: DropdownButtonFormField<String>(
-                          value: selectedUnit,
-                          decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                          items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                          onChanged: (v) => setState(() => selectedUnit = v!),
-                        )),
-                      ],
-                    ),
-                     const SizedBox(height: 12),
-                    TextFormField(
-                       controller: minQtyCtrl,
-                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
-                       keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
-                    ),
-                     const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: selectedCategory,
-                      decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                      isExpanded: true,
-                      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c, overflow: TextOverflow.ellipsis))).toList(),
-                      onChanged: (v) => setState(() => selectedCategory = v!),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // IMAGE PICKER UI
-                    const Text('Product Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        // Picker Button
-                        if (selectedImagesBytes.length < 6)
-                          InkWell(
-                            onTap: () => pickImages(setState),
-                            child: Container(
-                              width: 80,
-                              height: 80,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[100],
-                                border: Border.all(color: Colors.grey[400]!, style: BorderStyle.solid),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.add_a_photo, color: Colors.grey),
-                                  SizedBox(height: 4),
-                                  Text('Add', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                                ],
-                              ),
-                            ),
-                          ),
-                          
-                        // Image Previews
-                        ...selectedImagesBytes.asMap().entries.map((entry) {
-                          final int index = entry.key;
-                          final Uint8List bytes = entry.value;
-                          return Stack(
-                            children: [
-                               Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  image: DecorationImage(image: MemoryImage(bytes), fit: BoxFit.cover),
-                                  border: Border.all(color: Colors.grey[300]!),
-                                ),
-                              ),
-                              Positioned(
-                                top: 0,
-                                right: 0,
-                                child: InkWell(
-                                  onTap: () {
-                                    setState(() {
-                                      selectedImagesBytes.removeAt(index);
-                                      selectedXFiles.removeAt(index);
-                                    });
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.all(2),
-                                    decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                    child: const Icon(Icons.close, size: 14, color: Colors.white),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          );
-                        }),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Icon(icon, color: color, size: 20),
+              Icon(Icons.arrow_forward_ios, color: color.withValues(alpha: 0.3), size: 12),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: isLoading ? null : () => Navigator.pop(context), 
-              child: const Text('Cancel')
-            ),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                if (formKey.currentState!.validate()) {
-                    if (selectedImagesBytes.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please select at least one image')));
-                      return;
-                    }
-                  
-                  setState(() => isLoading = true);
-                  
-                  try {
-                    // 1. Create Document first to get ID
-                    final docRef = await FirebaseFirestore.instance.collection('products').add({
-                      'name': nameCtrl.text.trim(),
-                      'description': descCtrl.text.trim(),
-                      'basePrice': double.parse(basePriceCtrl.text.trim()),
-                      'price': double.parse(priceCtrl.text.trim()),
-                      'mrp': double.parse(basePriceCtrl.text.trim()), // Synced with basePrice
-                      'stock': int.parse(stockCtrl.text.trim()),
-                      'category': selectedCategory,
-                      'unit': selectedUnit,
-                      'imageUrl': '', // Placeholder, update later
-                      'imageUrls': [], // Placeholder
-                      'storeIds': [widget.store.id],
-                      'sellerId': 'store_manager', // Identify source
-                      'isFeatured': false,
-                      'isHotDeal': false, 
-                      'minimumQuantity': int.parse(minQtyCtrl.text),
-                      'createdAt': FieldValue.serverTimestamp(),
-                      'updatedAt': FieldValue.serverTimestamp(),
-                    });
-
-                    // 2. Upload Images
-                    final urls = await uploadImages(docRef.id);
-                    
-                    // 3. Update Document with URLs
-                    await docRef.update({
-                      'imageUrl': urls.isNotEmpty ? urls.first : '',
-                      'imageUrls': urls,
-                    });
-
-                     if (mounted) {
-                       Navigator.pop(context);
-                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product added successfully!')));
-                     }
-                  } catch (e) {
-                     setState(() => isLoading = false);
-                     debugPrint('Error adding product: $e');
-                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-                  }
-                }
-              },
-              child: isLoading 
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
-                  : const Text('Add Product'),
-            ),
-          ],
-        ),
+          const SizedBox(height: 12),
+          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          Text(title, style: TextStyle(fontSize: 12, color: color.withValues(alpha: 0.7), fontWeight: FontWeight.w500)),
+        ],
       ),
     );
   }
+}
 
-  void _showEditProductDialog(BuildContext context, Product product) {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController(text: product.name);
-    final descCtrl = TextEditingController(text: product.description);
-    final basePriceCtrl = TextEditingController(text: product.basePrice.toString());
-    final priceCtrl = TextEditingController(text: product.price.toString());
-    final stockCtrl = TextEditingController(text: product.stock.toString());
-    final minQtyCtrl = TextEditingController(text: (product.minimumQuantity ?? 1).toString());
-    final imageUrlCtrl = TextEditingController(text: product.imageUrl); // Fallback
+class _SettingsTab extends StatefulWidget {
+  final StoreModel store;
+  final VoidCallback onUpdate;
+  const _SettingsTab({required this.store, required this.onUpdate});
 
-    String selectedCategory = product.category ?? 'Daily Needs';
-    String selectedUnit = product.unit ?? 'Pic';
-    
-    // Image State
-    List<String> keptImageUrls = List.from(product.imageUrls ?? (product.imageUrl.isNotEmpty ? [product.imageUrl] : []));
-    List<Uint8List> newImagesBytes = [];
-    List<XFile> newImageFiles = [];
-    
-    bool isLoading = false;
-    final ImagePicker picker = ImagePicker();
+  @override
+  State<_SettingsTab> createState() => _SettingsTabState();
+}
 
-    // Helper: Pick Images
-    Future<void> pickImages(StateSetter setDialogState) async {
-       try {
-         final int currentCount = keptImageUrls.length + newImagesBytes.length;
-         if (currentCount >= 6) {
-           if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Maximum 6 images allowed')));
-           return;
-         }
-         
-         final List<XFile> picked = await picker.pickMultiImage();
-         if (picked.isNotEmpty) {
-           int canAdd = 6 - currentCount;
-           final toAdd = picked.take(canAdd).toList();
-           
-           for (var file in toAdd) {
-             final bytes = await file.readAsBytes();
-             newImagesBytes.add(bytes);
-             newImageFiles.add(file);
-           }
-           setDialogState(() {});
-         }
-       } catch (e) {
-         debugPrint('Error picking images: $e');
-       }
-    }
+class _SettingsTabState extends State<_SettingsTab> {
+  final _formKey = GlobalKey<FormState>();
+  late TextEditingController _nameCtrl;
+  late TextEditingController _addrCtrl;
+  late TextEditingController _pincodesCtrl;
+  String? _selectedState;
+  bool _isSaving = false;
 
-    // Helper: Upload New Images
-    Future<List<String>> uploadNewImages() async {
-      List<String> urls = [];
-      for (int i = 0; i < newImagesBytes.length; i++) {
-         try {
-           // Use timestamp to ensure unique names for updates
-           String fileName = 'image_${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
-           final ref = FirebaseStorage.instance
-               .ref()
-               .child('products')
-               .child(product.id)
-               .child(fileName);
-           
-           await ref.putData(newImagesBytes[i]);
-           final url = await ref.getDownloadURL();
-           urls.add(url);
-         } catch (e) {
-           debugPrint('Error uploading image $i: $e');
-         }
-      }
-      return urls;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          title: const Text('Edit Product'),
-          content: SizedBox(
-            width: 500,
-            child: Form(
-               key: formKey,
-               child: SingleChildScrollView(
-                 child: Column(
-                   mainAxisSize: MainAxisSize.min,
-                   crossAxisAlignment: CrossAxisAlignment.start,
-                   children: [
-                     // -- IMAGES SECTION --
-                     const Text('Product Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
-                     const SizedBox(height: 8),
-                     Wrap(
-                       spacing: 8,
-                       runSpacing: 8,
-                       children: [
-                         // 1. Existing Images
-                         ...keptImageUrls.asMap().entries.map((entry) {
-                           int idx = entry.key;
-                           String url = entry.value;
-                           return Stack(
-                             children: [
-                               Container(
-                                 width: 80, height: 80,
-                                 decoration: BoxDecoration(
-                                   borderRadius: BorderRadius.circular(8),
-                                   image: DecorationImage(image: NetworkImage(url), fit: BoxFit.cover),
-                                   border: Border.all(color: Colors.grey[300]!)
-                                 ),
-                               ),
-                               Positioned(
-                                 top: 0, right: 0,
-                                 child: InkWell(
-                                   onTap: () => setState(() => keptImageUrls.removeAt(idx)),
-                                   child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white)),
-                                 ),
-                               )
-                             ],
-                           );
-                         }),
-                         
-                         // 2. New Images
-                         ...newImagesBytes.asMap().entries.map((entry) {
-                            int idx = entry.key;
-                            return Stack(
-                             children: [
-                               Container(
-                                 width: 80, height: 80,
-                                 decoration: BoxDecoration(
-                                   borderRadius: BorderRadius.circular(8),
-                                   image: DecorationImage(image: MemoryImage(entry.value), fit: BoxFit.cover),
-                                   border: Border.all(color: Colors.green[300]!) // Green border for new
-                                 ),
-                               ),
-                               Positioned(
-                                 top: 0, right: 0,
-                                 child: InkWell(
-                                   onTap: () => setState(() {
-                                     newImagesBytes.removeAt(idx);
-                                     newImageFiles.removeAt(idx);
-                                   }),
-                                   child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white)),
-                                 ),
-                               )
-                             ],
-                           );
-                         }),
-
-                         // 3. Add Button
-                         if (keptImageUrls.length + newImagesBytes.length < 6)
-                           InkWell(
-                             onTap: () => pickImages(setState),
-                             child: Container(
-                               width: 80, height: 80,
-                               decoration: BoxDecoration(
-                                 color: Colors.grey[100],
-                                 borderRadius: BorderRadius.circular(8),
-                                 border: Border.all(color: Colors.grey[400]!, style: BorderStyle.solid),
-                               ),
-                               child: const Icon(Icons.add_a_photo, color: Colors.grey),
-                             ),
-                           ),
-                       ],
-                     ),
-                     const SizedBox(height: 16),
-
-                     // -- DETAILS SECTION --
-                     TextFormField(
-                       controller: nameCtrl,
-                       decoration: const InputDecoration(labelText: 'Product Name', border: OutlineInputBorder()),
-                       validator: (v) => v!.isEmpty ? 'Required' : null,
-                     ),
-                     const SizedBox(height: 12),
-                     TextFormField(
-                       controller: descCtrl,
-                       decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()),
-                       maxLines: 3,
-                     ),
-                     const SizedBox(height: 12),
-                     Row(
-                       children: [
-                         Expanded(
-                           child: TextFormField(
-                             controller: basePriceCtrl,
-                             decoration: const InputDecoration(labelText: 'Base Price (₹)', border: OutlineInputBorder()),
-                             keyboardType: TextInputType.number,
-                             validator: (v) => v!.isEmpty ? 'Required' : null,
-                           ),
-                         ),
-                         const SizedBox(width: 12),
-                         Expanded(
-                           child: TextFormField(
-                             controller: priceCtrl,
-                             decoration: const InputDecoration(labelText: 'Selling Price (₹)', border: OutlineInputBorder()),
-                             keyboardType: TextInputType.number,
-                             validator: (v) {
-                               if (v == null || v.isEmpty) return 'Required';
-                               double? sPrice = double.tryParse(v);
-                               double? bPrice = double.tryParse(basePriceCtrl.text);
-                               if (sPrice != null && bPrice != null && sPrice > bPrice) {
-                                  return 'Must be <= Base';
-                               }
-                               return null;
-                             },
-                           ),
-                         ),
-                       ],
-                     ),
-                     const SizedBox(height: 12),
-                     Row(
-                       children: [
-                         Expanded(
-                           child: TextFormField(
-                             controller: stockCtrl,
-                             decoration: const InputDecoration(labelText: 'Stock', border: OutlineInputBorder()),
-                             keyboardType: TextInputType.number,
-                             validator: (v) => v!.isEmpty ? 'Required' : null,
-                           ),
-                         ),
-                         const SizedBox(width: 12),
-                         Expanded(
-                           child: DropdownButtonFormField<String>(
-                             value: selectedUnit,
-                             items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
-                             onChanged: (v) => setState(() => selectedUnit = v!),
-                             decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
-                           ),
-                         ),
-                       ],
-                     ),
-                     const SizedBox(height: 12),
-                     TextFormField(
-                       controller: minQtyCtrl,
-                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
-                       keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
-                     ),
-                     const SizedBox(height: 12),
-                     // Category Dropdown (Simplified)
-                      Consumer<CategoryProvider>(
-                        builder: (ctx, catProvider, _) {
-                            final cats = catProvider.categories.map((c) => c.name).toSet().toList(); // Unique
-                            if (cats.isEmpty) cats.add('Daily Needs');
-                            // Ensure selected is in list
-                            if (!cats.contains(selectedCategory)) cats.add(selectedCategory);
-                            
-                            return DropdownButtonFormField<String>(
-                              value: selectedCategory,
-                              items: cats.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
-                              onChanged: (v) => setState(() => selectedCategory = v!),
-                              decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                            );
-                        }
-                      ),
-                   ],
-                 ),
-               ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: isLoading ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                 if (formKey.currentState!.validate()) {
-                    setState(() => isLoading = true);
-                    try {
-                      // 1. Upload Any New Images
-                      List<String> newUrls = await uploadNewImages();
-                      
-                      // 2. Combine with Kept Images
-                      List<String> finalImageUrls = [...keptImageUrls, ...newUrls];
-                      
-                      // 3. Update Firestore
-                      await FirebaseFirestore.instance.collection('products').doc(product.id).update({
-                        'name': nameCtrl.text.trim(),
-                        'description': descCtrl.text.trim(),
-                        'basePrice': double.parse(basePriceCtrl.text.trim()),
-                        'price': double.parse(priceCtrl.text.trim()),
-                        // Auto-update MRP to base price if not explicitly managed, or keep logic same as add
-                        'mrp': double.parse(basePriceCtrl.text.trim()), 
-                        'stock': int.parse(stockCtrl.text.trim()),
-                        'minimumQuantity': int.parse(minQtyCtrl.text.trim()),
-                        'category': selectedCategory,
-                        'unit': selectedUnit,
-                        'imageUrl': finalImageUrls.isNotEmpty ? finalImageUrls.first : '',
-                        'imageUrls': finalImageUrls,
-                        'updatedAt': FieldValue.serverTimestamp(),
-                      });
-                      
-                      if (mounted) {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated successfully!')));
-                      }
-                    } catch (e) {
-                      setState(() => isLoading = false);
-                      debugPrint('Error updating product: $e');
-                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
-                    }
-                 }
-              },
-              child: isLoading 
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text('Update Product'),
-            ),
-          ],
-        ),
-      ),
-    );
+  @override
+  void initState() {
+    super.initState();
+    _nameCtrl = TextEditingController(text: widget.store.name);
+    _addrCtrl = TextEditingController(text: widget.store.address);
+    _pincodesCtrl = TextEditingController(text: widget.store.pincodes.join(', '));
+    _selectedState = widget.store.state;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold( // Wrap in Scaffold to support FAB
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showAddProductDialog(context),
-        icon: const Icon(Icons.add),
-        label: const Text('Add Product'),
-        backgroundColor: Colors.blue,
-      ),
-      body: Consumer<ProductProvider>(
-        builder: (context, productProvider, _) {
-          // Filter products available in this store
-          final storeProducts = productProvider.products.where((p) {
-            return p.storeIds.contains(widget.store.id);
-          }).toList();
-
-          if (storeProducts.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text('No products assigned to this store.', 
-                     textAlign: TextAlign.center,
-                     style: TextStyle(color: Colors.grey[600]),
-                  ),
-                  const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    onPressed: () => _showAddProductDialog(context), 
-                    icon: const Icon(Icons.add), 
-                    label: const Text('Add First Product')
-                  ),
-                ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text('Store Profile', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            TextFormField(
+              controller: _nameCtrl,
+              decoration: const InputDecoration(labelText: 'Store Name', border: OutlineInputBorder()),
+              validator: (v) => v!.isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _addrCtrl,
+              decoration: const InputDecoration(labelText: 'Store Address', border: OutlineInputBorder()),
+              maxLines: 2,
+              validator: (v) => v!.isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedState,
+              decoration: const InputDecoration(labelText: 'State', border: OutlineInputBorder()),
+              items: LocationsData.cities
+                  .map((e) => e.state)
+                  .toSet()
+                  .toList()
+                  .map((s) => DropdownMenuItem(
+                      value: s,
+                      child: Text(s, overflow: TextOverflow.ellipsis)))
+                  .toList()
+                ..sort((a, b) => a.value!.compareTo(b.value!)),
+              onChanged: (v) => setState(() => _selectedState = v),
+              validator: (v) => v == null ? 'Required' : null,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _pincodesCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Operating Pincodes (comma separated)', 
+                border: OutlineInputBorder(),
+                helperText: 'Enter pincodes where this store fulfills orders.',
               ),
-            );
-          }
-
-          return ListView.builder(
-            itemCount: storeProducts.length,
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 80), // Padding for FAB
-            itemBuilder: (context, index) {
-              final product = storeProducts[index];
-              return Card(
-                margin: const EdgeInsets.only(bottom: 12),
-                child: ListTile(
-                  leading: Container(
-                    width: 50,
-                    height: 50,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      color: Colors.grey[200],
-                      image: product.imageUrl.isNotEmpty
-                          ? DecorationImage(
-                              image: NetworkImage(product.imageUrl),
-                              fit: BoxFit.cover,
-                            )
-                          : null,
-                    ),
-                    child: product.imageUrl.isEmpty ? const Icon(Icons.image) : null,
-                  ),
-                  title: Text(product.name),
-                  subtitle: Text('Stock: ${product.stock} ${product.unit ?? ''} | Price: ₹${product.price}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.edit),
-                    onPressed: () {
-                      _showEditProductDialog(context, product);
-                    },
-                  ),
-                ),
-              );
-            },
-          );
-        },
+              maxLines: 3,
+              validator: (v) => v!.isEmpty ? 'Required' : null,
+            ),
+            const SizedBox(height: 32),
+            ElevatedButton(
+              onPressed: _isSaving ? null : _saveSettings,
+              style: ElevatedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+              child: _isSaving 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                : const Text('Save Changes'),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _saveSettings() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final pincodes = _pincodesCtrl.text.split(',').map((e) => e.trim()).toList();
+      await FirebaseFirestore.instance.collection('stores').doc(widget.store.id).update({
+        'name': _nameCtrl.text.trim(),
+        'address': _addrCtrl.text.trim(),
+        'state': _selectedState,
+        'pincodes': pincodes,
+      });
+      widget.onUpdate();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Store details updated!')));
+    } catch (e) {
+       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 }

@@ -188,6 +188,7 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
               }
 
               return ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 itemCount: users.length,
                 itemBuilder: (context, index) {
@@ -543,7 +544,7 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
   }
 
   void _changeUserRole(String userId, String currentRole) {
-    String? selectedRole = currentRole == 'admin' ? 'administrator' : currentRole;
+    String? selectedRole = currentRole;
 
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final isSuperAdmin = auth.isSuperAdmin;

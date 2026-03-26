@@ -451,11 +451,27 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                     // Create product ID
                                     final productId = FirebaseFirestore.instance.collection('products').doc().id;
                                     
+                                    // Fetch current platform fee
+                                    double platformFeePercent = 0.05; // Default 5%
+                                    try {
+                                      final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+                                      if (settingsDoc.exists) {
+                                        final data = settingsDoc.data();
+                                        platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                                             (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
+                                        platformFeePercent = platformFeePercent / 100;
+                                      }
+                                    } catch (e) {
+                                      debugPrint('Error fetching platform fee for seller product save: $e');
+                                    }
+
+                                    final sellerPrice = double.parse(priceCtrl.text);
+                                    final listingPrice = sellerPrice * (1 + platformFeePercent);
+                                    
                                     // Upload images using captured ScaffoldMessenger
                                     final imageUrls = await uploadImages(productId);
 
                                     final mrp = double.tryParse(mrpCtrl.text) ?? 0.0;
-                                    final price = double.parse(priceCtrl.text);
 
                                     // Create product document
                                     await FirebaseFirestore.instance.collection('products').doc(productId).set({
@@ -463,21 +479,18 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                       'sellerId': user.uid,
                                       'name': nameCtrl.text.trim(),
                                       'description': descCtrl.text.trim(),
-                                      'price': price,
+                                      'price': listingPrice, // Store Listing Price (Customer Price)
+                                      'sellerPrice': sellerPrice, // Preserve Seller's price
                                       'basePrice': double.tryParse(basePriceCtrl.text) ?? 0.0,
-                                      'mrp': mrp,
                                       'mrp': mrp,
                                       'stock': int.parse(stockCtrl.text),
                                       'minimumQuantity': int.parse(minQtyCtrl.text),
                                       'category': selectedCategory,
                                       'unit': selectedUnit,
                                       'imageUrl': imageUrls.first,
-                                      'category': selectedCategory,
-                                      'unit': selectedUnit,
-                                      'imageUrl': imageUrls.first,
                                       'imageUrls': imageUrls,
                                       'isFeatured': false, // Sellers cannot feature their own products
-                                      'isHotDeal': mrp > price,
+                                      'isHotDeal': mrp > listingPrice,
                                       'createdAt': FieldValue.serverTimestamp(),
                                       'rating': 0.0,
                                       'reviewCount': 0,

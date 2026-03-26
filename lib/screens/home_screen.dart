@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:ecommerce_app/widgets/search_results.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -34,6 +35,11 @@ class _HomeScreenState extends State<HomeScreen> {
   String _sortBy = 'newest'; // newest, price_low, price_high
   List<Product> _trendingProducts = [];
   bool _showAllCategories = false; // Track if all categories are expanded
+  
+  // Global Search State
+  List<Product> _globalSearchResults = [];
+  bool _isSearchingGlobal = false;
+  Timer? _searchDebounce;
 
   @override
   void initState() {
@@ -41,9 +47,13 @@ class _HomeScreenState extends State<HomeScreen> {
     _searchController = TextEditingController()
       ..addListener(() {
         if (mounted) {
-          setState(() {
-            _searchQuery = _searchController.text.trim().toLowerCase();
-          });
+          final query = _searchController.text.trim().toLowerCase();
+          if (query != _searchQuery) {
+            setState(() {
+              _searchQuery = query;
+            });
+            _onSearchChanged(query);
+          }
         }
       });
     _loadRecommendations();
@@ -125,9 +135,50 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+    
+    if (query.isEmpty) {
+      setState(() {
+        _globalSearchResults = [];
+        _isSearchingGlobal = false;
+      });
+      return;
+    }
+
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      _performGlobalSearch(query);
+    });
+  }
+
+  Future<void> _performGlobalSearch(String query) async {
+    if (!mounted) return;
+    
+    setState(() {
+      _isSearchingGlobal = true;
+    });
+
+    try {
+      final results = await context.read<ProductProvider>().searchProductsGlobal(query);
+      if (mounted && _searchQuery == query.toLowerCase()) {
+        setState(() {
+          _globalSearchResults = results;
+          _isSearchingGlobal = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSearchingGlobal = false;
+        });
+      }
+    }
   }
 
   // Selected category filter (null = All)
@@ -477,12 +528,20 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: CustomScrollView(
                       controller: _scrollController,
                       slivers: [
-                      if (isSearching)
-                        SearchResults(
-                          products: filteredProducts,
-                          onClear: () => _searchController.clear(),
-                        )
-                      else ...[
+                        // Global Search Results or Local Filter Fallback
+                        if (_searchQuery.isNotEmpty)
+                          _isSearchingGlobal 
+                            ? const SliverFillRemaining(child: Center(child: CircularProgressIndicator()))
+                            : SearchResults(
+                                products: _globalSearchResults.isNotEmpty ? _globalSearchResults : filteredProducts,
+                                onClear: () {
+                                  _searchController.clear();
+                                  setState(() {
+                                    _globalSearchResults = [];
+                                  });
+                                },
+                              )
+                        else ...[
 
                         // Free Delivery Marquee
                         // Dynamic Free Delivery Marquee

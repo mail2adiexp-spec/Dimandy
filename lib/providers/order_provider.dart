@@ -176,17 +176,11 @@ class OrderProvider extends ChangeNotifier {
         'orderCount': FieldValue.increment(1),
       });
 
-      // Increment salesCount for each product
-      for (var item in items) {
-        try {
-          await _firestore.collection('products').doc(item.productId).update({
-            'salesCount': FieldValue.increment(item.quantity),
-          });
-        } catch (e) {
-          debugPrint('Error incrementing salesCount for ${item.productId}: $e');
-        }
-        // NOTE: Booking creation for services is handled in CheckoutScreen._placeOrder()
-      }
+      // NOTE: salesCount increment and stock decrement are handled by 
+      // the Cloud Function 'onOrderCreate' to avoid Permission Denied errors 
+      // for customers and ensure atomicity.
+      
+      // Refresh user's order list
 
       await fetchUserOrders(); // Refresh orders
       debugPrint('OrderProvider: Orders refreshed, count: ${_orders.length}');

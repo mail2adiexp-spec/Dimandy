@@ -1205,6 +1205,7 @@ class _SharedServicesTabState extends State<SharedServicesTab> {
               child: services.isEmpty
                   ? const Center(child: Text('No services found matching filters'))
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16, top: 16),
                       itemCount: services.length,
                       itemBuilder: (context, index) {

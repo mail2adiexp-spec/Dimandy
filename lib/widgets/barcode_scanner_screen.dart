@@ -100,22 +100,14 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              final val = _manualController.text.trim().toLowerCase().replaceAll('#', '');
+              final val = _manualController.text.trim();
               if (val.isEmpty) return;
               Navigator.pop(ctx);
               
-              final expected = widget.expectedOrderId.trim().toLowerCase();
-              
-              // Flexible match: 
-              // 1. Full match
-              // 2. Input matches start of expected (at least 6 chars)
-              // 3. Expected matches start of input (if user typed extra long for some reason)
-              bool match = val == expected || (expected.startsWith(val) && val.length >= 6);
-              
-              if (match) {
+              if (_isMatch(val, widget.expectedOrderId)) {
                 Navigator.pop(context, true);
               } else {
-                _showErrorDialog(_manualController.text.trim());
+                _showErrorDialog(val);
               }
             },
             child: const Text('Verify'),
@@ -123,6 +115,35 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
         ],
       ),
     );
+  }
+
+  bool _isMatch(String scannedValue, String expectedId) {
+    // 1. Basic Cleaning: Remove #, trim, and toLowerCase
+    String cleanScanned = scannedValue.trim().toLowerCase().replaceAll('#', '');
+    String cleanExpected = expectedId.trim().toLowerCase();
+
+    // 2. Exact Match
+    if (cleanScanned == cleanExpected) return true;
+
+    // 3. Super Cleaning: Keep only alphanumeric to ignore "Order:", "ID:", spaces, etc.
+    final alphanumeric = RegExp(r'[a-z0-9]');
+    String superCleanScanned = scannedValue.toLowerCase()
+        .split('')
+        .where((char) => alphanumeric.hasMatch(char))
+        .join('');
+    String superCleanExpected = expectedId.toLowerCase()
+        .split('')
+        .where((char) => alphanumeric.hasMatch(char))
+        .join('');
+
+    if (superCleanScanned == superCleanExpected) return true;
+
+    // 4. Containment Check: If the QR code contains the ID somewhere (e.g. in a URL)
+    // Or if the scanned value is a truncated version (at least 6 chars)
+    if (superCleanScanned.length >= 6 && superCleanExpected.contains(superCleanScanned)) return true;
+    if (superCleanExpected.length >= 6 && superCleanScanned.contains(superCleanExpected)) return true;
+
+    return false;
   }
 
   void _onBarcodeDetect(BarcodeCapture capture) {
@@ -134,15 +155,9 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     final scannedValue = barcodes.first.rawValue;
     if (scannedValue == null || scannedValue.isEmpty) return;
 
-    final val = scannedValue.trim().toLowerCase().replaceAll('#', '');
-    final expected = widget.expectedOrderId.trim().toLowerCase();
-
     setState(() => isScanned = true);
 
-    // Flexible match (same logic as manual entry)
-    bool match = val == expected || (expected.startsWith(val) && val.length >= 6);
-
-    if (match) {
+    if (_isMatch(scannedValue, widget.expectedOrderId)) {
       Navigator.pop(context, true);
     } else {
       _showErrorDialog(scannedValue);

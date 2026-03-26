@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 
 class PermissionEditorScreen extends StatefulWidget {
   final String userId;
@@ -149,7 +151,7 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_download_reports': 'Download Reports',
         'can_view_analytics': 'View Store Analytics',
       };
-    } else if (widget.userRole == 'administrator' || widget.userRole == 'admin' || widget.userRole == 'super_admin') {
+    } else if (widget.userRole == 'admin' || widget.userRole == 'super_admin') {
       permissionSections['Full Access'] = {
         'can_manage_permissions': 'Manage Permissions',
         'can_manage_products': 'Manage Products',
@@ -202,6 +204,11 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
   Future<void> _savePermissions() async {
     setState(() => isLoading = true);
     try {
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (!auth.isSuperAdmin) {
+        throw Exception('Access Denied: Only Super Admins can modify permissions.');
+      }
+
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.userId)

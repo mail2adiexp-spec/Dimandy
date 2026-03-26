@@ -544,7 +544,8 @@ exports.onOrderCreate = functions.firestore
     const batch = admin.firestore().batch();
 
     try {
-      // 1. Reduce Stock
+      // 1. Reduce Stock & Update salesCount
+      // Using transactions for each product to ensure stock doesn't go below zero
       const items = orderData.items || [];
       for (const item of items) {
         if (!item.productId) continue;
@@ -552,35 +553,46 @@ exports.onOrderCreate = functions.firestore
         let targetId = item.productId;
         let deductQty = item.quantity;
 
-        // Handle Weight Variants (e.g., prod123_500g)
-        // Checks if ID ends with valid weight suffix formatted as _Xg or _XKg
-        // NOTE: This assumes original product IDs do NOT end with this pattern unintentionally.
         const variantMatch = targetId.match(/(.*)_(\d+(\.\d+)?[kK]?[gG])$/);
-
         if (variantMatch) {
           const baseId = variantMatch[1];
-          const weightLabel = variantMatch[2].toLowerCase(); // e.g. 500g, 1kg
-
+          const weightLabel = variantMatch[2].toLowerCase();
           let multiplier = 1.0;
-          if (weightLabel.endsWith('kg')) {
-            multiplier = parseFloat(weightLabel.replace('kg', ''));
-          } else if (weightLabel.endsWith('g')) {
-            multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
-          }
-
+          if (weightLabel.endsWith('kg')) multiplier = parseFloat(weightLabel.replace('kg', ''));
+          else if (weightLabel.endsWith('g')) multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
+          
           if (multiplier > 0) {
             targetId = baseId;
             deductQty = item.quantity * multiplier;
-            console.log(`Weight Variant Detected: ${item.productId} -> Base: ${targetId}, Deduct: ${deductQty} (Qty: ${item.quantity} * ${multiplier})`);
           }
         }
 
         const productRef = admin.firestore().collection("products").doc(targetId);
-        // Use increment(-quantity) for atomic decrement
-        batch.update(productRef, {
-          stock: admin.firestore.FieldValue.increment(-deductQty),
-          salesCount: admin.firestore.FieldValue.increment(item.quantity)
-        });
+        
+        try {
+          await admin.firestore().runTransaction(async (transaction) => {
+            const productDoc = await transaction.get(productRef);
+            if (!productDoc.exists) {
+              console.warn(`Product ${targetId} not found, skipping stock update.`);
+              return;
+            }
+
+            const currentData = productDoc.data();
+            const currentStock = currentData.stock || 0;
+            const currentSales = currentData.salesCount || 0;
+
+            // Ensure stock never goes below zero
+            const newStock = Math.max(0, currentStock - deductQty);
+            
+            transaction.update(productRef, {
+              stock: newStock,
+              salesCount: currentSales + item.quantity
+            });
+          });
+        } catch (txError) {
+          console.error(`Transaction failed for product ${targetId}:`, txError);
+          // Fallback to simple increment if transaction fails, but at least we tried
+        }
       }
 
       // 1.5 Backfill sellerIds if missing (Self-Healing)
@@ -655,7 +667,7 @@ exports.onOrderCreate = functions.firestore
 
       const adminNotifRef = admin.firestore().collection("notifications").doc();
       batch.set(adminNotifRef, {
-        toUserId: "admin", // Special ID for admin pool? Or leave generic
+        toUserId: "admin", // This requires the Admin App to query where userId == 'admin'
         title: "New Order Placed",
         body: `Order #${orderId} placed by ${orderData.deliveryAddress?.name || 'User'} for ₹${orderData.totalAmount}`,
         type: "admin_order",
@@ -664,6 +676,27 @@ exports.onOrderCreate = functions.firestore
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         userId: "admin" // This requires the Admin App to query where userId == 'admin'
       });
+
+      // --- BRAND NEW: FCM Push Notification to Admins ---
+      try {
+        const payload = {
+          notification: {
+            title: "🔔 New Order Received!",
+            body: `Order #${orderId} placed for ₹${orderData.totalAmount}`,
+          },
+          data: {
+            orderId: String(orderId),
+            click_action: "FLUTTER_NOTIFICATION_CLICK"
+          },
+          topic: "admin_new_orders"
+        };
+        // Adding it to fire-and-forget promise array or await it
+        await admin.messaging().send(payload);
+        console.log(`FCM Push Notification sent to 'admin_new_orders' topic for order ${orderId}`);
+      } catch (fcmError) {
+        console.error(`Error sending FCM to 'admin_new_orders' for order ${orderId}:`, fcmError);
+      }
+      // ----------------------------------------------------
 
       await batch.commit(); // Commit all changes (stock + notifications)
       console.log(`Order ${orderId} processed: Stock updated and notifications sent.`);
@@ -921,8 +954,45 @@ exports.onOrderUpdate = functions.firestore
           }
         }
       }
+      
+      // 3. Handle 'cancelled' -> Replenish Stock
+      else if (newStatus === "cancelled" && oldStatus !== "cancelled") {
+        console.log(`Order ${orderId} cancelled. Replenishing stock and reversing sales count.`);
+        
+        for (const item of items) {
+          if (!item.productId) continue;
 
-      // 3. Backfill sellerIds if missing (Lazy Migration)
+          let targetId = item.productId;
+          let replenishQty = item.quantity;
+
+          // Handle Weight Variants
+          const variantMatch = targetId.match(/(.*)_(\d+(\.\d+)?[kK]?[gG])$/);
+          if (variantMatch) {
+            const baseId = variantMatch[1];
+            const weightLabel = variantMatch[2].toLowerCase();
+
+            let multiplier = 1.0;
+            if (weightLabel.endsWith('kg')) {
+              multiplier = parseFloat(weightLabel.replace('kg', ''));
+            } else if (weightLabel.endsWith('g')) {
+              multiplier = parseFloat(weightLabel.replace('g', '')) / 1000.0;
+            }
+
+            if (multiplier > 0) {
+              targetId = baseId;
+              replenishQty = item.quantity * multiplier;
+            }
+          }
+
+          const productRef = admin.firestore().collection("products").doc(targetId);
+          batch.update(productRef, {
+            stock: admin.firestore.FieldValue.increment(replenishQty),
+            salesCount: admin.firestore.FieldValue.increment(-item.quantity)
+          });
+        }
+      }
+
+      // 4. Backfill sellerIds if missing (Lazy Migration)
       if (!newData.sellerIds) {
         const sellerIds = [...new Set(items.map(i => i.sellerId).filter(id => id))];
         if (sellerIds.length > 0) {

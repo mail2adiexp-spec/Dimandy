@@ -6,6 +6,7 @@ class Product {
   final String name;
   final String description;
   final double price;
+  final double? sellerPrice; // The price intended by the seller (before platform fee)
   final double basePrice; // Added basePrice (Buying Price)
   final String imageUrl; // Primary image
   final List<String>? imageUrls; // Multiple images (minimum 4)
@@ -19,8 +20,10 @@ class Product {
   final int viewCount;
   int stock;
   final int minimumQuantity; // Added minimum quantity field
+  final int maximumQuantity; // Added maximum quantity field
   final List<String> storeIds; // Added storeIds for availability
   final String? state; // Added state field
+  final List<String> searchKeywords; // Added for global search
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -30,7 +33,8 @@ class Product {
     required this.name,
     required this.description,
     required this.price,
-    this.basePrice = 0.0, // Default to 0 if not provided
+    this.sellerPrice,
+    this.basePrice = 0.0,
     required this.imageUrl,
     this.imageUrls,
     this.category,
@@ -41,12 +45,14 @@ class Product {
     this.isCustomerChoice = false,
     this.salesCount = 0,
     this.viewCount = 0,
-    this.stock = 0, // Added to constructor
-    this.minimumQuantity = 1, // Default to 1
-    this.storeIds = const [], // Default empty
-    this.state, // Added to constructor
+    this.stock = 0,
+    this.minimumQuantity = 1,
+    this.maximumQuantity = 0,
+    this.storeIds = const [],
+    this.state,
+    this.searchKeywords = const [],
     this.createdAt,
-    this.updatedAt, // Added to constructor
+    this.updatedAt,
   });
 
   // Convert Product to Map for Firestore
@@ -57,6 +63,7 @@ class Product {
       'name': name,
       'description': description,
       'price': price,
+      'sellerPrice': sellerPrice,
       'basePrice': basePrice,
       'imageUrl': imageUrl,
       'imageUrls': imageUrls,
@@ -70,8 +77,10 @@ class Product {
       'viewCount': viewCount,
       'stock': stock,
       'minimumQuantity': minimumQuantity,
+      'maximumQuantity': maximumQuantity,
       'storeIds': storeIds,
-      'state': state, // Added to map
+      'state': state,
+      'searchKeywords': searchKeywords,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -85,10 +94,11 @@ class Product {
       name: map['name'] ?? '',
       description: map['description'] ?? '',
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      sellerPrice: (map['sellerPrice'] as num?)?.toDouble(),
       basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
       imageUrl: map['imageUrl'] ?? '',
       imageUrls: (map['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() 
-          ?? (map['images'] as List<dynamic>?)?.map((e) => e.toString()).toList(), // Fallback to 'images'
+          ?? (map['images'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
       category: map['category'],
       unit: map['unit'],
       mrp: (map['mrp'] as num?)?.toDouble() ?? 0.0,
@@ -99,8 +109,10 @@ class Product {
       viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
       stock: (map['stock'] as num?)?.toInt() ?? 0,
       minimumQuantity: (map['minimumQuantity'] as num?)?.toInt() ?? 1,
+      maximumQuantity: (map['maximumQuantity'] as num?)?.toInt() ?? 0,
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      state: map['state'] as String?, // Added from map
+      state: map['state'] as String?,
+      searchKeywords: (map['searchKeywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 
           : null,

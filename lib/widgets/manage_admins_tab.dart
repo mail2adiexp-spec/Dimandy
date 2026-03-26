@@ -59,7 +59,6 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
   // Admin Roles
   final List<String> _adminRoles = [
     'Super Admin',
-    'Global Admin (Administrator)',
     'State Admin',
     'Core Staff',
   ];
@@ -70,7 +69,6 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
   String _getDisplayRole(String dbRole) {
     switch (dbRole) {
       case 'super_admin': return 'Super Admin';
-      case 'administrator': return 'Global Admin (Administrator)';
       case 'state_admin': return 'State Admin';
       case 'core_staff': return 'Core Staff';
       default: return dbRole;
@@ -147,7 +145,7 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: _usersCollection
-                    .where('role', whereIn: ['state_admin', 'super_admin', 'administrator', 'core_staff'])
+                    .where('role', whereIn: ['state_admin', 'super_admin', 'core_staff'])
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.hasError) {
@@ -335,7 +333,6 @@ class _ManageAdminsTabState extends State<ManageAdminsTab> {
     String getDbRole(String uiRole) {
       switch (uiRole) {
         case 'Super Admin': return 'super_admin';
-        case 'Global Admin (Administrator)': return 'administrator';
         case 'State Admin': return 'state_admin';
         case 'Core Staff': return 'core_staff';
         default: return 'state_admin';

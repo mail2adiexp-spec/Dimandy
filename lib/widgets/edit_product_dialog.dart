@@ -30,6 +30,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _mrpController;
   late TextEditingController _stockController;
   late TextEditingController _minQtyController;
+  late TextEditingController _maxQtyController;
   
   late String _selectedCategory;
   late String _selectedUnit;
@@ -45,11 +46,15 @@ class _EditProductDialogState extends State<EditProductDialog> {
     super.initState();
     _nameController = TextEditingController(text: widget.productData['name']);
     _descriptionController = TextEditingController(text: widget.productData['description']);
-    _priceController = TextEditingController(text: widget.productData['price'].toString());
+    // Prefer sellerPrice (price without fee) for the input field if it exists
+    final initialPrice = (widget.productData['sellerPrice'] as num?)?.toDouble() ?? 
+                       (widget.productData['price'] as num?)?.toDouble() ?? 0.0;
+    _priceController = TextEditingController(text: initialPrice.toString());
     _basePriceController = TextEditingController(text: (widget.productData['basePrice'] ?? 0.0).toString()); // Added
-    _mrpController = TextEditingController(text: (widget.productData['mrp'] ?? widget.productData['price']).toString());
+    _mrpController = TextEditingController(text: (widget.productData['mrp'] ?? initialPrice).toString());
     _stockController = TextEditingController(text: widget.productData['stock'].toString());
     _minQtyController = TextEditingController(text: (widget.productData['minimumQuantity'] ?? 1).toString());
+    _maxQtyController = TextEditingController(text: (widget.productData['maximumQuantity'] ?? 0).toString());
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? [widget.productData['imageUrl']]);
@@ -65,6 +70,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _mrpController.dispose();
     _stockController.dispose();
     _minQtyController.dispose();
+    _maxQtyController.dispose();
     super.dispose();
   }
 
@@ -120,15 +126,34 @@ class _EditProductDialogState extends State<EditProductDialog> {
       List<String> newUrls = await _uploadNewImages();
       List<String> allUrls = [..._existingImageUrls, ...newUrls];
 
+      // Fetch current platform fee
+      double platformFeePercent = 0.05; // Default 5%
+      try {
+        final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+        if (settingsDoc.exists) {
+          final data = settingsDoc.data();
+          platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                             (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
+          platformFeePercent = platformFeePercent / 100;
+        }
+      } catch (e) {
+        debugPrint('Error fetching platform fee for update: $e');
+      }
+
+      final sellerPrice = double.parse(_priceController.text);
+      final listingPrice = sellerPrice * (1 + platformFeePercent);
+
       await FirebaseFirestore.instance.collection('products').doc(widget.productId).update({
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'basePrice': double.parse(_basePriceController.text),
-        'price': double.parse(_priceController.text),
+        'price': listingPrice, // Store Listing Price
+        'sellerPrice': sellerPrice, // Preserve Seller's price
         'mrp': double.parse(_mrpController.text),
-        'isHotDeal': double.parse(_mrpController.text) > double.parse(_priceController.text),
+        'isHotDeal': double.parse(_mrpController.text) > listingPrice,
         'stock': int.parse(_stockController.text),
         'minimumQuantity': int.parse(_minQtyController.text),
+        'maximumQuantity': int.parse(_maxQtyController.text),
         'category': _selectedCategory,
         'unit': _selectedUnit,
         'storeIds': _selectedStoreIds, // Save storeIds
@@ -290,7 +315,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _basePriceController,
-                            decoration: const InputDecoration(labelText: 'Base Price (Buying)', prefixText: '₹', border: OutlineInputBorder()),
+                            decoration: const InputDecoration(labelText: 'Base Price (Buying)', prefixText: '\u20B9', border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
                             validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid' : null,
                           ),
@@ -299,7 +324,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
                         Expanded(
                           child: TextFormField(
                             controller: _mrpController,
-                            decoration: const InputDecoration(labelText: 'MRP', prefixText: '₹', border: OutlineInputBorder()),
+                            decoration: const InputDecoration(labelText: 'MRP', prefixText: '\u20B9', border: OutlineInputBorder()),
                             keyboardType: TextInputType.number,
                             validator: (v) => double.tryParse(v ?? '') == null ? 'Invalid' : null,
                           ),
@@ -307,52 +332,116 @@ class _EditProductDialogState extends State<EditProductDialog> {
                       ],
                     ),
                     const SizedBox(height: 12),
+                     TextFormField(
+                       controller: _priceController,
+                       decoration: const InputDecoration(labelText: 'Selling Price', prefixText: '\u20B9', border: OutlineInputBorder()),
+                       keyboardType: TextInputType.number,
+                       validator: (v) {
+                           if (v == null || v.isEmpty) return 'Required';
+                           final price = double.tryParse(v);
+                           if (price == null) return 'Invalid';
+                           final mrp = double.tryParse(_mrpController.text);
+                           if (mrp != null && price > mrp) return 'Price > MRP';
+                           return null;
+                       },
+                     ),
+                    const SizedBox(height: 12),
+                    // Platform Fee & Listing Price Preview
+                    FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
+                      builder: (context, snapshot) {
+                        double platformFeePercent = 0.05; // Default 5%
+                        if (snapshot.hasData && snapshot.data!.exists) {
+                          final data = snapshot.data!.data() as Map<String, dynamic>;
+                          platformFeePercent = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                                             (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
+                          platformFeePercent = platformFeePercent / 100;
+                        }
+
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.blue[100]!),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: ListenableBuilder(
+                                  listenable: _priceController,
+                                  builder: (context, child) {
+                                    final price = double.tryParse(_priceController.text) ?? 0;
+                                    final platformFee = price * platformFeePercent;
+                                    final listingPrice = price + platformFee;
+                                    
+                                    return Text.rich(
+                                      TextSpan(
+                                        children: [
+                                          TextSpan(text: 'Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
+                                          TextSpan(
+                                            text: '\u20B9${platformFee.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                                          ),
+                                          const TextSpan(text: '  |  Listing Price: '),
+                                          TextSpan(
+                                            text: '\u20B9${listingPrice.toStringAsFixed(2)}',
+                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
+                                          ),
+                                        ],
+                                        style: TextStyle(color: Colors.blue[900], fontSize: 13),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }
+                    ),
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const Text('Inventory Details', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedUnit,
+                      items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
+                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedUnit = v!),
+                      decoration: const InputDecoration(labelText: 'Product Unit', border: OutlineInputBorder()),
+                    ),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
                           child: TextFormField(
-                            controller: _priceController,
-                            decoration: const InputDecoration(labelText: 'Selling Price', prefixText: '₹', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                                if (v == null || v.isEmpty) return 'Required';
-                                final price = double.tryParse(v);
-                                if (price == null) return 'Invalid';
-                                final mrp = double.tryParse(_mrpController.text);
-                                if (mrp != null && price > mrp) return 'Price > MRP';
-                                return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                           child: TextFormField(
                             controller: _stockController,
-                            decoration: const InputDecoration(labelText: 'Stock', border: OutlineInputBorder()),
+                            decoration: InputDecoration(labelText: 'Stock', border: const OutlineInputBorder(), suffixText: _selectedUnit),
                             keyboardType: TextInputType.number,
                             validator: (v) => int.tryParse(v ?? '') == null ? 'Invalid' : null,
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                            child: DropdownButtonFormField<String>(
-                            value: _selectedUnit,
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
-                                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                                .toList(),
-                            onChanged: (v) => setState(() => _selectedUnit = v!),
-                            decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()),
+                          child: TextFormField(
+                             controller: _minQtyController,
+                             decoration: InputDecoration(labelText: 'Min Order Qty', border: const OutlineInputBorder(), suffixText: _selectedUnit),
+                             keyboardType: TextInputType.number,
+                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
                           ),
                         ),
                       ],
                     ),
-
                     const SizedBox(height: 12),
                     TextFormField(
-                       controller: _minQtyController,
-                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: _selectedUnit),
+                       controller: _maxQtyController,
+                       decoration: InputDecoration(labelText: 'Max Order Qty (0 for no limit)', border: const OutlineInputBorder(), suffixText: _selectedUnit),
                        keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v!) < 0) ? 'Invalid' : null,
                     ),
                   ],
                 ),

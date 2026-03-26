@@ -224,7 +224,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       {'title': 'Services', 'icon': Icons.home_repair_service, 'index': 3},
       {'title': 'Categories', 'icon': Icons.category, 'index': 2, 'requiresSuperAdmin': true},
       {'title': 'Gifts', 'icon': Icons.card_giftcard, 'index': 7},
-      {'title': 'Permissions', 'icon': Icons.security, 'index': 10, 'requiresSuperAdmin': false},
+      {'title': 'Permissions', 'icon': Icons.security, 'index': 10, 'requiresSuperAdmin': true},
       {'title': 'Settings', 'icon': Icons.settings, 'index': 18, 'requiresSuperAdmin': true},
       
       {'title': 'Core Staff', 'icon': Icons.group, 'index': 9, 'requiresSuperAdmin': true},
@@ -251,7 +251,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     // Allow if Super Admin, State Admin, Administrator, Core Staff, or Store Manager
     final hasAccess = auth.isSuperAdmin || 
                       auth.isStateAdmin || 
-                      auth.isAdministrator || 
                       auth.isCoreStaff || 
                       auth.isStoreManager;
     final isSuperAdmin = auth.isSuperAdmin;
@@ -291,7 +290,29 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   icon: const Icon(Icons.confirmation_number),
                   backgroundColor: Colors.orange,
                 )
-              : null,
+              : _currentStackIndex == 1
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        FloatingActionButton.extended(
+                          onPressed: _syncProductPrices,
+                          label: const Text('Sync Prices'),
+                          icon: const Icon(Icons.attach_money),
+                          backgroundColor: Colors.green,
+                          heroTag: 'sync_prices',
+                        ),
+                        const SizedBox(height: 12),
+                        FloatingActionButton.extended(
+                          onPressed: _syncProductSearchKeywords,
+                          label: const Text('Sync Search'),
+                          icon: const Icon(Icons.sync),
+                          backgroundColor: Colors.blue,
+                          heroTag: 'sync_search',
+                        ),
+                      ],
+                    )
+                  : null,
           body: SizedBox.expand(
             child: Column(
               children: [
@@ -446,7 +467,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('No account deletion requests'));
 
         return ListView.builder(
-           padding: const EdgeInsets.all(16),
+           physics: const AlwaysScrollableScrollPhysics(),
+           padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
            itemCount: snapshot.data!.docs.length,
            itemBuilder: (context, index) {
               final doc = snapshot.data!.docs[index];
@@ -847,27 +869,53 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         }
 
         return ListView.builder(
-          padding: const EdgeInsets.all(16),
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 100),
           itemCount: docs.length,
           itemBuilder: (context, index) {
-            final data = docs[index].data() as Map<String, dynamic>;
+            final doc = docs[index];
+            final data = doc.data() as Map<String, dynamic>;
             final timestamp = data['timestamp'] as Timestamp?;
             final dateStr = timestamp != null 
                 ? DateFormat('dd MMM yyyy, hh:mm a').format(timestamp.toDate()) 
                 : 'Unknown Date';
+            
+            final hasReply = data['reply'] != null && data['reply'].toString().isNotEmpty;
+            final isReplied = data['status'] == 'replied' || hasReply;
 
             return Card(
               margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: isReplied ? BorderSide(color: Colors.green.withValues(alpha: 0.3), width: 1) : BorderSide.none,
+              ),
               child: ExpansionTile(
                 leading: CircleAvatar(
-                  backgroundColor: Colors.deepPurple.shade50,
-                  child: const Icon(Icons.email, color: Colors.deepPurple),
+                  backgroundColor: isReplied ? Colors.green.shade50 : Colors.deepPurple.shade50,
+                  child: Icon(
+                    isReplied ? Icons.mark_email_read : Icons.email, 
+                    color: isReplied ? Colors.green : Colors.deepPurple
+                  ),
                 ),
-                title: Text(data['name'] ?? 'Unknown Name'),
+                title: Text(
+                  data['name'] ?? 'Unknown Name',
+                  style: TextStyle(fontWeight: isReplied ? FontWeight.normal : FontWeight.bold),
+                ),
                 subtitle: Text(data['email'] ?? 'No Email'),
-                trailing: Text(
-                  dateStr, 
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12)
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      dateStr, 
+                      style: TextStyle(color: Colors.grey[600], fontSize: 10)
+                    ),
+                    if (isReplied)
+                      const Text(
+                        'REPLIED',
+                        style: TextStyle(color: Colors.green, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                  ],
                 ),
                 children: [
                   Padding(
@@ -878,12 +926,56 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         const Text('Message:', style: TextStyle(fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
                         Text(data['message'] ?? 'No content'),
-                        const SizedBox(height: 16),
+                        
+                        if (hasReply) ...[
+                          const SizedBox(height: 16),
+                          const Divider(),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Text('Admin Reply:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                              const Spacer(),
+                              if (data['repliedAt'] != null)
+                                Text(
+                                  DateFormat('dd MMM, hh:mm a').format((data['repliedAt'] as Timestamp).toDate()),
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(data['reply']),
+                          ),
+                          if (data['repliedBy'] != null)
+                             Padding(
+                               padding: const EdgeInsets.only(top: 4),
+                               child: Text('Replied by: ${data['repliedBy']}', style: TextStyle(color: Colors.grey[600], fontSize: 11, fontStyle: FontStyle.italic)),
+                             ),
+                        ],
+
+                        const SizedBox(height: 24),
                         Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('Platform: ${data['platform'] ?? 'Unknown'}', 
-                              style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                            Text(
+                              'Platform: ${data['platform'] ?? 'Unknown'}', 
+                              style: const TextStyle(color: Colors.grey, fontSize: 12)
+                            ),
+                            ElevatedButton.icon(
+                              onPressed: () => _showReplyDialog(doc.id, data),
+                              icon: Icon(hasReply ? Icons.edit : Icons.reply, size: 18),
+                              label: Text(hasReply ? 'Edit Reply' : 'Reply'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: hasReply ? Colors.grey[200] : Colors.blue,
+                                foregroundColor: hasReply ? Colors.black87 : Colors.white,
+                              ),
+                            ),
                           ],
                         ),
                       ],
@@ -898,13 +990,85 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  void _showReplyDialog(String messageId, Map<String, dynamic> messageData) {
+    final replyCtrl = TextEditingController(text: messageData['reply'] ?? '');
+    bool isLoading = false;
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: Text('Reply to ${messageData['name']}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Original Message:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey[600])),
+                const SizedBox(height: 4),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.grey[100], borderRadius: BorderRadius.circular(8)),
+                  child: Text(messageData['message'] ?? '', style: const TextStyle(fontSize: 13, fontStyle: FontStyle.italic)),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: replyCtrl,
+                  maxLines: 4,
+                  decoration: const InputDecoration(
+                    labelText: 'Your Reply',
+                    border: OutlineInputBorder(),
+                    hintText: 'Type your response here...',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (replyCtrl.text.trim().isEmpty) return;
+                setState(() => isLoading = true);
+                try {
+                  final auth = Provider.of<AuthProvider>(context, listen: false);
+                  await FirebaseFirestore.instance.collection('contact_messages').doc(messageId).update({
+                    'reply': replyCtrl.text.trim(),
+                    'repliedAt': FieldValue.serverTimestamp(),
+                    'repliedBy': auth.currentUser?.name ?? 'Admin',
+                    'status': 'replied',
+                  });
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reply saved successfully')));
+                  }
+                } catch (e) {
+                  setState(() => isLoading = false);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red));
+                  }
+                }
+              },
+              child: isLoading 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                  : const Text('Save Reply'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+
   Widget _buildDashboardTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-
+          _buildFinancialSummary(),
+          const SizedBox(height: 24),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -1022,6 +1186,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         }
 
         return ListView.separated(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 100),
           itemCount: docs.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, index) {
@@ -1460,7 +1626,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 100, left: 16, right: 16),
                       itemCount: gifts.length,
                       itemBuilder: (ctx, index) {
                         final gift = gifts[index];
@@ -2140,6 +2307,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     )
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
                       itemCount: categories.length,
                       itemBuilder: (ctx, index) {
@@ -2588,6 +2756,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     )
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                       itemCount: serviceCategories.length,
                       itemBuilder: (context, index) {
@@ -3142,6 +3311,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     )
                   : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 100),
                       itemCount: featuredProvider.sections.length,
                       itemBuilder: (ctx, i) {
                         final section = featuredProvider.sections[i];
@@ -3466,7 +3637,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               }
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
                 itemCount: payouts.length,
                 itemBuilder: (context, index) {
                   final payout = payouts[index];
@@ -3674,8 +3846,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             assignedRole = 'seller';
           } else if (requestData['role'] == 'Core Staff') {
             assignedRole = 'core_staff';
-          } else if (requestData['role'] == 'Administrator') {
-            assignedRole = 'administrator';
           } else if (requestData['role'] == 'Store Manager') {
             assignedRole = 'store_manager';
           } else if (requestData['role'] == 'Manager') {
@@ -4016,7 +4186,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 100),
                       itemCount: staffMembers.length,
                       itemBuilder: (context, index) {
                         final doc = staffMembers[index];
@@ -4739,7 +4910,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_manage_featured'] = 'Manage Featured Sections';
       availablePermissions['can_download_reports'] = 'Download Reports';
 
-    } else if (_selectedPermissionRole == 'administrator') {
+    } else if (_selectedPermissionRole == 'admin' || _selectedPermissionRole == 'super_admin') {
       availablePermissions['can_manage_products'] = 'Manage Products';
       availablePermissions['can_manage_categories'] = 'Manage Categories';
       availablePermissions['can_manage_orders'] = 'Manage Orders';
@@ -5548,7 +5719,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
       // 2. Fetch all users without displayId
       final usersSnapshot = await firestore.collection('users').orderBy('createdAt').get();
-      
+
       int migratedCount = 0;
       final batch = firestore.batch();
       
@@ -5579,6 +5750,164 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         SnackBar(content: Text('Migration failed: $e')),
       );
     }
+  }
+
+  Future<void> _syncProductSearchKeywords() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('Starting search keyword sync for all products... 🔍')),
+    );
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final productsSnapshot = await firestore.collection('products').get();
+      
+      if (productsSnapshot.docs.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('No products found to sync.')),
+        );
+        return;
+      }
+
+      int count = 0;
+      WriteBatch batch = firestore.batch();
+      
+      for (var doc in productsSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final name = data['name'] as String? ?? '';
+        
+        // Generate keywords
+        final keywords = _generateKeywordsForSync(name);
+        
+        batch.update(doc.reference, {'searchKeywords': keywords});
+        count++;
+        
+        // Commit in small batches for stability
+        if (count % 400 == 0) {
+          await batch.commit();
+          batch = firestore.batch();
+        }
+      }
+      
+      if (count % 400 != 0) {
+        await batch.commit();
+      }
+
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Successfully synced $count products! 🎉'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Sync error: $e');
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Error syncing keywords: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _syncProductPrices() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('Starting price sync for all products... 💰')),
+    );
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      
+      // Fetch platform fee
+      double platformFeePercent = 0.05; // Default 5%
+      final settingsDoc = await firestore.collection('app_settings').doc('general').get();
+      if (settingsDoc.exists) {
+        final data = settingsDoc.data();
+        platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
+                           (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
+        platformFeePercent = platformFeePercent / 100;
+      }
+
+      final productsSnapshot = await firestore.collection('products').get();
+      
+      if (productsSnapshot.docs.isEmpty) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('No products found to sync.')),
+        );
+        return;
+      }
+
+      int count = 0;
+      WriteBatch batch = firestore.batch();
+      
+      for (var doc in productsSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        
+        // Only sync if sellerPrice is missing (meaning it hasn't been migrated yet)
+        if (data['sellerPrice'] == null) {
+          final sellerPrice = (data['price'] as num?)?.toDouble() ?? 0.0;
+          final listingPrice = sellerPrice * (1 + platformFeePercent);
+          final mrp = (data['mrp'] as num?)?.toDouble() ?? 0.0;
+          
+          batch.update(doc.reference, {
+            'price': listingPrice,
+            'sellerPrice': sellerPrice,
+            'isHotDeal': mrp > listingPrice,
+          });
+          count++;
+          
+          if (count % 400 == 0) {
+            await batch.commit();
+            batch = firestore.batch();
+          }
+        }
+      }
+      
+      if (count % 400 != 0) {
+        await batch.commit();
+      }
+
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Successfully synced prices for $count products! 🎉'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Sync error: $e');
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Error syncing prices: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  List<String> _generateKeywordsForSync(String name) {
+    final List<String> keywords = [];
+    final String lowerName = name.toLowerCase();
+    
+    // Full name
+    keywords.add(lowerName);
+    
+    // Split by spaces and special characters
+    final List<String> words = lowerName.split(RegExp(r'[\s\-_,.]+')).where((w) => w.isNotEmpty).toList();
+    
+    for (final word in words) {
+      if (!keywords.contains(word)) keywords.add(word);
+      
+      // Prefixes for cada word
+      for (int i = 1; i <= word.length; i++) {
+        final prefix = word.substring(0, i);
+        if (!keywords.contains(prefix)) keywords.add(prefix);
+      }
+    }
+    
+    return keywords;
   }
 
   void _showSellerDashboard(String sellerId, Map<String, dynamic> sellerData) {
@@ -7359,9 +7688,169 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
 
+  Widget _buildFinancialSummary() {
+    return FutureBuilder<Map<String, double>>(
+      future: _calculateDashboardFinancials(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const LinearProgressIndicator();
+        }
+        
+        final data = snapshot.data ?? {'totalProfit': 0, 'storeProfit': 0, 'totalRevenue': 0};
+        
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.deepPurple.shade50,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.deepPurple.shade100),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.account_balance_wallet, color: Colors.deepPurple, size: 20),
+                  SizedBox(width: 8),
+                  const Text(
+                    'Financial Summary',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.deepPurple,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                   _buildSummaryItem('Net Profit', data['totalProfit']!, Colors.green),
+                   const SizedBox(width: 12),
+                   _buildSummaryItem('Store Profit', data['storeProfit']!, Colors.blue),
+                   const SizedBox(width: 12),
+                   _buildSummaryItem('Total Revenue', data['totalRevenue']!, Colors.orange),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
+  Widget _buildSummaryItem(String title, double value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '₹${value.toStringAsFixed(0)}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
+  Future<Map<String, double>> _calculateDashboardFinancials() async {
+    try {
+      // Simplified calculation for dashboard (limit to recent 100 txns for speed)
+      final txSnapshot = await FirebaseFirestore.instance
+          .collection('transactions')
+          .orderBy('createdAt', descending: true)
+          .limit(100)
+          .get();
 
+      double storeRevenue = 0;
+      double storePurchaseCost = 0;
+      double sellerComm = 0;
+      double serviceComm = 0;
+      double deliveryFeePaid = 0;
+      double totalSalesRevenue = 0;
 
+      final List<String> platformRoles = ['admin', 'super_admin', 'state_admin', 'store_manager', 'core_staff', 'manager'];
+      final Map<String, String> userRoleCache = {};
 
+      for (var doc in txSnapshot.docs) {
+        final data = doc.data();
+        final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+        final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
+        final description = data['description'] as String? ?? '';
+        final typeStr = data['type'] as String? ?? 'credit';
+
+        // Delivery Cost
+        if (metadata['source'] == 'delivery_fee' || description.toLowerCase().contains('delivery payout')) {
+          deliveryFeePaid += amount;
+        } 
+        // Order Related
+        else if (metadata.containsKey('orderId')) {
+          if (description.contains('Commission') || metadata.containsKey('platformFee')) {
+            if (metadata['isPlatformOwned'] != true) {
+              sellerComm += (metadata['platformFee'] as num?)?.toDouble() ?? amount;
+            }
+          } else if (typeStr == 'credit') {
+            totalSalesRevenue += amount;
+            // Check Store Ownership
+            final sellerId = metadata['sellerId'] ?? data['userId'];
+            if (sellerId != null) {
+              String? role = userRoleCache[sellerId];
+              if (role == null) {
+                final uDoc = await FirebaseFirestore.instance.collection('users').doc(sellerId).get();
+                if (uDoc.exists) {
+                  role = (uDoc.data()?['role'] as String? ?? '').toLowerCase();
+                  userRoleCache[sellerId] = role!;
+                } else {
+                  role = 'unknown';
+                }
+              }
+
+              if (platformRoles.contains(role)) {
+                storeRevenue += amount;
+              }
+            }
+          }
+        }
+        // Service Related
+        else if (metadata.containsKey('bookingId')) {
+          if (description.contains('Commission') || metadata.containsKey('platformFee')) {
+            serviceComm += (metadata['platformFee'] as num?)?.toDouble() ?? amount;
+          } else {
+            totalSalesRevenue += amount;
+          }
+        }
+      }
+
+      final storeProfit = storeRevenue - storePurchaseCost; 
+      final totalProfit = storeProfit + sellerComm + serviceComm - deliveryFeePaid;
+
+      return {
+        'totalProfit': totalProfit,
+        'storeProfit': storeProfit,
+        'totalRevenue': totalSalesRevenue,
+      };
+    } catch (e) {
+      debugPrint('Dashboard Financials Error: $e');
+      return {'totalProfit': 0, 'storeProfit': 0, 'totalRevenue': 0};
+    }
+  }
 }

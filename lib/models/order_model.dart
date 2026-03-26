@@ -173,6 +173,7 @@ class OrderItem {
   final String productName;
   final int quantity;
   final double price;
+  final double basePrice; // Added for profit calculation
   final String? imageUrl;
   final Map<String, dynamic>? metadata;
 
@@ -182,6 +183,7 @@ class OrderItem {
     required this.productName,
     required this.quantity,
     required this.price,
+    this.basePrice = 0.0,
     this.imageUrl,
     this.metadata,
   });
@@ -193,6 +195,7 @@ class OrderItem {
       productName: map['productName'] ?? '',
       quantity: map['quantity'] ?? 1,
       price: (map['price'] ?? 0).toDouble(),
+      basePrice: (map['basePrice'] ?? 0).toDouble(),
       imageUrl: map['imageUrl'],
       metadata: map['metadata'] as Map<String, dynamic>?,
     );
@@ -205,6 +208,7 @@ class OrderItem {
       'productName': productName,
       'quantity': quantity,
       'price': price,
+      'basePrice': basePrice,
       'imageUrl': imageUrl,
       if (metadata != null) 'metadata': metadata,
     };
