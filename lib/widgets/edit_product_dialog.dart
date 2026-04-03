@@ -28,7 +28,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _priceController;
   late TextEditingController _basePriceController; // Added
   late TextEditingController _mrpController;
-  late TextEditingController _discountController;
   late TextEditingController _stockController;
   late TextEditingController _minQtyController;
   late TextEditingController _maxQtyController;
@@ -56,10 +55,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _stockController = TextEditingController(text: widget.productData['stock'].toString());
     _minQtyController = TextEditingController(text: (widget.productData['minimumQuantity'] ?? 1).toString());
     _maxQtyController = TextEditingController(text: (widget.productData['maximumQuantity'] ?? 0).toString());
-    _discountController = TextEditingController(text: (widget.productData['discountPercent'] ?? '').toString());
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
-    _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? [widget.productData['imageUrl']]);
+    _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? (widget.productData['imageUrl'] != null ? [widget.productData['imageUrl']] : []));
     _selectedStoreIds = List<String>.from(widget.productData['storeIds'] ?? []); // Init storeIds
   }
 
@@ -70,7 +68,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _priceController.dispose();
     _basePriceController.dispose(); // Added
     _mrpController.dispose();
-    _discountController.dispose();
     _stockController.dispose();
     _minQtyController.dispose();
     _maxQtyController.dispose();
@@ -129,33 +126,22 @@ class _EditProductDialogState extends State<EditProductDialog> {
       List<String> newUrls = await _uploadNewImages();
       List<String> allUrls = [..._existingImageUrls, ...newUrls];
 
-      // Fetch current platform fee
-      double platformFeePercent = 0.05; // Default 5%
-      try {
-        final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
-        if (settingsDoc.exists) {
-          final data = settingsDoc.data();
-          platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                             (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
-          platformFeePercent = platformFeePercent / 100;
-        }
-      } catch (e) {
-        debugPrint('Error fetching platform fee for update: $e');
-      }
-
       final sellingPrice = double.parse(_priceController.text);
-      final discountPercent = double.tryParse(_discountController.text) ?? 0;
-      final finalPrice = sellingPrice * (1 - (discountPercent / 100));
+      final mrp = double.tryParse(_mrpController.text) ?? sellingPrice;
+      double discountPercent = 0;
+      if (mrp > sellingPrice && mrp > 0) {
+        discountPercent = ((mrp - sellingPrice) / mrp) * 100;
+      }
 
       await FirebaseFirestore.instance.collection('products').doc(widget.productId).update({
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'basePrice': double.parse(_basePriceController.text),
-        'price': finalPrice, // Store Final Discounted Price
+        'price': sellingPrice, // Store Selling Price directly
         'sellerPrice': sellingPrice, 
         'discountPercent': discountPercent > 0 ? discountPercent : null,
-        'mrp': double.parse(_mrpController.text),
-        'isHotDeal': double.parse(_mrpController.text) > finalPrice,
+        'mrp': mrp,
+        'isHotDeal': mrp > sellingPrice,
         'stock': int.parse(_stockController.text),
         'minimumQuantity': int.parse(_minQtyController.text),
         'maximumQuantity': int.parse(_maxQtyController.text),
@@ -373,29 +359,26 @@ class _EditProductDialogState extends State<EditProductDialog> {
                        },
                      ),
                      const SizedBox(height: 12),
-                     TextFormField(
-                       controller: _discountController,
-                       decoration: const InputDecoration(
-                         labelText: 'Discount (%) - Optional',
-                         border: OutlineInputBorder(),
-                         suffixText: '%',
-                         prefixIcon: Icon(Icons.label_outline),
-                       ),
-                       keyboardType: TextInputType.number,
-                     ),
                     const SizedBox(height: 12),
                     ListenableBuilder(
-                      listenable: Listenable.merge([_priceController, _discountController]),
+                      listenable: Listenable.merge([_priceController, _mrpController]),
                       builder: (context, _) {
                         final price = double.tryParse(_priceController.text) ?? 0;
-                        final discount = double.tryParse(_discountController.text) ?? 0;
-                        if (discount <= 0) return const SizedBox.shrink();
-                        final finalPrice = price * (1 - (discount / 100));
+                        final mrp = double.tryParse(_mrpController.text) ?? 0;
+                        if (mrp <= price || mrp <= 0) return const SizedBox.shrink();
+                        
+                        final discountPercent = ((mrp - price) / mrp) * 100;
+
                         return Container(
                           padding: const EdgeInsets.all(8),
                           margin: const EdgeInsets.only(bottom: 12),
-                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(4)),
-                          child: Text('Effective Listing Price: \u20B9${finalPrice.toStringAsFixed(2)}', style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
+                          child: Text(
+                            'Calculated Discount: ${discountPercent.toStringAsFixed(1)}% OFF',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                         );
                       }
                     ),

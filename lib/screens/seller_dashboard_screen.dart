@@ -298,57 +298,25 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                         ],
                       ),
                     const SizedBox(height: 8),
-                    // Platform Fee & Listing Price Preview
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
-                      builder: (context, snapshot) {
-                        double platformFeePercent = 0.05; // Default 5%
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          final data = snapshot.data!.data() as Map<String, dynamic>;
-                          platformFeePercent = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                                             (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
-                          platformFeePercent = platformFeePercent / 100; // Convert to decimal (e.g. 5 -> 0.05)
-                        }
+                    const SizedBox(height: 12),
+                    ListenableBuilder(
+                      listenable: Listenable.merge([priceCtrl, mrpCtrl]),
+                      builder: (context, _) {
+                        final price = double.tryParse(priceCtrl.text) ?? 0;
+                        final mrp = double.tryParse(mrpCtrl.text) ?? 0;
+                        if (mrp <= price || mrp <= 0) return const SizedBox.shrink();
+                        
+                        final discountPercent = ((mrp - price) / mrp) * 100;
 
                         return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue[100]!),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Builder(
-                                  builder: (context) {
-                                    final price = double.tryParse(priceCtrl.text) ?? 0;
-                                    final platformFee = price * platformFeePercent;
-                                    final listingPrice = price + platformFee;
-                                    
-                                    return Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(text: 'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
-                                          TextSpan(
-                                            text: '₹${platformFee.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-                                          ),
-                                          const TextSpan(text: '  |  Listing Price: '),
-                                          TextSpan(
-                                            text: '₹${listingPrice.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                                          ),
-                                        ],
-                                        style: TextStyle(color: Colors.blue[900], fontSize: 13),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Text(
+                            'Calculated Discount: ${discountPercent.toStringAsFixed(1)}% OFF',
+                            style: const TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         );
                       }
@@ -451,22 +419,8 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                     // Create product ID
                                     final productId = FirebaseFirestore.instance.collection('products').doc().id;
                                     
-                                    // Fetch current platform fee
-                                    double platformFeePercent = 0.05; // Default 5%
-                                    try {
-                                      final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
-                                      if (settingsDoc.exists) {
-                                        final data = settingsDoc.data();
-                                        platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                                                             (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
-                                        platformFeePercent = platformFeePercent / 100;
-                                      }
-                                    } catch (e) {
-                                      debugPrint('Error fetching platform fee for seller product save: $e');
-                                    }
-
                                     final sellerPrice = double.parse(priceCtrl.text);
-                                    final listingPrice = sellerPrice * (1 + platformFeePercent);
+                                    final listingPrice = sellerPrice;
                                     
                                     // Upload images using captured ScaffoldMessenger
                                     final imageUrls = await uploadImages(productId);

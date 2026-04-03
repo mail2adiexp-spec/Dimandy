@@ -229,11 +229,38 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 Text(
                   _formatPriceWithUnit(product),
                   style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.green,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.deepPurple,
                   ),
                 ),
+                if (product.mrp > product.price) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    formatINR(product.mrp),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                      decoration: TextDecoration.lineThrough,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${((product.mrp - product.price) / product.mrp * 100).round()}% OFF',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
                 if (_isWeightBased(product)) ...[
                   const SizedBox(width: 12),
                   Container(

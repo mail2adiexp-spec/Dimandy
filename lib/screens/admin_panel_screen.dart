@@ -5953,16 +5953,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     try {
       final firestore = FirebaseFirestore.instance;
       
-      // Fetch platform fee
-      double platformFeePercent = 0.05; // Default 5%
-      final settingsDoc = await firestore.collection('app_settings').doc('general').get();
-      if (settingsDoc.exists) {
-        final data = settingsDoc.data();
-        platformFeePercent = (data?['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                           (data?['platformFeePercentage'] as num?)?.toDouble() ?? 5.0;
-        platformFeePercent = platformFeePercent / 100;
-      }
-
       final productsSnapshot = await firestore.collection('products').get();
       
       if (productsSnapshot.docs.isEmpty) {
@@ -5981,7 +5971,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         // Only sync if sellerPrice is missing (meaning it hasn't been migrated yet)
         if (data['sellerPrice'] == null) {
           final sellerPrice = (data['price'] as num?)?.toDouble() ?? 0.0;
-          final listingPrice = sellerPrice * (1 + platformFeePercent);
+          final listingPrice = sellerPrice; // Now equal since platform fee is removed
           final mrp = (data['mrp'] as num?)?.toDouble() ?? 0.0;
           
           batch.update(doc.reference, {

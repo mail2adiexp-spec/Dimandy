@@ -1202,764 +1202,235 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final mrpCtrl = TextEditingController();
     final priceCtrl = TextEditingController();
     final stockCtrl = TextEditingController();
-    final discountCtrl = TextEditingController(); // Added
     final minQtyCtrl = TextEditingController(text: '1');
     final maxQtyCtrl = TextEditingController(text: '0');
 
-    String selectedCategory =
-        Provider.of<CategoryProvider>(
-          context,
-          listen: false,
-        ).categories.isNotEmpty
-        ? Provider.of<CategoryProvider>(
-            context,
-            listen: false,
-          ).categories.first.name
+    String selectedCategory = Provider.of<CategoryProvider>(context, listen: false).categories.isNotEmpty
+        ? Provider.of<CategoryProvider>(context, listen: false).categories.first.name
         : '';
     String selectedUnit = 'Pic';
     bool isFeatured = false;
-    bool isHotDeal = false;
     bool isLoading = false;
-    _selectedImages = []; // Reset for new product
-    List<String> selectedStoreIds = [];
-    String? selectedState = Provider.of<AuthProvider>(
-      context,
-      listen: false,
-    ).currentUser?.state;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          child: Container(
-            width: MediaQuery.of(context).size.width > 700
-                ? 700
-                : double.maxFinite,
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Add New Product',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Name *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => (v?.isEmpty == true || v!.length < 3)
-                          ? 'Required, min 3 chars'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                      onChanged: (value) {
-                        if (value.endsWith('\n')) {
-                          descCtrl.text = '$value\u2022 ';
-                          descCtrl.selection = TextSelection.fromPosition(
-                            TextPosition(offset: descCtrl.text.length),
-                          );
-                        } else if (value.isEmpty) {
-                          descCtrl.text = '\u2022 ';
-                          descCtrl.selection = TextSelection.fromPosition(
-                            TextPosition(offset: descCtrl.text.length),
-                          );
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: basePriceCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Base Price',
-                              border: OutlineInputBorder(),
-                              prefixText: '\u20B9',
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) =>
-                                (v?.isEmpty == true ||
-                                    double.tryParse(v!) == null)
-                                ? 'Invalid'
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: mrpCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'MRP',
-                              border: OutlineInputBorder(),
-                              prefixText: '\u20B9',
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) {
-                              final p = double.tryParse(priceCtrl.text) ?? 0;
-                              final m = double.tryParse(val) ?? 0;
-                              if (m > p && p > 0) {
-                                setState(() => isHotDeal = true);
-                              }
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: priceCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Selling Price *',
-                        border: OutlineInputBorder(),
-                        prefixText: '\u20B9',
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (v) =>
-                          (v?.isEmpty == true || double.tryParse(v!) == null)
-                          ? 'Invalid'
-                          : null,
-                      onChanged: (val) {
-                        final p = double.tryParse(val) ?? 0;
-                        final m = double.tryParse(mrpCtrl.text) ?? 0;
-                        if (m > p && p > 0) {
-                          setState(() => isHotDeal = true);
-                        }
-                      },
-                    ),
-                     const SizedBox(height: 16),
-                     TextFormField(
-                       controller: discountCtrl,
-                       decoration: const InputDecoration(
-                         labelText: 'Discount (%) - Optional',
-                         border: OutlineInputBorder(),
-                         suffixText: '%',
-                         prefixIcon: Icon(Icons.label_outline),
-                       ),
-                       keyboardType: TextInputType.number,
-                     ),
-                    const SizedBox(height: 12),
-                    StatefulBuilder(
-                      builder: (context, setInternalState) {
-                        return ListenableBuilder(
-                          listenable: Listenable.merge([priceCtrl, discountCtrl]),
-                          builder: (context, _) {
-                            final price = double.tryParse(priceCtrl.text) ?? 0;
-                            final discount = double.tryParse(discountCtrl.text) ?? 0;
-                            if (discount <= 0) return const SizedBox.shrink();
-                            final finalPrice = price * (1 - (discount / 100));
-                            return Container(
-                              padding: const EdgeInsets.all(8),
-                              margin: const EdgeInsets.only(bottom: 12),
-                              decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(4)),
-                              child: Text('Effective Listing Price: \u20B9${finalPrice.toStringAsFixed(2)}', style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
-                            );
-                          }
-                        );
-                      }
-                    ),
-                    const Divider(),
-                    const Text(
-                      'Inventory Details',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: selectedUnit,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Unit',
-                        border: OutlineInputBorder(),
-                      ),
-                      isExpanded: true,
-                      items:
-                          [
-                                'Kg',
-                                'Ltr',
-                                'Pic',
-                                'Pkt',
-                                'Grm',
-                                'Box',
-                                'Dozen',
-                                'Set',
-                                'Packet',
-                                'Gram',
-                              ]
-                              .map(
-                                (u) =>
-                                    DropdownMenuItem(value: u, child: Text(u)),
-                              )
-                              .toList(),
-                      onChanged: (v) => setState(() => selectedUnit = v!),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Stock *',
-                              border: const OutlineInputBorder(),
-                              suffixText: selectedUnit,
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final val = int.tryParse(v!);
-                              if (val == null) return 'Invalid';
-                              if (val < 0) return 'Cannot be negative';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: minQtyCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Min Order Qty',
-                              border: const OutlineInputBorder(),
-                              suffixText: selectedUnit,
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) =>
-                                (v?.isEmpty == true ||
-                                    int.tryParse(v!) == null ||
-                                    int.parse(v) < 1)
-                                ? 'Min 1'
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: maxQtyCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Max Order Qty (0 for no limit)',
-                        border: const OutlineInputBorder(),
-                        suffixText: selectedUnit,
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (v) =>
-                          (v?.isEmpty == true ||
-                              int.tryParse(v!) == null ||
-                              int.parse(v!) < 0)
-                          ? 'Invalid'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    MediaQuery.of(context).size.width < 600
-                        ? DropdownButtonFormField<String>(
-                            initialValue: selectedCategory,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                            items:
-                                Provider.of<CategoryProvider>(
-                                      context,
-                                      listen: false,
-                                    ).categories
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.name,
-                                        child: Text(c.name),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) =>
-                                setState(() => selectedCategory = v!),
-                          )
-                        : DropdownButtonFormField<String>(
-                            initialValue: selectedCategory,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                            items:
-                                Provider.of<CategoryProvider>(
-                                      context,
-                                      listen: false,
-                                    ).categories
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.name,
-                                        child: Text(c.name),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) =>
-                                setState(() => selectedCategory = v!),
-                          ),
-                    const SizedBox(height: 16),
-                    SwitchListTile(
-                      title: const Text('Featured Product'),
-                      value: isFeatured,
-                      onChanged: (v) => setState(() => isFeatured = v),
-                    ),
-                    // Auto-calculated Hot Deal based on MRP > Price
-                    // Customer Choice is now based on sales count
-                    const SizedBox(height: 16),
-                    OutlinedButton.icon(
-                      onPressed: () => pickImages(setState),
-                      icon: const Icon(Icons.image),
-                      label: Text(
-                        _selectedImages.isEmpty
-                            ? 'Select Images (Max 6)'
-                            : '${_selectedImages.length} image(s) selected',
-                      ),
-                    ),
-                    if (_selectedImages.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 80,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: _selectedImages.length,
-                          itemBuilder: (context, index) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: Stack(
-                              children: [
-                                Image.memory(
-                                  _selectedImages[index],
-                                  width: 80,
-                                  height: 80,
-                                  fit: BoxFit.cover,
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  right: 0,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.close, size: 16),
-                                    onPressed: () => setState(
-                                      () => _selectedImages.removeAt(index),
-                                    ),
-                                    style: IconButton.styleFrom(
-                                      backgroundColor: Colors.red,
-                                      foregroundColor: Colors.white,
-                                      minimumSize: const Size(24, 24),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    // Store Selection (Admin/Core Staff Only)
-                    Consumer<AuthProvider>(
-                      builder: (context, auth, child) {
-                        if (!auth.isAdmin && !auth.isCoreStaff)
-                          return const SizedBox.shrink();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Available in Stores:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('stores')
-                                  .where('isActive', isEqualTo: true)
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData)
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                final stores = snapshot.data!.docs;
-                                if (stores.isEmpty)
-                                  return const Text('No active stores found.');
-
-                                // Calculate selected names
-                                final selectedNames = stores
-                                    .where(
-                                      (doc) =>
-                                          selectedStoreIds.contains(doc.id),
-                                    )
-                                    .map((doc) => doc['name'] as String)
-                                    .join(', ');
-
-                                return InkWell(
-                                  onTap: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) {
-                                        return StatefulBuilder(
-                                          builder: (context, setDialogState) {
-                                            return AlertDialog(
-                                              title: const Text(
-                                                'Select Stores',
-                                              ),
-                                              content: SizedBox(
-                                                width: double.maxFinite,
-                                                child: ListView.builder(
-                                                  shrinkWrap: true,
-                                                  itemCount: stores.length,
-                                                  itemBuilder: (context, index) {
-                                                    final doc = stores[index];
-                                                    final storeId = doc.id;
-                                                    final storeName =
-                                                        doc['name'] ??
-                                                        'Unknown';
-                                                    final isSelected =
-                                                        selectedStoreIds
-                                                            .contains(storeId);
-
-                                                    return CheckboxListTile(
-                                                      title: Text(storeName),
-                                                      subtitle:
-                                                          doc
-                                                                  .data()
-                                                                  .toString()
-                                                                  .contains(
-                                                                    'state',
-                                                                  ) &&
-                                                              doc['state'] !=
-                                                                  null
-                                                          ? Text(
-                                                              'State: ${doc['state']}',
-                                                            )
-                                                          : null,
-                                                      value: isSelected,
-                                                      onChanged: (bool? value) {
-                                                        setDialogState(() {
-                                                          if (value == true) {
-                                                            selectedStoreIds
-                                                                .add(storeId);
-                                                            // Auto-fill state if not linked to any state yet
-                                                            if (selectedState ==
-                                                                    null &&
-                                                                doc
-                                                                    .data()
-                                                                    .toString()
-                                                                    .contains(
-                                                                      'state',
-                                                                    ) &&
-                                                                doc['state'] !=
-                                                                    null) {
-                                                              setState(() {
-                                                                selectedState =
-                                                                    doc['state'];
-                                                              });
-                                                            }
-                                                          } else {
-                                                            selectedStoreIds
-                                                                .remove(
-                                                                  storeId,
-                                                                );
-                                                          }
-                                                        });
-                                                      },
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(context),
-                                                  child: const Text('Done'),
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ).then((_) => setState(() {}));
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            selectedNames.isEmpty
-                                                ? 'Select Stores'
-                                                : selectedNames,
-                                            style: TextStyle(
-                                              color: selectedNames.isEmpty
-                                                  ? Colors.grey[700]
-                                                  : Colors.black87,
-                                              fontSize: 16,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const Icon(Icons.arrow_drop_down),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  if (!formKey.currentState!.validate()) return;
-                                  setState(() => isLoading = true);
-
-                                  try {
-                                    final sellerPrice = double.parse(
-                                      priceCtrl.text,
-                                    );
-                                    final discountPercent = double.tryParse(discountCtrl.text) ?? 0;
-                                    final finalPrice = sellerPrice * (1 - (discountPercent / 100));
-
-                                    final docRef = await FirebaseFirestore
-                                        .instance
-                                        .collection('products')
-                                        .add({
-                                          'name': nameCtrl.text,
-                                          'description': descCtrl.text,
-                                          'basePrice':
-                                              double.tryParse(
-                                                basePriceCtrl.text,
-                                              ) ??
-                                              0.0,
-                                          'price':
-                                              finalPrice, // Store Final Discounted Price
-                                          'sellerPrice':
-                                              sellerPrice, // Base selling price
-                                          'discountPercent': discountPercent > 0 ? discountPercent : null,
-                                          'stock': int.parse(stockCtrl.text),
-                                          'minimumQuantity': int.parse(
-                                            minQtyCtrl.text,
-                                          ),
-                                          'maximumQuantity': int.parse(
-                                            maxQtyCtrl.text,
-                                          ),
-                                          'mrp':
-                                              double.tryParse(mrpCtrl.text) ??
-                                              0.0,
-                                          'category': selectedCategory,
-                                          'unit': selectedUnit,
-                                          'isFeatured': isFeatured,
-                                          'isHotDeal':
-                                              (double.tryParse(mrpCtrl.text) ??
-                                                  0) >
-                                              finalPrice,
-                                          'isCustomerChoice':
-                                              false, // sales based
-                                          'salesCount': 0,
-                                          'sellerId':
-                                              'admin', // Or current user? Admin panel implies admin.
-                                          'createdAt':
-                                              FieldValue.serverTimestamp(),
-                                          'updatedAt':
-                                              FieldValue.serverTimestamp(),
-                                          'storeIds': selectedStoreIds,
-                                          'state':
-                                              selectedState, // Save selected state
-                                        });
-
-                                    // --- LOG INITIAL PURCHASE ---
-                                    final initialStock = int.tryParse(stockCtrl.text) ?? 0;
-                                    final bPrice = double.tryParse(basePriceCtrl.text) ?? 0.0;
-                                    if (initialStock > 0) {
-                                      for (var sId in selectedStoreIds) {
-                                        await FirebaseFirestore.instance
-                                            .collection('purchases')
-                                            .add({
-                                          'productId': docRef.id,
-                                          'productName': nameCtrl.text,
-                                          'quantity': initialStock,
-                                          'purchasePrice': bPrice,
-                                          'totalAmount': initialStock * bPrice,
-                                          'storeId': sId,
-                                          'type': 'initial',
-                                          'createdAt': FieldValue.serverTimestamp(),
-                                          'state': selectedState,
-                                        });
-                                      }
-                                    }
-
-                                    if (_selectedImages.isNotEmpty) {
-                                      final urls = await uploadImages(
-                                        docRef.id,
-                                      );
-                                      await docRef.update({
-                                        'imageUrls': urls, // Standardized key
-                                        'imageUrl': urls.isNotEmpty
-                                            ? urls.first
-                                            : null, // Main image for backward compat/simple access
-                                      });
-                                    }
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Product added successfully',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    setState(() => isLoading = false);
-                                    if (mounted)
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(content: Text('Error: $e')),
-                                      );
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Text('Add Product'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showEditProductDialog(
-    String productId,
-    Map<String, dynamic> productData,
-  ) {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController(text: productData['name']);
-    final descCtrl = TextEditingController(text: productData['description']);
-    final priceCtrl = TextEditingController(
-      text: productData['price'].toString(),
-    );
-    final basePriceCtrl = TextEditingController(
-      text: (productData['basePrice'] ?? 0.0).toString(),
-    );
-    final mrpCtrl = TextEditingController(
-      text: (productData['mrp'] ?? 0).toString(),
-    );
-    final stockCtrl = TextEditingController(
-      text: productData['stock'].toString(),
-    );
-    final minQtyCtrl = TextEditingController(
-      text: (productData['minimumQuantity'] ?? 1).toString(),
-    );
-    final maxQtyCtrl = TextEditingController(
-      text: (productData['maximumQuantity'] ?? 0).toString(),
-    );
-
-    final categoryProvider = Provider.of<CategoryProvider>(
-      context,
-      listen: false,
-    );
-    final categories = categoryProvider.categories.map((c) => c.name).toList();
-    String selectedCategory =
-        productData['category'] ??
-        (categories.isNotEmpty ? categories.first : '');
-    if (categories.isNotEmpty && !categories.contains(selectedCategory)) {
-      selectedCategory = categories.first;
-    }
-
-    String selectedUnit = productData['unit'] ?? 'Pic';
-    bool isFeatured = productData['isFeatured'] ?? false;
-    bool isHotDeal = productData['isHotDeal'] ?? false;
-    bool isLoading = false;
-
-    List<String> selectedStoreIds = List<String>.from(
-      productData['storeIds'] ?? [],
-    );
+    _selectedImages = [];
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    String? selectedState =
-        productData['state'] ??
-        auth.currentUser?.state ??
-        auth.currentUser?.assignedState;
-
-    // Image Handling
-    List<String> existingImageUrls = List<String>.from(
-      productData['imageUrls'] ??
-          (productData['imageUrl'] != null ? [productData['imageUrl']] : []),
-    );
-    List<Uint8List> newImages = [];
+    List<String> selectedStoreIds = widget.storeId != null ? [widget.storeId!] : [];
+    String? selectedState = widget.storeId != null 
+        ? auth.currentUser?.storeId == widget.storeId ? auth.currentUser?.state : null 
+        : auth.currentUser?.state;
 
     Future<void> pickImages(StateSetter setState) async {
       try {
         final List<XFile> images = await ImagePicker().pickMultiImage();
         if (images.isNotEmpty) {
           final List<Uint8List> imageBytes = [];
-          for (var image in images.take(
-            6 - existingImageUrls.length - newImages.length,
-          )) {
+          for (var image in images.take(6 - _selectedImages.length)) {
+            final bytes = await image.readAsBytes();
+            imageBytes.add(bytes);
+          }
+          setState(() {
+            _selectedImages.addAll(imageBytes);
+          });
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
+      }
+    }
+
+    Future<List<String>> uploadImages(String productId) async {
+      List<String> urls = [];
+      for (int i = 0; i < _selectedImages.length; i++) {
+        final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('img_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
+        await ref.putData(_selectedImages[i], SettableMetadata(contentType: 'image/jpeg'));
+        final url = await ref.getDownloadURL();
+        urls.add(url);
+      }
+      return urls;
+    }
+
+    String? dialogError;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return Dialog(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              width: MediaQuery.of(context).size.width > 700 ? 700 : double.maxFinite,
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (dialogError != null) 
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)),
+                            child: Row(children: [
+                              const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold))),
+                            ]),
+                          ),
+                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Add New Product', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                          IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                        ],
+                      ),
+                      const Divider(),
+                      const SizedBox(height: 16),
+                      TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Product Name *', border: OutlineInputBorder()), validator: (v) => (v?.isEmpty == true || v!.length < 3) ? 'Required' : null),
+                      const SizedBox(height: 16),
+                      TextFormField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Description', border: OutlineInputBorder()), maxLines: 3),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        Expanded(child: TextFormField(controller: basePriceCtrl, decoration: const InputDecoration(labelText: 'Base Price', border: OutlineInputBorder(), prefixText: '\u20B9'), keyboardType: TextInputType.number)),
+                        const SizedBox(width: 16),
+                        Expanded(child: TextFormField(controller: mrpCtrl, decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '\u20B9'), keyboardType: TextInputType.number)),
+                      ]),
+                      const SizedBox(height: 16),
+                      TextFormField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '\u20B9'), keyboardType: TextInputType.number, validator: (v) => (v?.isEmpty == true) ? 'Required' : null),
+                      const SizedBox(height: 12),
+                      ListenableBuilder(
+                        listenable: Listenable.merge([priceCtrl, mrpCtrl]),
+                        builder: (context, _) {
+                          final p = double.tryParse(priceCtrl.text) ?? 0;
+                          final m = double.tryParse(mrpCtrl.text) ?? 0;
+                          if (m <= p || m <= 0) return const SizedBox.shrink();
+                          return Text('Discount: ${(((m - p) / m) * 100).toStringAsFixed(1)}% OFF', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold));
+                        }
+                      ),
+                      const Divider(),
+                      DropdownButtonFormField<String>(value: selectedUnit, decoration: const InputDecoration(labelText: 'Unit', border: OutlineInputBorder()), items: ['Kg','Ltr','Pic','Pkt','Grm','Box'].map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(), onChanged: (v) => setState(() => selectedUnit = v!)),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        Expanded(child: TextFormField(controller: stockCtrl, decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()), keyboardType: TextInputType.number, validator: (v) => (v?.isEmpty == true) ? 'Required' : null)),
+                        const SizedBox(width: 16),
+                        Expanded(child: TextFormField(controller: minQtyCtrl, decoration: const InputDecoration(labelText: 'Min Qty', border: OutlineInputBorder()), keyboardType: TextInputType.number)),
+                      ]),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(value: selectedCategory, decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()), items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!)),
+                      const SizedBox(height: 16),
+                      SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
+                      const SizedBox(height: 16),
+                      OutlinedButton.icon(
+                        onPressed: () => pickImages(setState), 
+                        icon: const Icon(Icons.image), 
+                        label: Text(_selectedImages.isEmpty ? 'Select Images' : '${_selectedImages.length} images')
+                      ),
+                      if (_selectedImages.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 80,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _selectedImages.length,
+                            itemBuilder: (context, index) => Padding(
+                              padding: const EdgeInsets.only(right: 8),
+                              child: Stack(
+                                children: [
+                                  Image.memory(_selectedImages[index], width: 80, height: 80, fit: BoxFit.cover),
+                                  Positioned(
+                                    top: 0, right: 0,
+                                    child: IconButton(
+                                      icon: const Icon(Icons.close, size: 16),
+                                      onPressed: () => setState(() => _selectedImages.removeAt(index)),
+                                      style: IconButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, minimumSize: const Size(24, 24)),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 24),
+                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: isLoading ? null : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            setState(() => isLoading = true);
+                            try {
+                              final sp = double.parse(priceCtrl.text);
+                              final m = double.tryParse(mrpCtrl.text) ?? sp;
+                              final docRef = await FirebaseFirestore.instance.collection('products').add({
+                                'name': nameCtrl.text,
+                                'description': descCtrl.text,
+                                'price': sp,
+                                'mrp': m,
+                                'stock': int.parse(stockCtrl.text),
+                                'category': selectedCategory,
+                                'unit': selectedUnit,
+                                'isFeatured': isFeatured,
+                                'isHotDeal': m > sp,
+                                'sellerId': auth.isAdmin ? 'admin' : auth.currentUser?.uid ?? 'partner',
+                                'storeIds': selectedStoreIds,
+                                'state': selectedState,
+                                'createdAt': FieldValue.serverTimestamp(),
+                              });
+                              if (_selectedImages.isNotEmpty) {
+                                final urls = await uploadImages(docRef.id);
+                                await docRef.update({'imageUrls': urls, 'imageUrl': urls.first});
+                              }
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product added successfully!', style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                              }
+                            } catch (e) {
+                              setState(() {
+                                isLoading = false;
+                                dialogError = e.toString().toLowerCase().contains('permission') ? "⚠️ Permission Denied: You cannot add products." : "Error: $e";
+                              });
+                            }
+                          },
+                          child: isLoading ? const SizedBox(width:20,height:20,child:CircularProgressIndicator()) : const Text('Add Product'),
+                        ),
+                      ]),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  void _showEditProductDialog(String productId, Map<String, dynamic> productData) {
+    final formKey = GlobalKey<FormState>();
+    final nameCtrl = TextEditingController(text: productData['name']);
+    final descCtrl = TextEditingController(text: productData['description']);
+    final priceCtrl = TextEditingController(text: productData['price'].toString());
+    final basePriceCtrl = TextEditingController(text: (productData['basePrice'] ?? 0.0).toString());
+    final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
+    final stockCtrl = TextEditingController(text: productData['stock'].toString());
+    final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
+
+    String selectedCategory = productData['category'] ?? '';
+    String selectedUnit = productData['unit'] ?? 'Pic';
+    bool isFeatured = productData['isFeatured'] ?? false;
+    bool isLoading = false;
+    List<String> existingImageUrls = List<String>.from(productData['imageUrls'] ?? []);
+    List<Uint8List> newImages = [];
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    List<String> selectedStoreIds = List<String>.from(productData['storeIds'] ?? []);
+    String? selectedState = productData['state'];
+
+    Future<void> pickImages(StateSetter setState) async {
+      try {
+        final List<XFile> images = await ImagePicker().pickMultiImage();
+        if (images.isNotEmpty) {
+          final List<Uint8List> imageBytes = [];
+          for (var image in images.take(6 - existingImageUrls.length - newImages.length)) {
             final bytes = await image.readAsBytes();
             imageBytes.add(bytes);
           }
@@ -1968,832 +1439,164 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
           });
         }
       } catch (e) {
-        if (mounted)
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error picking images: $e')));
       }
     }
 
-    Future<List<String>> uploadImages() async {
-      List<String> urls = [];
+    Future<List<String>> uploadImages(String productId) async {
+      List<String> urls = List.from(existingImageUrls);
       for (int i = 0; i < newImages.length; i++) {
-        final ref = FirebaseStorage.instance
-            .ref()
-            .child('products')
-            .child(productId)
-            .child('update_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
-
-        await ref.putData(
-          newImages[i],
-          SettableMetadata(contentType: 'image/jpeg'),
-        );
+        final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('upd_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
+        await ref.putData(newImages[i], SettableMetadata(contentType: 'image/jpeg'));
         final url = await ref.getDownloadURL();
         urls.add(url);
       }
       return urls;
     }
 
+    String? dialogError;
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          child: Container(
-            width: MediaQuery.of(context).size.width > 700
-                ? 700
-                : double.maxFinite,
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Edit Product',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
+        builder: (context, setState) {
+          return Dialog(
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              width: MediaQuery.of(context).size.width > 700 ? 700 : double.maxFinite,
+              child: Form(
+                key: formKey,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (dialogError != null) 
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.red.shade200)),
+                            child: Text(dialogError!, style: const TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.bold)),
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    // Image Management
-                    const Text(
-                      'Product Images',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          // Existing Images
-                          ...existingImageUrls.asMap().entries.map((entry) {
-                            return Stack(
-                              children: [
-                                Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: NetworkImage(entry.value),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 4,
-                                  top: 0,
-                                  child: InkWell(
-                                    onTap: () => setState(
-                                      () =>
-                                          existingImageUrls.removeAt(entry.key),
-                                    ),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }),
-                          // New Images
-                          ...newImages.asMap().entries.map((entry) {
-                            return Stack(
-                              children: [
-                                Container(
-                                  margin: const EdgeInsets.only(right: 8),
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.green),
-                                  ),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(
-                                      entry.value,
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  right: 4,
-                                  top: 0,
-                                  child: InkWell(
-                                    onTap: () => setState(
-                                      () => newImages.removeAt(entry.key),
-                                    ),
-                                    child: Container(
-                                      padding: const EdgeInsets.all(2),
-                                      decoration: const BoxDecoration(
-                                        color: Colors.red,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        size: 14,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }),
-                          // Add Button
-                          if ((existingImageUrls.length + newImages.length) < 6)
-                            InkWell(
-                              onTap: () => pickImages(setState),
-                              child: Container(
-                                width: 80,
-                                height: 80,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey[200],
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(color: Colors.grey),
-                                ),
-                                child: const Icon(
-                                  Icons.add_photo_alternate,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Name *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) =>
-                          v?.isNotEmpty == true ? null : 'Required',
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                      onChanged: (value) {
-                        if (value.endsWith('\n')) {
-                          descCtrl.text = '$value\u2022 ';
-                          descCtrl.selection = TextSelection.fromPosition(
-                            TextPosition(offset: descCtrl.text.length),
-                          );
-                        } else if (value.isEmpty) {
-                          descCtrl.text = '\u2022 ';
-                          descCtrl.selection = TextSelection.fromPosition(
-                            TextPosition(offset: descCtrl.text.length),
-                          );
-                        }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: basePriceCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Base Price',
-                              border: OutlineInputBorder(),
-                              prefixText: '\u20B9',
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
+                      Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                        const Text('Edit Product', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                      ]),
+                      const Divider(),
+                      TextFormField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Name', border: OutlineInputBorder())),
+                      const SizedBox(height: 16),
+                      TextFormField(controller: descCtrl, decoration: const InputDecoration(labelText: 'Desc', border: OutlineInputBorder()), maxLines: 2),
+                      const SizedBox(height: 16),
+                      Row(children: [
+                        Expanded(child: TextFormField(controller: mrpCtrl, decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder()))),
                         const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: mrpCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'MRP',
-                              border: OutlineInputBorder(),
-                              prefixText: '\u20B9',
-                            ),
-                            keyboardType: TextInputType.number,
-                            onChanged: (val) {
-                              final p = double.tryParse(priceCtrl.text) ?? 0;
-                              final m = double.tryParse(val) ?? 0;
-                              if (m > p && p > 0) {
-                                setState(() => isHotDeal = true);
-                              }
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: priceCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Selling Price *',
-                        border: OutlineInputBorder(),
-                        prefixText: '\u20B9',
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (v) =>
-                          double.tryParse(v ?? '') != null ? null : 'Invalid',
-                      onChanged: (val) {
-                        final p = double.tryParse(val) ?? 0;
-                        final m = double.tryParse(mrpCtrl.text) ?? 0;
-                        if (m > p && p > 0) {
-                          setState(() => isHotDeal = true);
+                        Expanded(child: TextFormField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Price', border: OutlineInputBorder()))),
+                      ]),
+                      const SizedBox(height: 16),
+                      ListenableBuilder(
+                        listenable: Listenable.merge([priceCtrl, mrpCtrl]),
+                        builder: (context, _) {
+                          final p = double.tryParse(priceCtrl.text) ?? 0;
+                          final m = double.tryParse(mrpCtrl.text) ?? 0;
+                          if (m <= p || m <= 0) return const SizedBox.shrink();
+                          return Text('Discount: ${(((m - p) / m) * 100).toStringAsFixed(1)}% OFF', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold));
                         }
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    // Platform Fee & Listing Price Preview
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance
-                          .collection('app_settings')
-                          .doc('general')
-                          .get(),
-                      builder: (context, snapshot) {
-                        double platformFeePercent = 0.05; // Default 5%
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          final data =
-                              snapshot.data!.data() as Map<String, dynamic>;
-                          platformFeePercent =
-                              (data['sellerPlatformFeePercentage'] as num?)
-                                  ?.toDouble() ??
-                              (data['platformFeePercentage'] as num?)
-                                  ?.toDouble() ??
-                              0.0;
-                          platformFeePercent = platformFeePercent / 100;
-                        }
-
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue[100]!),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(
-                                Icons.info_outline,
-                                size: 16,
-                                color: Colors.blue,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Builder(
-                                  builder: (context) {
-                                    final price =
-                                        double.tryParse(priceCtrl.text) ?? 0;
-                                    final platformFee =
-                                        price * platformFeePercent;
-                                    final listingPrice = price + platformFee;
-
-                                    return Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text:
-                                                'Platform Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): ',
-                                          ),
-                                          TextSpan(
-                                            text:
-                                                '\u20B9${platformFee.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.red,
-                                            ),
-                                          ),
-                                          const TextSpan(
-                                            text: '  |  Listing Price: ',
-                                          ),
-                                          TextSpan(
-                                            text:
-                                                '\u20B9${listingPrice.toStringAsFixed(2)}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.green,
-                                            ),
-                                          ),
-                                        ],
-                                        style: TextStyle(
-                                          color: Colors.blue[900],
-                                          fontSize: 13,
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    const Divider(),
-                    const Text(
-                      'Inventory Details',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 8),
-                    DropdownButtonFormField<String>(
-                      value: selectedUnit,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Unit',
-                        border: OutlineInputBorder(),
-                      ),
-                      isExpanded: true,
-                      items:
-                          [
-                                'Kg',
-                                'Ltr',
-                                'Pic',
-                                'Pkt',
-                                'Grm',
-                                'Box',
-                                'Dozen',
-                                'Set',
-                                'Packet',
-                                'Gram',
-                              ]
-                              .map(
-                                (u) =>
-                                    DropdownMenuItem(value: u, child: Text(u)),
-                              )
-                              .toList(),
-                      onChanged: (v) => setState(() => selectedUnit = v!),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Stock *',
-                              border: const OutlineInputBorder(),
-                              suffixText: selectedUnit,
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final val = int.tryParse(v!);
-                              if (val == null) return 'Invalid';
-                              if (val < 0) return 'Cannot be negative';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: minQtyCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'Min Order Qty',
-                              border: const OutlineInputBorder(),
-                              suffixText: selectedUnit,
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) =>
-                                (v?.isEmpty == true ||
-                                    int.tryParse(v!) == null ||
-                                    int.parse(v) < 1)
-                                ? 'Min 1'
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: maxQtyCtrl,
-                      decoration: InputDecoration(
-                        labelText: 'Max Order Qty (0 for no limit)',
-                        border: const OutlineInputBorder(),
-                        suffixText: selectedUnit,
-                      ),
-                      keyboardType: TextInputType.number,
-                      validator: (v) =>
-                          (v?.isEmpty == true ||
-                              int.tryParse(v!) == null ||
-                              int.parse(v!) < 0)
-                          ? 'Invalid'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    MediaQuery.of(context).size.width < 600
-                        ? DropdownButtonFormField(
-                            initialValue: selectedCategory,
-                            isExpanded: true,
-                            items:
-                                Provider.of<CategoryProvider>(
-                                      context,
-                                      listen: false,
-                                    ).categories
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.name,
-                                        child: Text(c.name),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) =>
-                                setState(() => selectedCategory = v!),
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                          )
-                        : DropdownButtonFormField(
-                            initialValue: selectedCategory,
-                            isExpanded: true,
-                            items:
-                                Provider.of<CategoryProvider>(
-                                      context,
-                                      listen: false,
-                                    ).categories
-                                    .map(
-                                      (c) => DropdownMenuItem(
-                                        value: c.name,
-                                        child: Text(c.name),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (v) =>
-                                setState(() => selectedCategory = v!),
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
-                    const SizedBox(height: 16),
-
-                    const SizedBox(height: 16),
-                    // State Selection (For Super Admins)
-                    if (!auth.isStateAdmin) ...[
-                      DropdownButtonFormField<String>(
-                        initialValue: selectedState,
-                        isExpanded: true,
-                        decoration: const InputDecoration(
-                          labelText: 'Product State',
-                          border: OutlineInputBorder(),
-                        ),
-                        items: [
-                          const DropdownMenuItem(
-                            value: null,
-                            child: Text('Global / No State'),
-                          ),
-                          ..._availableStates.map(
-                            (s) => DropdownMenuItem(value: s, child: Text(s)),
-                          ),
-                        ],
-                        onChanged: (v) => setState(() => selectedState = v),
                       ),
                       const SizedBox(height: 16),
-                    ],
-                    // Store Selection (Admin/Core Staff Only)
-                    Consumer<AuthProvider>(
-                      builder: (context, auth, child) {
-                        if (!auth.isAdmin && !auth.isCoreStaff)
-                          return const SizedBox.shrink();
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Available in Stores:',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            const SizedBox(height: 8),
-                            StreamBuilder<QuerySnapshot>(
-                              stream: FirebaseFirestore.instance
-                                  .collection('stores')
-                                  .where('isActive', isEqualTo: true)
-                                  .snapshots(),
-                              builder: (context, snapshot) {
-                                if (!snapshot.hasData)
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                final stores = snapshot.data!.docs;
-                                if (stores.isEmpty)
-                                  return const Text('No active stores found.');
-
-                                // Calculate selected names
-                                final selectedNames = stores
-                                    .where(
-                                      (doc) =>
-                                          selectedStoreIds.contains(doc.id),
-                                    )
-                                    .map((doc) => doc['name'] as String)
-                                    .join(', ');
-
-                                return InkWell(
-                                  onTap: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (context) {
-                                        return StatefulBuilder(
-                                          builder: (context, setDialogState) {
-                                            return AlertDialog(
-                                              title: const Text(
-                                                'Select Stores',
-                                              ),
-                                              content: SizedBox(
-                                                width: double.maxFinite,
-                                                child: ListView.builder(
-                                                  shrinkWrap: true,
-                                                  itemCount: stores.length,
-                                                  itemBuilder: (context, index) {
-                                                    final doc = stores[index];
-                                                    final storeId = doc.id;
-                                                    final storeName =
-                                                        doc['name'] ??
-                                                        'Unknown';
-                                                    final isSelected =
-                                                        selectedStoreIds
-                                                            .contains(storeId);
-
-                                                    return CheckboxListTile(
-                                                      title: Text(storeName),
-                                                      subtitle:
-                                                          doc
-                                                              .data()
-                                                              .toString()
-                                                              .contains('state')
-                                                          ? Text(
-                                                              'State: ${doc['state']}',
-                                                            )
-                                                          : null,
-                                                      value: isSelected,
-                                                      onChanged: (bool? value) {
-                                                        setDialogState(() {
-                                                          if (value == true) {
-                                                            selectedStoreIds
-                                                                .add(storeId);
-                                                            // Auto-fill state if not set
-                                                            if (selectedState ==
-                                                                    null &&
-                                                                doc
-                                                                    .data()
-                                                                    .toString()
-                                                                    .contains(
-                                                                      'state',
-                                                                    ) &&
-                                                                doc['state'] !=
-                                                                    null) {
-                                                              setState(() {
-                                                                selectedState =
-                                                                    doc['state'];
-                                                              });
-                                                            }
-                                                          } else {
-                                                            selectedStoreIds
-                                                                .remove(
-                                                                  storeId,
-                                                                );
-                                                          }
-                                                        });
-                                                      },
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(context),
-                                                  child: const Text('Done'),
-                                                ),
-                                              ],
-                                            );
-                                          },
-                                        );
-                                      },
-                                    ).then((_) => setState(() {}));
-                                  },
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 16,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      border: Border.all(color: Colors.grey),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            selectedNames.isEmpty
-                                                ? 'Select Stores'
-                                                : selectedNames,
-                                            style: TextStyle(
-                                              color: selectedNames.isEmpty
-                                                  ? Colors.grey[700]
-                                                  : Colors.black87,
-                                              fontSize: 16,
-                                            ),
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const Icon(Icons.arrow_drop_down),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                            const SizedBox(height: 16),
-                          ],
-                        );
-                      },
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  if (!formKey.currentState!.validate()) return;
-
-                                  // Validate at least one image exists
-                                  if (existingImageUrls.isEmpty &&
-                                      newImages.isEmpty) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Product must have at least one image',
+                      OutlinedButton.icon(
+                        onPressed: () => pickImages(setState),
+                        icon: const Icon(Icons.image),
+                        label: Text('Add Images (${existingImageUrls.length + newImages.length}/6)')
+                      ),
+                      if (existingImageUrls.isNotEmpty || newImages.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          height: 80,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            children: [
+                              for (int i = 0; i < existingImageUrls.length; i++)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Stack(
+                                    children: [
+                                      Image.network(existingImageUrls[i], width: 80, height: 80, fit: BoxFit.cover),
+                                      Positioned(
+                                        top: 0, right: 0,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.close, size: 16),
+                                          onPressed: () => setState(() => existingImageUrls.removeAt(i)),
+                                          style: IconButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, minimumSize: const Size(24, 24)),
                                         ),
                                       ),
-                                    );
-                                    return;
-                                  }
-
-                                  setState(() => isLoading = true);
-
-                                  // Upload new images
-                                  List<String> uploadedUrls =
-                                      await uploadImages();
-                                  List<String> allUrls = [
-                                    ...existingImageUrls,
-                                    ...uploadedUrls,
-                                  ];
-
-                                  try {
-                                    // Fetch current platform fee
-                                    double platformFeePercent =
-                                        0.05; // Default 5%
-                                    try {
-                                      final settingsDoc =
-                                          await FirebaseFirestore.instance
-                                              .collection('app_settings')
-                                              .doc('general')
-                                              .get();
-                                      if (settingsDoc.exists) {
-                                        final data = settingsDoc.data();
-                                        platformFeePercent =
-                                            (data?['sellerPlatformFeePercentage']
-                                                    as num?)
-                                                ?.toDouble() ??
-                                            (data?['platformFeePercentage']
-                                                    as num?)
-                                                ?.toDouble() ??
-                                            5.0;
-                                        platformFeePercent =
-                                            platformFeePercent / 100;
-                                      }
-                                    } catch (e) {
-                                      debugPrint('Error fetching fee: $e');
-                                    }
-
-                                    final sellerPrice = double.parse(
-                                      priceCtrl.text,
-                                    );
-                                    final listingPrice =
-                                        sellerPrice * (1 + platformFeePercent);
-
-                                    await FirebaseFirestore.instance
-                                        .collection('products')
-                                        .doc(productId)
-                                        .update({
-                                          'name': nameCtrl.text,
-                                          'description': descCtrl.text,
-                                          'basePrice':
-                                              double.tryParse(
-                                                basePriceCtrl.text,
-                                              ) ??
-                                              0.0,
-                                          'price':
-                                              listingPrice, // Store Listing Price
-                                          'sellerPrice':
-                                              sellerPrice, // Preserve Seller's price
-                                          'stock': int.parse(stockCtrl.text),
-                                          'minimumQuantity': int.parse(
-                                            minQtyCtrl.text,
-                                          ),
-                                          'maximumQuantity': int.parse(
-                                            maxQtyCtrl.text,
-                                          ),
-                                          'mrp':
-                                              double.tryParse(mrpCtrl.text) ??
-                                              0.0,
-                                          'category': selectedCategory,
-                                          'unit': selectedUnit,
-                                          'isFeatured': isFeatured,
-                                          'isHotDeal':
-                                              (double.tryParse(mrpCtrl.text) ??
-                                                  0) >
-                                              listingPrice,
-                                          'storeIds': selectedStoreIds,
-                                          'state': selectedState,
-                                          'imageUrls': allUrls,
-                                          'imageUrl': allUrls.isNotEmpty
-                                              ? allUrls.first
-                                              : null,
-                                          'updatedAt':
-                                              FieldValue.serverTimestamp(),
-                                        });
-                                    if (mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            'Product updated successfully',
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    setState(() => isLoading = false);
-                                    if (mounted)
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        SnackBar(content: Text('Error: $e')),
-                                      );
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                                    ],
                                   ),
-                                )
-                              : const Text('Save Changes'),
+                                ),
+                              for (int i = 0; i < newImages.length; i++)
+                                Padding(
+                                  padding: const EdgeInsets.only(right: 8),
+                                  child: Stack(
+                                    children: [
+                                      Image.memory(newImages[i], width: 80, height: 80, fit: BoxFit.cover),
+                                      Positioned(
+                                        top: 0, right: 0,
+                                        child: IconButton(
+                                          icon: const Icon(Icons.close, size: 16),
+                                          onPressed: () => setState(() => newImages.removeAt(i)),
+                                          style: IconButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white, minimumSize: const Size(24, 24)),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ],
-                    ),
-                  ],
+                      const SizedBox(height: 24),
+                      Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+                        TextButton(onPressed: isLoading ? null : () => Navigator.pop(context), child: const Text('Cancel')),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: isLoading ? null : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            setState(() => isLoading = true);
+                            try {
+                              final sp = double.parse(priceCtrl.text);
+                              final m = double.tryParse(mrpCtrl.text) ?? sp;
+                              final updatedUrls = await uploadImages(productId);
+                              await FirebaseFirestore.instance.collection('products').doc(productId).update({
+                                'name': nameCtrl.text,
+                                'description': descCtrl.text,
+                                'price': sp,
+                                'mrp': m,
+                                'stock': int.parse(stockCtrl.text),
+                                'isHotDeal': m > sp,
+                                'updatedAt': FieldValue.serverTimestamp(),
+                                'imageUrls': updatedUrls,
+                                'imageUrl': updatedUrls.isNotEmpty ? updatedUrls.first : null,
+                              });
+                              if (mounted) {
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product updated successfully!', style: TextStyle(color: Colors.white)), backgroundColor: Colors.green));
+                              }
+                            } catch (e) {
+                              setState(() {
+                                isLoading = false;
+                                dialogError = e.toString().toLowerCase().contains('permission') ? "⚠️ Permission Denied: You cannot edit this product." : "Error: $e";
+                              });
+                            }
+                          },
+                          child: isLoading ? const SizedBox(width:20,height:20,child:CircularProgressIndicator()) : const Text('Save Changes'),
+                        ),
+                      ]),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

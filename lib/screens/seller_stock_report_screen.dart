@@ -43,21 +43,8 @@ class _SellerStockReportScreenState extends State<SellerStockReportScreen> {
       totalStockCount += stock;
     }
 
-    // Fetch Platform Fee Percentage
-    double platformFeePercent = 0.0; // Default 0% if not set
-    try {
-      final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
-      if (settingsDoc.exists) {
-        final data = settingsDoc.data();
-        if (data != null) {
-          double val = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                       (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
-          platformFeePercent = val / 100.0;
-        }
-      }
-    } catch (e) {
-      debugPrint('Error fetching platform fee: $e');
-    }
+    // Platform Fee Percentage (Removed for Store Partners)
+    double platformFeePercent = 0.0;
 
     // Map for fast lookup of current base prices (fallback for old orders)
     final productBasePrices = <String, double>{};

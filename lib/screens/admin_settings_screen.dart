@@ -20,7 +20,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _upiIdController = TextEditingController();
   final _deliveryFeePercentageController = TextEditingController();
   final _deliveryFeeMaxCapController = TextEditingController(); // This is correctly defined
-  final _sellerPlatformFeeController = TextEditingController();
   final _servicePlatformFeeController = TextEditingController();
   final _announcementController = TextEditingController();
   final _contactPhoneController = TextEditingController(); // New
@@ -51,7 +50,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _upiIdController.text = _settings?.upiId ?? '';
           _deliveryFeePercentageController.text = _settings?.deliveryFeePercentage.toString() ?? '0.0';
           _deliveryFeeMaxCapController.text = _settings?.deliveryFeeMaxCap.toString() ?? '0.0';
-          _sellerPlatformFeeController.text = _settings?.sellerPlatformFeePercentage.toString() ?? '0.0';
           _servicePlatformFeeController.text = _settings?.servicePlatformFeePercentage.toString() ?? '0.0';
           _announcementController.text = _settings?.announcementText ?? '';
           _isAnnouncementEnabled = _settings?.isAnnouncementEnabled ?? false;
@@ -137,7 +135,6 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         'upiId': _upiIdController.text.trim(),
         'deliveryFeePercentage': double.tryParse(_deliveryFeePercentageController.text.trim()) ?? 0.0,
         'deliveryFeeMaxCap': double.tryParse(_deliveryFeeMaxCapController.text.trim()) ?? 0.0,
-        'sellerPlatformFeePercentage': double.tryParse(_sellerPlatformFeeController.text.trim()) ?? 0.0,
         'servicePlatformFeePercentage': double.tryParse(_servicePlatformFeeController.text.trim()) ?? 0.0,
         'announcementText': _announcementController.text.trim(),
         'isAnnouncementEnabled': _isAnnouncementEnabled,
@@ -226,24 +223,11 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                     ],
                    ),
                    const SizedBox(height: 8),
-                   Text(
-                     'Set separate commission rates for Sellers (Products) and Service Providers.',
-                     style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
-                   ),
+                    Text(
+                      'Set commission rate for Service Providers (for Booking Services).',
+                      style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
+                    ),
                    const SizedBox(height: 16),
-                   TextField(
-                     controller: _sellerPlatformFeeController,
-                     keyboardType: TextInputType.number,
-                     decoration: const InputDecoration(
-                       labelText: 'Seller Fee (%) - for Products',
-                       filled: true,
-                       fillColor: Colors.white,
-                       border: OutlineInputBorder(),
-                       prefixIcon: Icon(Icons.store),
-                       suffixText: '%',
-                     ),
-                   ),
-                   const SizedBox(height: 12),
                    TextField(
                      controller: _servicePlatformFeeController,
                      keyboardType: TextInputType.number,
@@ -591,6 +575,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _upiIdController.dispose();
     _deliveryFeePercentageController.dispose();
     _deliveryFeeMaxCapController.dispose();
+    _servicePlatformFeeController.dispose();
     _announcementController.dispose();
     _contactPhoneController.dispose(); // New
     super.dispose();
