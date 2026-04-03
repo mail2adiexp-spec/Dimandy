@@ -16,12 +16,12 @@ import 'package:ecommerce_app/screens/edit_profile_screen.dart';
 import 'package:ecommerce_app/screens/admin_panel_screen.dart';
 import 'package:ecommerce_app/screens/join_partner_screen.dart';
 import 'package:ecommerce_app/screens/check_partner_status_screen.dart';
-import 'package:ecommerce_app/screens/seller_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/book_service_screen.dart';
 import 'package:ecommerce_app/screens/service_provider_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/delivery_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/core_staff_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/store_manager_dashboard_screen.dart';
+import 'package:ecommerce_app/screens/store_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
 import 'package:ecommerce_app/screens/provider_details_screen.dart';
 import 'package:ecommerce_app/screens/select_services_screen.dart';
@@ -208,10 +208,17 @@ class MyApp extends StatelessWidget {
                 if (!auth.isInitialized) {
                   return const SplashScreen();
                 }
+                
+                // Role-based landing page after login
+                if (auth.isLoggedIn) {
+                  return const MainNavigationScreen();
+                }
+                
                 return const MainNavigationScreen();
               },
             ),
             routes: {
+              MainNavigationScreen.routeName: (_) => const MainNavigationScreen(),
               CartScreen.routeName: (_) => const CartScreen(),
               CheckoutScreen.routeName: (_) => const CheckoutScreen(),
               CategoryProductsScreen.routeName: (_) =>
@@ -223,14 +230,14 @@ class MyApp extends StatelessWidget {
               JoinPartnerScreen.routeName: (ctx) => const JoinPartnerScreen(),
               CheckPartnerStatusScreen.routeName: (ctx) =>
                   const CheckPartnerStatusScreen(),
-              SellerDashboardScreen.routeName: (ctx) =>
-                  const SellerDashboardScreen(),
               ServiceProviderDashboardScreen.routeName: (ctx) =>
                   const ServiceProviderDashboardScreen(),
               CoreStaffDashboardScreen.routeName: (ctx) =>
                   const CoreStaffDashboardScreen(),
               StoreManagerDashboardScreen.routeName: (ctx) =>
                   const StoreManagerDashboardScreen(),
+              StorePartnerDashboardScreen.routeName: (ctx) =>
+                  const StorePartnerDashboardScreen(),
               AboutScreen.routeName: (ctx) => const AboutScreen(),
               ContactScreen.routeName: (ctx) => const ContactScreen(),
               // BookServiceScreen removed from routes - handled in onGenerateRoute

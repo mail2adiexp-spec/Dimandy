@@ -23,8 +23,10 @@ class CartItem {
     'name': product.name,
     'description': product.description,
     'price': product.price,
+    'basePrice': product.basePrice,
     'imageUrl': product.imageUrl,
     'quantity': quantity,
+    'storeIds': product.storeIds,
     if (metadata != null) 'metadata': metadata,
   };
 
@@ -36,7 +38,9 @@ class CartItem {
         name: map['name']?.toString() ?? 'Unknown Item',
         description: map['description']?.toString() ?? '',
         price: (map['price'] as num?)?.toDouble() ?? 0.0,
+        basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
         imageUrl: map['imageUrl']?.toString() ?? '',
+        storeIds: List<String>.from(map['storeIds'] ?? []),
       ),
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       metadata: map['metadata'] is Map ? (map['metadata'] as Map).cast<String, dynamic>() : null,

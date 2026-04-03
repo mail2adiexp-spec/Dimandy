@@ -215,6 +215,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                _buildDeliveryNotice(),
+                const SizedBox(height: 16),
 
                 // Shipping Address
                 const Text(
@@ -459,6 +461,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     ),
     );
   }
+  
+  Widget _buildDeliveryNotice() {
+    final now = DateTime.now();
+    final hour = now.hour;
+    
+    String? message;
+    IconData icon = Icons.info_outline;
+    Color color = Colors.blue;
+    
+    if (hour < 8) {
+      message = 'Orders placed before 8 AM will be delivered after 8 AM today.';
+      icon = Icons.access_time;
+      color = Colors.orange;
+    } else if (hour >= 20) {
+      message = 'Orders placed after 8 PM will be delivered tomorrow.';
+      icon = Icons.next_plan_outlined;
+      color = Colors.deepPurple;
+    }
+    
+    if (message == null) return const SizedBox.shrink();
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: color.withValues(alpha: 0.9),
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _placeOrder() async {
     if (_isPlacingOrder) return;
@@ -527,6 +575,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         deliveryAddress: fullAddress,
         phoneNumber: _phoneController.text,
         state: _selectedState!,
+        paymentMethod: _selectedPaymentMethod,
       );
 
       debugPrint('Checkout: Order ID received: $orderId');

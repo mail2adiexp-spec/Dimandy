@@ -10,6 +10,7 @@ import 'seller_dashboard_screen.dart';
 import 'service_provider_dashboard_screen.dart';
 import 'core_staff_dashboard_screen.dart';
 import 'store_manager_dashboard_screen.dart';
+import 'store_partner_dashboard_screen.dart';
 import 'join_partner_screen.dart';
 import 'static_pages.dart';
 import 'manage_addresses_screen.dart';
@@ -290,19 +291,56 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // Seller Dashboard
-                            if (auth.currentUser?.role == 'seller')
+
+                            // Admin & Staff Dashboards (Prioritized Consolidation)
+                            if (auth.isSuperAdmin)
                               Column(
                                 children: [
                                   _buildProfileCard(
                                     context: context,
-                                    icon: Icons.dashboard,
+                                    icon: Icons.admin_panel_settings,
                                     title: 'My Dashboard',
-                                    subtitle: 'Products & sales',
+                                    subtitle: 'System admin',
                                     onTap: () {
                                       Navigator.pushNamed(
                                         context,
-                                        SellerDashboardScreen.routeName,
+                                        AdminPanelScreen.routeName,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                              )
+                            else if (auth.isStateAdmin)
+                              Column(
+                                children: [
+                                  _buildProfileCard(
+                                    context: context,
+                                    icon: Icons.business,
+                                    title: 'My Dashboard',
+                                    subtitle: 'State operations',
+                                    onTap: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        AdminPanelScreen.routeName,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                              )
+                            else if (auth.isAdmin)
+                              Column(
+                                children: [
+                                  _buildProfileCard(
+                                    context: context,
+                                    icon: Icons.admin_panel_settings,
+                                    title: 'My Dashboard',
+                                    subtitle: 'Products & inventory',
+                                    onTap: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        AdminPanelScreen.routeName,
                                       );
                                     },
                                   ),
@@ -330,46 +368,6 @@ class _AccountScreenState extends State<AccountScreen> {
                                 ],
                               ),
 
-                            // State Admin Dashboard
-                            if (auth.isStateAdmin)
-                              Column(
-                                children: [
-                                  _buildProfileCard(
-                                    context: context,
-                                    icon: Icons.business,
-                                    title: 'My Dashboard',
-                                    subtitle: 'State operations',
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AdminPanelScreen.routeName,
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                              ),
-
-                            // Administrator Dashboard
-                            if (auth.isSuperAdmin)
-                              Column(
-                                children: [
-                                  _buildProfileCard(
-                                    context: context,
-                                    icon: Icons.admin_panel_settings,
-                                    title: 'My Dashboard',
-                                    subtitle: 'System admin',
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AdminPanelScreen.routeName,
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                              ),
-
                             // Store Manager Dashboard
                             if (auth.isStoreManager)
                               Column(
@@ -383,6 +381,26 @@ class _AccountScreenState extends State<AccountScreen> {
                                       Navigator.pushNamed(
                                         context,
                                         StoreManagerDashboardScreen.routeName,
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 12),
+                                ],
+                              ),
+
+                            // Store Partner Dashboard
+                            if (auth.isStorePartner)
+                              Column(
+                                children: [
+                                  _buildProfileCard(
+                                    context: context,
+                                    icon: Icons.handshake_outlined,
+                                    title: 'Partner Dashboard',
+                                    subtitle: 'Profit sharing & sales',
+                                    onTap: () {
+                                      Navigator.pushNamed(
+                                        context,
+                                        StorePartnerDashboardScreen.routeName,
                                       );
                                     },
                                   ),
@@ -453,26 +471,6 @@ class _AccountScreenState extends State<AccountScreen> {
                                             'Customer Care Dashboard - Coming Soon',
                                           ),
                                         ),
-                                      );
-                                    },
-                                  ),
-                                  const SizedBox(height: 12),
-                                ],
-                              ),
-
-                            // Admin Panel (legacy)
-                            if (auth.isAdmin)
-                              Column(
-                                children: [
-                                  _buildProfileCard(
-                                    context: context,
-                                    icon: Icons.admin_panel_settings,
-                                    title: 'My Dashboard',
-                                    subtitle: 'Products & inventory',
-                                    onTap: () {
-                                      Navigator.pushNamed(
-                                        context,
-                                        AdminPanelScreen.routeName,
                                       );
                                     },
                                   ),

@@ -5,6 +5,7 @@ import 'package:barcode_widget/barcode_widget.dart';
 import '../models/order_model.dart';
 import '../providers/order_provider.dart';
 import '../services/notification_service.dart';
+import '../widgets/modify_order_dialog.dart';
 
 class MyOrdersScreen extends StatefulWidget {
   const MyOrdersScreen({super.key});
@@ -421,14 +422,48 @@ class OrderTrackingScreen extends StatelessWidget {
           ],
         ),
         child: SafeArea(
-          child: ElevatedButton(
-            onPressed: () => _confirmAction(context, 'cancelled', 'Cancel Order'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-            ),
-            child: const Text('Cancel Order'),
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () => _confirmAction(context, 'cancelled', 'Cancel Order'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text('Cancel Order'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (context) => ModifyOrderDialog(
+                        orderId: order.id,
+                        orderData: order.toMap()..['id'] = order.id, // Ensure id is present or handle in dialog
+                        isCustomer: true,
+                      ),
+                    ).then((updated) {
+                      if (updated == true) {
+                        // Refresh logic - OrderProvider.fetchUserOrders() is already called in dialog if we had access, 
+                        // but here we just need the screen to refresh.
+                        // Actually, the dialog handles Firestore update. The provider needs to refresh.
+                        context.read<OrderProvider>().fetchUserOrders();
+                      }
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                  child: const Text('Modify Order'),
+                ),
+              ),
+            ],
           ),
         ),
       );

@@ -23,6 +23,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _sellerPlatformFeeController = TextEditingController();
   final _servicePlatformFeeController = TextEditingController();
   final _announcementController = TextEditingController();
+  final _contactPhoneController = TextEditingController(); // New
   bool _isAnnouncementEnabled = false;
   bool _isLoading = true;
   bool _isUploading = false;
@@ -54,6 +55,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _servicePlatformFeeController.text = _settings?.servicePlatformFeePercentage.toString() ?? '0.0';
           _announcementController.text = _settings?.announcementText ?? '';
           _isAnnouncementEnabled = _settings?.isAnnouncementEnabled ?? false;
+          _contactPhoneController.text = _settings?.contactPhoneNumber ?? ''; // New
           _isLoading = false;
         });
       } else {
@@ -139,6 +141,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         'servicePlatformFeePercentage': double.tryParse(_servicePlatformFeeController.text.trim()) ?? 0.0,
         'announcementText': _announcementController.text.trim(),
         'isAnnouncementEnabled': _isAnnouncementEnabled,
+        'contactPhoneNumber': _contactPhoneController.text.trim(), // New
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': adminId,
       }, SetOptions(merge: true));
@@ -376,6 +379,52 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
           const SizedBox(height: 24),
 
+          // Contact & Order Settings
+          Card(
+            color: Colors.green.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Row(
+                    children: [
+                       Icon(Icons.phone_in_talk, color: Colors.green.shade800),
+                       const SizedBox(width: 8),
+                       Text(
+                        'Call & Order Settings',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade900,
+                        ),
+                      ),
+                    ],
+                   ),
+                   const SizedBox(height: 8),
+                   Text(
+                     'Enter the phone number where customers can call to place orders without signing up.',
+                     style: TextStyle(fontSize: 12, color: Colors.green.shade800),
+                   ),
+                   const SizedBox(height: 16),
+                   TextField(
+                     controller: _contactPhoneController,
+                     keyboardType: TextInputType.phone,
+                     decoration: const InputDecoration(
+                       labelText: 'Contact Phone Number',
+                       hintText: 'e.g. +91 9876543210',
+                       filled: true,
+                       fillColor: Colors.white,
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.call),
+                     ),
+                   ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Current QR Code Section
           if (_settings?.upiQRCodeUrl != null) ...[
             Card(
@@ -543,6 +592,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _deliveryFeePercentageController.dispose();
     _deliveryFeeMaxCapController.dispose();
     _announcementController.dispose();
+    _contactPhoneController.dispose(); // New
     super.dispose();
   }
 }

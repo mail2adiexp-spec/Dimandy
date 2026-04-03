@@ -149,11 +149,11 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
 
   void _showRequestPayoutDialog() {
     String? errorMessage;
-    // Pre-fill from saved bank details
     final payoutAccountCtrl = TextEditingController(text: _accountNumberController.text);
     final payoutIfscCtrl = TextEditingController(text: _ifscController.text);
     final payoutUpiCtrl = TextEditingController(text: _upiController.text);
     final payoutAmountCtrl = TextEditingController();
+    bool isProcessing = false;
 
     showDialog(
       context: context,
@@ -165,22 +165,32 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Available Balance: ₹${_balance.toStringAsFixed(2)}'),
+                  Text('Available Balance: ₹${_balance.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                   const SizedBox(height: 16),
                   if (errorMessage != null) ...[
-                    Text(
-                      errorMessage!,
-                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Text(
+                        errorMessage!,
+                        style: const TextStyle(color: Colors.red, fontWeight: FontWeight.w500),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 16),
                   ],
                   TextField(
                     controller: payoutAmountCtrl,
+                    enabled: !isProcessing,
                     decoration: const InputDecoration(
-                      labelText: 'Amount',
+                      labelText: 'Amount to Withdraw',
                       prefixText: '₹',
                       border: OutlineInputBorder(),
+                      hintText: 'Minimum ₹500',
                     ),
                     keyboardType: TextInputType.number,
                     onChanged: (_) {
@@ -189,7 +199,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                       }
                     },
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   const Align(
                     alignment: Alignment.centerLeft,
                     child: Text('Bank Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -197,6 +207,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: payoutAccountCtrl,
+                    enabled: !isProcessing,
                     decoration: const InputDecoration(
                       labelText: 'Account Number',
                       border: OutlineInputBorder(),
@@ -208,6 +219,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   const SizedBox(height: 12),
                   TextField(
                     controller: payoutIfscCtrl,
+                    enabled: !isProcessing,
                     decoration: const InputDecoration(
                       labelText: 'IFSC Code',
                       border: OutlineInputBorder(),
@@ -224,6 +236,7 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   const SizedBox(height: 8),
                   TextField(
                     controller: payoutUpiCtrl,
+                    enabled: !isProcessing,
                     decoration: const InputDecoration(
                       labelText: 'UPI ID',
                       border: OutlineInputBorder(),
@@ -236,18 +249,15 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () {
-                  payoutAccountCtrl.dispose();
-                  payoutIfscCtrl.dispose();
-                  payoutUpiCtrl.dispose();
-                  payoutAmountCtrl.dispose();
-                  Navigator.pop(context);
-                },
+                onPressed: isProcessing ? null : () => Navigator.pop(context),
                 child: const Text('Cancel'),
               ),
               ElevatedButton(
-                onPressed: () async {
-                  setStateDialog(() => errorMessage = null);
+                onPressed: isProcessing ? null : () async {
+                  setStateDialog(() {
+                    errorMessage = null;
+                    isProcessing = true;
+                  });
                   
                   final amount = double.tryParse(payoutAmountCtrl.text) ?? 0;
                   final accountNo = payoutAccountCtrl.text.trim();
@@ -255,36 +265,49 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   final upi = payoutUpiCtrl.text.trim();
                   
                   if (amount <= 0 || amount > _balance) {
-                    setStateDialog(() => errorMessage = 'Invalid amount');
+                    setStateDialog(() {
+                       errorMessage = 'Invalid amount or insufficient balance';
+                       isProcessing = false;
+                    });
                     return;
                   }
-                  if (amount < 1000) {
-                     setStateDialog(() => errorMessage = 'Minimum withdrawal amount is ₹1000');
+                  if (amount < 500) {
+                    setStateDialog(() {
+                       errorMessage = 'Minimum withdrawal amount is ₹500';
+                       isProcessing = false;
+                    });
                     return;
                   }
                   
-                  // Validate: at least bank (account+ifsc) or UPI must be provided
                   final hasBankDetails = accountNo.isNotEmpty && ifsc.isNotEmpty;
                   final hasUpi = upi.isNotEmpty;
                   
                   if (!hasBankDetails && !hasUpi) {
-                    setStateDialog(() => errorMessage = 'Please provide Bank Details (Account + IFSC) or UPI ID');
+                    setStateDialog(() {
+                      errorMessage = 'Please provide Bank (A/C + IFSC) or UPI ID';
+                      isProcessing = false;
+                    });
                     return;
                   }
                   
                   if (accountNo.isNotEmpty && ifsc.isEmpty) {
-                    setStateDialog(() => errorMessage = 'Please provide IFSC Code with Account Number');
+                    setStateDialog(() { 
+                      errorMessage = 'Please enter IFSC Code';
+                      isProcessing = false;
+                    });
                     return;
                   }
                   if (ifsc.isNotEmpty && accountNo.isEmpty) {
-                    setStateDialog(() => errorMessage = 'Please provide Account Number with IFSC Code');
+                    setStateDialog(() {
+                      errorMessage = 'Please enter Account Number';
+                      isProcessing = false;
+                    });
                     return;
                   }
                   
-                  // Build payment details string
                   final List<String> parts = [];
                   if (hasBankDetails) {
-                    parts.add('Account: $accountNo');
+                    parts.add('A/C: $accountNo');
                     parts.add('IFSC: ${ifsc.toUpperCase()}');
                   }
                   if (hasUpi) {
@@ -295,13 +318,9 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   try {
                     await _payoutService.requestPayout(widget.user.uid, amount, details);
                     if (context.mounted) {
-                      payoutAccountCtrl.dispose();
-                      payoutIfscCtrl.dispose();
-                      payoutUpiCtrl.dispose();
-                      payoutAmountCtrl.dispose();
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Payout requested successfully')),
+                        const SnackBar(content: Text('Payout requested successfully ✅')),
                       );
                       _fetchBalance();
                     }
@@ -310,16 +329,31 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                      if (msg.contains('Exception: ')) {
                        msg = msg.replaceAll('Exception: ', '');
                      }
-                     setStateDialog(() => errorMessage = msg);
+                     if (msg.contains('insufficient balance')) {
+                        msg = 'Insufficient Balance! Your credits might still be syncing.';
+                     }
+                     if (context.mounted) {
+                       setStateDialog(() {
+                          errorMessage = msg;
+                          isProcessing = false;
+                       });
+                     }
                   }
                 },
-                child: const Text('Request'),
+                child: isProcessing 
+                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                  : const Text('Request Withdrawal'),
               ),
             ],
           );
         }
       ),
-    );
+    ).whenComplete(() {
+      payoutAccountCtrl.dispose();
+      payoutIfscCtrl.dispose();
+      payoutUpiCtrl.dispose();
+      payoutAmountCtrl.dispose();
+    });
   }
 
   @override

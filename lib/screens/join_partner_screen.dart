@@ -20,7 +20,7 @@ class JoinPartnerScreen extends StatefulWidget {
 class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isPasswordVisible = false;
-  String _role = 'Seller';
+  String _role = 'Service Provider';
   String _gender = 'Male';
   String? _selectedServiceCategoryId;
   
@@ -237,10 +237,6 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
            requestData['businessName'] = _businessController.text.trim().isEmpty
                ? (requestData['serviceCategoryName'] ?? '')
                : _businessController.text.trim();
-        } else {
-          // Seller
-          requestData['businessName'] = _businessController.text.trim();
-          requestData['minCharge'] = 0.0; // Default for Seller
         }
       }
 
@@ -309,7 +305,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                           contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
                         ),
                         isExpanded: true,
-                        items: ['Seller', 'Service Provider', 'Delivery Partner']
+                        items: ['Service Provider', 'Delivery Partner']
                             .map((role) => DropdownMenuItem(
                                   value: role,
                                   child: Text(
@@ -581,17 +577,6 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                               hintText: 'If different from category name',
                               border: OutlineInputBorder(),
                             ),
-                          ),
-                        ] else ...[
-                          TextFormField(
-                            controller: _businessController,
-                            decoration: const InputDecoration(
-                              labelText: 'Business Name',
-                              border: OutlineInputBorder(),
-                            ),
-                            validator: (v) => v == null || v.trim().isEmpty
-                                ? 'Please enter your business name'
-                                : null,
                           ),
                         ],
                     ],

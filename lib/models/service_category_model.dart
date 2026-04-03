@@ -9,6 +9,7 @@ class ServiceCategory {
   final double basePrice;
   final String? imageUrl; // New field for avatar image
   final DateTime createdAt;
+  final int order; // New field for sorting
 
   ServiceCategory({
     required this.id,
@@ -19,6 +20,7 @@ class ServiceCategory {
     required this.basePrice,
     this.imageUrl,
     required this.createdAt,
+    this.order = 0,
   });
 
   factory ServiceCategory.fromMap(Map<String, dynamic> map, String id) {
@@ -31,6 +33,7 @@ class ServiceCategory {
       basePrice: (map['basePrice'] ?? 0).toDouble(),
       imageUrl: map['imageUrl'],
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      order: map['order'] ?? 0,
     );
   }
 
@@ -43,6 +46,7 @@ class ServiceCategory {
       'basePrice': basePrice,
       'imageUrl': imageUrl,
       'createdAt': Timestamp.fromDate(createdAt),
+      'order': order,
     };
   }
 
@@ -55,6 +59,7 @@ class ServiceCategory {
     double? basePrice,
     String? imageUrl,
     DateTime? createdAt,
+    int? order,
   }) {
     return ServiceCategory(
       id: id ?? this.id,
@@ -65,6 +70,7 @@ class ServiceCategory {
       basePrice: basePrice ?? this.basePrice,
       imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
+      order: order ?? this.order,
     );
   }
 }

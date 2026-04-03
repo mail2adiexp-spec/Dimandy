@@ -11,8 +11,8 @@ class PayoutService {
   // Request a payout
   Future<void> requestPayout(String userId, double amount, String paymentDetails) async {
     try {
-      if (amount < 1000) {
-        throw Exception('Minimum withdrawal amount is ₹1000');
+      if (amount < 500) {
+        throw Exception('Minimum withdrawal amount is ₹500');
       }
 
       // Check balance first

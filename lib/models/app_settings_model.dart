@@ -10,6 +10,7 @@ class AppSettingsModel {
   final double servicePlatformFeePercentage;
   final String? announcementText;
   final bool isAnnouncementEnabled;
+  final String? contactPhoneNumber; // New Field
   final DateTime updatedAt;
   final String? updatedBy;
 
@@ -23,6 +24,7 @@ class AppSettingsModel {
     this.servicePlatformFeePercentage = 0.0,
     this.announcementText,
     this.isAnnouncementEnabled = false,
+    this.contactPhoneNumber, // New Field
     required this.updatedAt,
     this.updatedBy,
   });
@@ -46,6 +48,7 @@ class AppSettingsModel {
       servicePlatformFeePercentage: (map['servicePlatformFeePercentage'] as num?)?.toDouble() ?? 0.0,
       announcementText: map['announcementText'] as String?,
       isAnnouncementEnabled: map['isAnnouncementEnabled'] as bool? ?? false,
+      contactPhoneNumber: map['contactPhoneNumber'] as String?, // New Field
       updatedAt: parseDate(map['updatedAt']),
       updatedBy: map['updatedBy'] as String?,
     );
@@ -61,6 +64,7 @@ class AppSettingsModel {
       'servicePlatformFeePercentage': servicePlatformFeePercentage,
       'announcementText': announcementText,
       'isAnnouncementEnabled': isAnnouncementEnabled,
+      'contactPhoneNumber': contactPhoneNumber, // New Field
       'updatedAt': FieldValue.serverTimestamp(),
       'updatedBy': updatedBy,
     };
@@ -76,6 +80,7 @@ class AppSettingsModel {
     double? servicePlatformFeePercentage,
     String? announcementText,
     bool? isAnnouncementEnabled,
+    String? contactPhoneNumber, // New Field
     DateTime? updatedAt,
     String? updatedBy,
   }) {
@@ -89,6 +94,7 @@ class AppSettingsModel {
       servicePlatformFeePercentage: servicePlatformFeePercentage ?? this.servicePlatformFeePercentage,
       announcementText: announcementText ?? this.announcementText,
       isAnnouncementEnabled: isAnnouncementEnabled ?? this.isAnnouncementEnabled,
+      contactPhoneNumber: contactPhoneNumber ?? this.contactPhoneNumber, // New Field
       updatedAt: updatedAt ?? this.updatedAt,
       updatedBy: updatedBy ?? this.updatedBy,
     );

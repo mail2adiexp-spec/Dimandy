@@ -6,6 +6,7 @@ import '../widgets/more_bottom_sheet.dart';
 import '../widgets/pwa_install_banner.dart';
 
 class MainNavigationScreen extends StatefulWidget {
+  static const routeName = '/home-nav';
   final int initialIndex;
   const MainNavigationScreen({super.key, this.initialIndex = 0});
 

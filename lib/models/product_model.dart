@@ -107,7 +107,7 @@ class Product {
       isCustomerChoice: map['isCustomerChoice'] ?? false,
       salesCount: (map['salesCount'] as num?)?.toInt() ?? 0,
       viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
-      stock: (map['stock'] as num?)?.toInt() ?? 0,
+      stock: (map['stock'] as num?)?.toInt()?.clamp(0, 9999999) ?? 0,
       minimumQuantity: (map['minimumQuantity'] as num?)?.toInt() ?? 1,
       maximumQuantity: (map['maximumQuantity'] as num?)?.toInt() ?? 0,
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],

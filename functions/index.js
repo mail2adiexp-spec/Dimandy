@@ -581,8 +581,13 @@ exports.onOrderCreate = functions.firestore
             const currentStock = currentData.stock || 0;
             const currentSales = currentData.salesCount || 0;
 
-            // Ensure stock never goes below zero
-            const newStock = Math.max(0, currentStock - deductQty);
+            // Ensure stock never goes below zero. Math.max is a safety net.
+            const safeDeductQty = Math.max(0, deductQty);
+            const newStock = Math.max(0, currentStock - safeDeductQty);
+            
+            if (currentStock <= 0 && safeDeductQty > 0) {
+              console.warn(`Product ${targetId} is already out of stock but an order was placed. Force setting stock to 0.`);
+            }
             
             transaction.update(productRef, {
               stock: newStock,
@@ -595,13 +600,18 @@ exports.onOrderCreate = functions.firestore
         }
       }
 
-      // 1.5 Backfill sellerIds if missing (Self-Healing)
-      if (!orderData.sellerIds) {
-        const sellerIds = [...new Set(items.map(i => i.sellerId).filter(id => id))];
-        if (sellerIds.length > 0) {
+      // 1.5 Sync sellerIds from items (Self-Healing)
+      const currentSellerIds = [...new Set(items.map(i => i.sellerId).filter(id => id))];
+      if (currentSellerIds.length > 0) {
+        // Only update if it doesn't match the existing sellerIds (to save a write)
+        const existingSellerIds = orderData.sellerIds || [];
+        const isMatch = existingSellerIds.length === currentSellerIds.length && 
+                       existingSellerIds.every(id => currentSellerIds.includes(id));
+        
+        if (!isMatch) {
           const orderRef = admin.firestore().collection('orders').doc(orderId);
-          batch.update(orderRef, { sellerIds: sellerIds });
-          console.log(`Backfilling sellerIds for order ${orderId}:`, sellerIds);
+          batch.update(orderRef, { sellerIds: currentSellerIds });
+          console.log(`Syncing sellerIds for order ${orderId}:`, currentSellerIds);
         }
       }
 
@@ -686,20 +696,105 @@ exports.onOrderCreate = functions.firestore
           },
           data: {
             orderId: String(orderId),
-            click_action: "FLUTTER_NOTIFICATION_CLICK"
+            click_action: "FLUTTER_NOTIFICATION_CLICK",
+            type: "admin_order",
           },
-          topic: "admin_new_orders"
+          android: {
+            priority: "high",
+            notification: {
+              channelId: "high_importance_channel",
+              priority: "high",
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                contentAvailable: true,
+                priority: 10,
+              },
+            },
+          },
+          topic: "admin_new_orders",
         };
-        // Adding it to fire-and-forget promise array or await it
         await admin.messaging().send(payload);
         console.log(`FCM Push Notification sent to 'admin_new_orders' topic for order ${orderId}`);
       } catch (fcmError) {
         console.error(`Error sending FCM to 'admin_new_orders' for order ${orderId}:`, fcmError);
       }
       // ----------------------------------------------------
+      
+      // D. Notify Store Managers (New)
+      const allStoreIds = new Set();
+      for (const item of (orderData.items || [])) {
+        if (item.storeIds && Array.isArray(item.storeIds)) {
+          item.storeIds.forEach(id => allStoreIds.add(id));
+        }
+      }
+
+      if (allStoreIds.size > 0) {
+        console.log(`Analyzing ${allStoreIds.size} stores for order ${orderId}`);
+        const managerIds = new Set();
+        const storeDocs = await Promise.all(
+          Array.from(allStoreIds).map(id => admin.firestore().collection('stores').doc(id).get())
+        );
+        
+        storeDocs.forEach(doc => {
+          if (doc.exists && doc.data().managerId) {
+            managerIds.add(doc.data().managerId);
+          }
+        });
+
+        console.log(`Notifying ${managerIds.size} managers for order ${orderId}`);
+        managerIds.forEach(managerId => {
+          const managerNotifRef = admin.firestore().collection("notifications").doc();
+          batch.set(managerNotifRef, {
+            toUserId: managerId,
+            title: "New Store Order!",
+            body: `Order #${orderId} placed for your managed store.`,
+            type: "manager_order",
+            relatedId: orderId,
+            isRead: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            userId: managerId
+          });
+          
+          // Optional: Direct Push Notification
+          try {
+            admin.messaging().send({
+              notification: {
+                title: "🏪 New Store Order!",
+                body: `Order #${orderId} received. Check it out now!`,
+              },
+              data: {
+                orderId: String(orderId),
+                click_action: "FLUTTER_NOTIFICATION_CLICK",
+                type: "manager_order",
+              },
+              android: {
+                priority: "high",
+                notification: {
+                  channelId: "high_importance_channel",
+                  priority: "high",
+                },
+              },
+              apns: {
+                payload: {
+                  aps: {
+                    contentAvailable: true,
+                    priority: 10,
+                  },
+                },
+              },
+              topic: `manager_${managerId}`
+            }).catch(e => console.error(`FCM failure for manager ${managerId}:`, e));
+          } catch (e) {
+            // Handled in catch
+          }
+        });
+      }
 
       await batch.commit(); // Commit all changes (stock + notifications)
-      console.log(`Order ${orderId} processed: Stock updated and notifications sent.`);
+      console.log(`Order ${orderId} processed: Stock updated and all stakeholders notified.`);
 
     } catch (error) {
       console.error(`Error processing order ${orderId}:`, error);
@@ -985,9 +1080,11 @@ exports.onOrderUpdate = functions.firestore
           }
 
           const productRef = admin.firestore().collection("products").doc(targetId);
+          // Ensure we only increment by a positive value to avoid negative stock bugs
+          const safeReplenishQty = Math.max(0, replenishQty);
           batch.update(productRef, {
-            stock: admin.firestore.FieldValue.increment(replenishQty),
-            salesCount: admin.firestore.FieldValue.increment(-item.quantity)
+            stock: admin.firestore.FieldValue.increment(safeReplenishQty),
+            salesCount: admin.firestore.FieldValue.increment(-Math.abs(item.quantity))
           });
         }
       }

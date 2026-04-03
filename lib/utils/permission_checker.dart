@@ -24,17 +24,18 @@ class PermissionChecker {
 
   bool get isAdmin => role == 'admin' || role == 'super_admin';
   bool get isCoreStaff => role == 'core_staff';
+  bool get isStoreStaff => role == 'store_manager' || role == 'store_partner';
 
   // Dashboard Access
-  bool get canViewDashboard => isAdmin || (isCoreStaff && _hasPermission('can_view_dashboard'));
+  bool get canViewDashboard => isAdmin || isStoreStaff || (isCoreStaff && _hasPermission('can_view_dashboard'));
 
   // Products
-  bool get canViewProducts => isAdmin || (isCoreStaff && (_hasPermission('can_view_products') || _hasPermission('can_manage_products')));
-  bool get canManageProducts => isAdmin || (isCoreStaff && _hasPermission('can_manage_products'));
+  bool get canViewProducts => isAdmin || isStoreStaff || (isCoreStaff && (_hasPermission('can_view_products') || _hasPermission('can_manage_products')));
+  bool get canManageProducts => isAdmin || isStoreStaff || (isCoreStaff && _hasPermission('can_manage_products'));
 
   // Orders
-  bool get canViewOrders => isAdmin || (isCoreStaff && (_hasPermission('can_view_orders') || _hasPermission('can_manage_orders')));
-  bool get canManageOrders => isAdmin || (isCoreStaff && _hasPermission('can_manage_orders'));
+  bool get canViewOrders => isAdmin || isStoreStaff || (isCoreStaff && (_hasPermission('can_view_orders') || _hasPermission('can_manage_orders')));
+  bool get canManageOrders => isAdmin || isStoreStaff || (isCoreStaff && _hasPermission('can_manage_orders'));
 
   // Users
   bool get canViewUsers => isAdmin || (isCoreStaff && (_hasPermission('can_view_users') || _hasPermission('can_manage_users')));
@@ -49,7 +50,7 @@ class PermissionChecker {
 
   // Partner Management (Requests)
   bool get canManagePartners => isAdmin || (isCoreStaff && _hasPermission('can_manage_partners'));
-  bool get canManageSellers => isAdmin || (isCoreStaff && (_hasPermission('can_manage_sellers') || _hasPermission('can_manage_partners'))); // Fallback for backward compat
+  bool get canManageSellers => false; // Seller role deprecated
   
   // Delivery Partner Management
   bool get canManageDeliveries => isAdmin || (isCoreStaff && (_hasPermission('can_manage_deliveries') || _hasPermission('can_manage_partners')));
@@ -59,7 +60,7 @@ class PermissionChecker {
   bool get canManageGifts => isAdmin || (isCoreStaff && _hasPermission('can_manage_gifts'));
 
   // Additional Admin Features
-  bool get canViewAnalytics => isAdmin || (isCoreStaff && _hasPermission('can_view_analytics'));
+  bool get canViewAnalytics => isAdmin || isStoreStaff || (isCoreStaff && _hasPermission('can_view_analytics'));
   bool get canDownloadReports => isAdmin || (isCoreStaff && _hasPermission('can_download_reports'));
   bool get canManageCategories => isAdmin || (isCoreStaff && _hasPermission('can_manage_categories'));
   bool get canManageServiceCategories => isAdmin || (isCoreStaff && _hasPermission('can_manage_service_categories'));

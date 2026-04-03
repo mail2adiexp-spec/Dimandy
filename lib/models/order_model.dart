@@ -192,7 +192,7 @@ class OrderItem {
     return OrderItem(
       productId: map['productId'] ?? '',
       sellerId: map['sellerId'] ?? '',
-      productName: map['productName'] ?? '',
+      productName: map['productName'] ?? map['name'] ?? 'Unknown Product',
       quantity: map['quantity'] ?? 1,
       price: (map['price'] ?? 0).toDouble(),
       basePrice: (map['basePrice'] ?? 0).toDouble(),

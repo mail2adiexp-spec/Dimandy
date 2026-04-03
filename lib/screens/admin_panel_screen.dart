@@ -50,6 +50,7 @@ import '../widgets/manage_stores_tab.dart';
 import 'permission_editor_screen.dart';
 import '../widgets/manage_admins_tab.dart'; // NEW
 import 'admin_financial_screen.dart'; // NEW
+import '../widgets/add_manual_order_dialog.dart';
 
 
 class AdminPanelScreen extends StatefulWidget {
@@ -87,7 +88,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   // Stream variables
   late Stream<QuerySnapshot> _partnerRequestsStream;
   late Stream<QuerySnapshot> _serviceProvidersStream;
-  late Stream<QuerySnapshot> _sellersStream;
   late Stream<QuerySnapshot> _deliveryPartnersStream;
   late Stream<QuerySnapshot> _ordersStream;
   late Stream<QuerySnapshot> _usersStream;
@@ -99,6 +99,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   late Stream<QuerySnapshot> _recentOrdersStream;
   late Stream<QuerySnapshot> _payoutRequestsStream;
   late Stream<QuerySnapshot> _deleteRequestsStream;
+  late Stream<QuerySnapshot> _bookingsStream;
 
   late AnimationController _refreshController;
 
@@ -139,7 +140,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
     Query partnerRequestsQuery = FirebaseFirestore.instance.collection('partner_requests');
     Query serviceProvidersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'service_provider');
-    Query sellersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'seller');
     Query deliveryPartnersQuery = FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'delivery_partner');
     Query ordersQuery = FirebaseFirestore.instance.collection('orders');
     Query usersQuery = FirebaseFirestore.instance.collection('users'); // Includes customers
@@ -158,7 +158,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     if (isStateAdmin && assignedState != null) {
       // Users/Sellers/ServiceProviders: 'state' field exists (added in Phase 1)
       serviceProvidersQuery = serviceProvidersQuery.where('state', isEqualTo: assignedState);
-      sellersQuery = sellersQuery.where('state', isEqualTo: assignedState);
       usersQuery = usersQuery.where('state', isEqualTo: assignedState);
       
       // Partner Requests: usually have 'state' or 'address'. Assuming 'state' field exists or we might need to rely on 'service_pincode' mapping.
@@ -188,7 +187,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
     _partnerRequestsStream = partnerRequestsQuery.where('status', isEqualTo: 'pending').snapshots();
     _serviceProvidersStream = serviceProvidersQuery.snapshots();
-    _sellersStream = sellersQuery.snapshots();
     _deliveryPartnersStream = deliveryPartnersQuery.snapshots();
     _ordersStream = ordersQuery.snapshots();
     _usersStream = usersQuery.snapshots();
@@ -200,6 +198,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _topServicesStream = topServicesQuery.snapshots();
     _payoutRequestsStream = FirebaseFirestore.instance.collection('payouts').where('status', isEqualTo: 'pending').snapshots();
     _deleteRequestsStream = FirebaseFirestore.instance.collection('users').where('deleteRequested', isEqualTo: true).snapshots();
+    _bookingsStream = FirebaseFirestore.instance.collection('bookings').snapshots();
   }
 
   int _currentStackIndex = 0; // Replaces _selectedIndex for IndexedStack control
@@ -218,7 +217,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       // REMAINING ITEMS
       {'title': 'Users', 'icon': Icons.person, 'index': 6},
       {'title': 'Orders', 'icon': Icons.receipt_long, 'index': 8},
-      {'title': 'Sellers', 'icon': Icons.store, 'index': 11},
+      {'title': 'Guest Order', 'icon': Icons.add_shopping_cart, 'index': -1}, // Special Action
       {'title': 'Stores', 'icon': Icons.store_mall_directory, 'index': 20, 'requiresSuperAdmin': false},
       {'title': 'Products', 'icon': Icons.inventory_2, 'index': 1},
       {'title': 'Services', 'icon': Icons.home_repair_service, 'index': 3},
@@ -295,14 +294,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        FloatingActionButton.extended(
-                          onPressed: _syncProductPrices,
-                          label: const Text('Sync Prices'),
-                          icon: const Icon(Icons.attach_money),
-                          backgroundColor: Colors.green,
-                          heroTag: 'sync_prices',
-                        ),
-                        const SizedBox(height: 12),
                         FloatingActionButton.extended(
                           onPressed: _syncProductSearchKeywords,
                           label: const Text('Sync Search'),
@@ -431,7 +422,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildOrdersTab(), // 8
                             _buildCoreStaffTab(), // 9
                             _buildPermissionsTab(), // 10
-                            _buildRoleBasedUsersTab('seller'), // 11
+                            const SizedBox(), // 11
                             _buildRoleBasedUsersTab('service_provider'), // 12
                             _buildPayoutRequestsTab(), // 13
                             _buildServiceCategoriesTab(isAdmin: isSuperAdmin), // 14
@@ -587,10 +578,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     borderRadius: BorderRadius.circular(12),
                     child: InkWell(
                       onTap: () {
-                        setState(() {
-                          _currentStackIndex = itemIndex;
-                        });
-                        if (isMobile) Navigator.pop(context);
+                        if (itemIndex == -1) {
+                          if (isMobile) Navigator.pop(context);
+                          showDialog(
+                            context: context,
+                            builder: (context) => const AddManualOrderDialog(),
+                          );
+                        } else {
+                          setState(() {
+                            _currentStackIndex = itemIndex;
+                          });
+                          if (isMobile) Navigator.pop(context);
+                        }
                       },
                       borderRadius: BorderRadius.circular(12),
                       child: Container(
@@ -1067,7 +1066,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildFinancialSummary(),
+          _buildTodaySummary(),
           const SizedBox(height: 24),
           GridView.count(
             shrinkWrap: true,
@@ -1076,22 +1075,38 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 ? 2
                 : MediaQuery.of(context).size.width < 900
                     ? 3
-                    : 4,
+                    : 6, // 6 columns
             crossAxisSpacing: 12,
             mainAxisSpacing: 12,
             childAspectRatio: 1.3,
             children: [
+              _buildProfitDashboardCard(
+                title: 'Total Gross Profit',
+                icon: Icons.account_balance,
+                color: Colors.green,
+                isNetProfit: false,
+              ),
+              _buildProfitDashboardCard(
+                title: 'Total Net Profit',
+                icon: Icons.account_balance_wallet,
+                color: Colors.indigo,
+                isNetProfit: true,
+              ),
+              _buildTotalDeliveryCostCard(
+                title: 'Total Delivery Cost',
+                icon: Icons.local_shipping,
+                color: Colors.red,
+              ),
+              _buildExpenseDashboardCard(
+                title: 'Other Expenses',
+                icon: Icons.money_off,
+                color: Colors.orange,
+              ),
               _buildDashboardCard(
                 title: 'Total Service Providers',
                 stream: _serviceProvidersStream,
                 icon: Icons.home_repair_service,
                 color: Colors.blue,
-              ),
-              _buildDashboardCard(
-                title: 'Total Sellers',
-                stream: _sellersStream,
-                icon: Icons.store,
-                color: Colors.green,
               ),
               _buildDashboardCard(
                 title: 'Total Delivery Partner',
@@ -1830,7 +1845,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildOrdersTab() {
-    return const SharedOrdersTab(canManage: true);
+    return const SharedOrdersTab(canManage: true, showAddButton: false);
   }
 
 
@@ -2880,6 +2895,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final priceCtrl = TextEditingController(
       text: category?.basePrice.toString() ?? '500',
     );
+    final orderCtrl = TextEditingController(
+      text: category?.order.toString() ?? '0',
+    );
 
     String selectedIcon = category?.iconName ?? 'miscellaneous_services';
     String selectedColor = category?.colorHex ?? '#2196F3';
@@ -3032,6 +3050,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       border: OutlineInputBorder(),
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: orderCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Display Order (0 is first) *',
+                      hintText: 'Lower numbers show first',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   const Text(
                     'Select Icon (fallback if no image):',
                     style: TextStyle(fontWeight: FontWeight.bold),
@@ -3156,6 +3185,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           basePrice: price,
                           imageUrl: uploadedImageUrl,
                           createdAt: category?.createdAt ?? DateTime.now(),
+                          order: int.tryParse(orderCtrl.text.trim()) ?? 0,
                         );
 
                         if (category == null) {
@@ -4319,6 +4349,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final bioCtrl = TextEditingController(text: staffData?['bio'] ?? '');
     final passwordCtrl = TextEditingController(); // Only for new users
     
+    final List<String> positions = [
+      'Store Manager',
+      'Store Partner',
+      'Product Picker',
+      'Packer',
+      'House Keeper',
+      'Other',
+    ];
+    String? selectedPositionValue = staffData?['position'];
+    bool isOtherPositionSelected = selectedPositionValue != null && !positions.contains(selectedPositionValue);
+    if (isOtherPositionSelected) {
+      selectedPositionValue = 'Other';
+    }
+    
+    String selectedRoleValue = staffData?['role'] ?? 'core_staff';
+    String? selectedStoreId = staffData?['storeId'];
+
     Uint8List? selectedImage;
     String? currentImageUrl = staffData?['photoURL'];
     bool isLoading = false;
@@ -4391,12 +4438,96 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     decoration: const InputDecoration(labelText: 'Name *'),
                   ),
                   const SizedBox(height: 12),
-                  TextField(
-                    controller: positionCtrl,
+                  DropdownButtonFormField<String>(
+                    value: selectedRoleValue,
                     decoration: const InputDecoration(
-                      labelText: 'Position (e.g., Manager)',
+                      labelText: 'Role *',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.security),
                     ),
+                    items: const [
+                      DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
+                      DropdownMenuItem(value: 'store_manager', child: Text('Store Manager')),
+                      DropdownMenuItem(value: 'store_partner', child: Text('Store Partner')),
+                    ],
+                    onChanged: (val) => setState(() => selectedRoleValue = val!),
+                    validator: (value) => value == null ? 'Please select a role' : null,
                   ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: positions.contains(selectedPositionValue) ? selectedPositionValue : (selectedPositionValue != null ? 'Other' : null),
+                    decoration: const InputDecoration(
+                      labelText: 'Position *',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.badge),
+                    ),
+                    items: positions.map((String pos) {
+                      return DropdownMenuItem<String>(
+                        value: pos,
+                        child: Text(pos),
+                      );
+                    }).toList(),
+                    onChanged: (String? newValue) {
+                      setState(() {
+                         selectedPositionValue = newValue;
+                         if (newValue != 'Other' && newValue != null) {
+                           positionCtrl.text = newValue;
+                         } else {
+                            if (newValue == 'Other') {
+                               positionCtrl.text = ''; // Clear to let user specify
+                            }
+                         }
+                      });
+                    },
+                    validator: (value) => value == null ? 'Please select a position' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Store Selection
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('stores').snapshots(),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const SizedBox.shrink();
+                      final stores = snapshot.data!.docs;
+                      return DropdownButtonFormField<String>(
+                        value: selectedStoreId,
+                        decoration: const InputDecoration(
+                          labelText: 'Assign Store (Optional)',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.store),
+                        ),
+                        items: [
+                          const DropdownMenuItem(value: null, child: Text('No Specific Store')),
+                          ...stores.map((doc) {
+                            final data = doc.data() as Map<String, dynamic>;
+                            return DropdownMenuItem(
+                              value: doc.id,
+                              child: Text(data['name'] ?? 'Unnamed Store'),
+                            );
+                          }),
+                        ],
+                        onChanged: (val) => setState(() => selectedStoreId = val),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  if (selectedPositionValue == 'Other') 
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12.0),
+                      child: TextFormField(
+                        controller: positionCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Specify Custom Position *',
+                          border: OutlineInputBorder(),
+                          hintText: 'Enter custom position',
+                        ),
+                        onChanged: (val) {
+                          // Keep it current but it's already in the controller
+                        },
+                        validator: (value) => value == null || value.isEmpty ? 'Please specify position' : null,
+                      ),
+                    ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: emailCtrl,
@@ -4494,6 +4625,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         'position': positionCtrl.text.trim(),
                         'phone': phoneCtrl.text.trim(),
                         'bio': bioCtrl.text.trim(),
+                        'role': selectedRoleValue, // Pass role
+                        'storeId': selectedStoreId, // Pass assigned store
                       });
                       
                       newId = result.data['userId'];
@@ -4523,6 +4656,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         'position': positionCtrl.text,
                         'phone': phoneCtrl.text,
                         'bio': bioCtrl.text,
+                        'role': selectedRoleValue, // Update role
+                        'storeId': selectedStoreId, // Update assigned store
                         if (imgUrl != null) 'photoURL': imgUrl,
                      });
                    }
@@ -4687,7 +4822,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
 
   // Permissions Tab
-  String _selectedPermissionRole = 'seller';
+  String _selectedPermissionRole = 'service_provider';
 
   Widget _buildPermissionsTab() {
     return Column(
@@ -4705,7 +4840,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 prefixIcon: Icon(Icons.group),
               ),
               items: const [
-                DropdownMenuItem(value: 'seller', child: Text('Sellers')),
                 DropdownMenuItem(value: 'service_provider', child: Text('Service Providers')),
                 DropdownMenuItem(value: 'delivery_partner', child: Text('Delivery Partners')),
                 DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
@@ -4891,7 +5025,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_view_dashboard'] = 'View Dashboard';
       availablePermissions['can_manage_services'] = 'Manage Services';
       availablePermissions['can_manage_partners'] = 'Manage Partner Requests';
-      availablePermissions['can_manage_sellers'] = 'Manage Sellers';
       availablePermissions['can_manage_deliveries'] = 'Manage Delivery Partners';
       availablePermissions['can_manage_stores'] = 'Manage Stores';
       availablePermissions['can_manage_categories'] = 'Manage Categories';
@@ -5012,7 +5145,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         children: [
           // Balance Card
           FutureBuilder<double>(
-            future: transactionService.getBalance(userId),
+            future: transactionService.getBalance(userId, role: role),
             builder: (context, snapshot) {
               final balance = snapshot.data ?? 0.0;
               return Card(
@@ -5054,7 +5187,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           
           // Payout Stats (Calculated from transactions for now)
           StreamBuilder<List<TransactionModel>>(
-            stream: transactionService.getTransactions(userId),
+            stream: transactionService.getTransactions(userId, role: role),
             builder: (context, snapshot) {
               final transactions = snapshot.data ?? [];
               
@@ -7688,169 +7821,784 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
 
-  Widget _buildFinancialSummary() {
-    return FutureBuilder<Map<String, double>>(
-      future: _calculateDashboardFinancials(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const LinearProgressIndicator();
-        }
-        
-        final data = snapshot.data ?? {'totalProfit': 0, 'storeProfit': 0, 'totalRevenue': 0};
-        
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.deepPurple.shade50,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.deepPurple.shade100),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildTodaySummary() {
+    final auth = Provider.of<AuthProvider>(context);
+    final isStateAdmin = auth.isStateAdmin;
+    final assignedState = auth.currentUser?.assignedState;
+
+    final now = DateTime.now();
+    final todayStart = DateTime(now.year, now.month, now.day);
+    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final startTs = Timestamp.fromDate(todayStart);
+    final endTs = Timestamp.fromDate(todayEnd);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.deepPurple.shade50.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.deepPurple.shade100),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const Row(
-                children: [
-                  Icon(Icons.account_balance_wallet, color: Colors.deepPurple, size: 20),
-                  SizedBox(width: 8),
-                  const Text(
-                    'Financial Summary',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                   _buildSummaryItem('Net Profit', data['totalProfit']!, Colors.green),
-                   const SizedBox(width: 12),
-                   _buildSummaryItem('Store Profit', data['storeProfit']!, Colors.blue),
-                   const SizedBox(width: 12),
-                   _buildSummaryItem('Total Revenue', data['totalRevenue']!, Colors.orange),
-                ],
+              Icon(Icons.today, color: Colors.deepPurple.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                "Today's Overview",
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.deepPurple.shade900,
+                ),
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isMobile = constraints.maxWidth < 600;
+              return GridView.count(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisCount: isMobile ? 2 : 4,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: isMobile ? 1.8 : 2.5,
+                children: [
+                  _buildTodayStatItem(
+                    label: "Today's Orders",
+                    icon: Icons.shopping_bag,
+                    color: Colors.blue,
+                    query: FirebaseFirestore.instance.collection('orders')
+                        .where('orderDate', isGreaterThanOrEqualTo: startTs)
+                        .where('orderDate', isLessThanOrEqualTo: endTs),
+                    assignedState: isStateAdmin ? assignedState : null,
+                  ),
+                  _buildTodayStatItem(
+                    label: "Today's Bookings",
+                    icon: Icons.event_available,
+                    color: Colors.teal,
+                    query: FirebaseFirestore.instance.collection('bookings')
+                        .where('createdAt', isGreaterThanOrEqualTo: startTs)
+                        .where('createdAt', isLessThanOrEqualTo: endTs),
+                    assignedState: isStateAdmin ? assignedState : null,
+                  ),
+                  _buildTodayRevenueItem(
+                    startTs: startTs,
+                    endTs: endTs,
+                    isStateAdmin: isStateAdmin,
+                    assignedState: assignedState,
+                  ),
+                  _buildTodayProfitItem(
+                    label: "Today's Gross Profit",
+                    startTs: startTs,
+                    endTs: endTs,
+                    isStateAdmin: isStateAdmin,
+                    assignedState: assignedState,
+                    isNetProfit: false,
+                  ),
+                  _buildTodayProfitItem(
+                    label: "Today's Net Profit",
+                    startTs: startTs,
+                    endTs: endTs,
+                    isStateAdmin: isStateAdmin,
+                    assignedState: assignedState,
+                    isNetProfit: true,
+                  ),
+                  _buildTodayDeliveryCostItem(
+                    startTs: startTs,
+                    endTs: endTs,
+                    isStateAdmin: isStateAdmin,
+                    assignedState: assignedState,
+                  ),
+                  _buildTodayExpenseItem(
+                    startTs: startTs,
+                    endTs: endTs,
+                    isStateAdmin: isStateAdmin,
+                    assignedState: assignedState,
+                  ),
+                  _buildTodayStatItem(
+                    label: "Today's Cancelled",
+                    icon: Icons.cancel,
+                    color: Colors.red,
+                    query: FirebaseFirestore.instance.collection('orders')
+                        .where('orderDate', isGreaterThanOrEqualTo: startTs)
+                        .where('orderDate', isLessThanOrEqualTo: endTs)
+                        .where('status', isEqualTo: 'cancelled'),
+                    assignedState: isStateAdmin ? assignedState : null,
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayStatItem({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required Query query,
+    String? assignedState,
+  }) {
+    Query filteredQuery = query;
+    if (assignedState != null) {
+      filteredQuery = filteredQuery.where('state', isEqualTo: assignedState);
+    }
+    
+    return StreamBuilder<QuerySnapshot>(
+      stream: filteredQuery.snapshots(),
+      builder: (context, snapshot) {
+        String value = '0';
+        if (snapshot.hasData) {
+          value = snapshot.data!.docs.length.toString();
+        }
+        return _buildMetricTile(
+          label: label,
+          value: value,
+          icon: icon,
+          color: color,
+          error: snapshot.error,
         );
       },
     );
   }
 
-  Widget _buildSummaryItem(String title, double value, Color color) {
-    return Expanded(
+  Widget _buildTodayRevenueItem({
+    required Timestamp startTs,
+    required Timestamp endTs,
+    required bool isStateAdmin,
+    required String? assignedState,
+  }) {
+    Query orderQuery = FirebaseFirestore.instance.collection('orders')
+        .where('orderDate', isGreaterThanOrEqualTo: startTs)
+        .where('orderDate', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      orderQuery = orderQuery.where('state', isEqualTo: assignedState);
+    }
+
+    Query bookingQuery = FirebaseFirestore.instance.collection('bookings')
+        .where('createdAt', isGreaterThanOrEqualTo: startTs)
+        .where('createdAt', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      bookingQuery = bookingQuery.where('state', isEqualTo: assignedState);
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: orderQuery.snapshots(),
+      builder: (context, orderSnap) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: bookingQuery.snapshots(),
+          builder: (context, bookingSnap) {
+            double revenue = 0;
+            if (orderSnap.hasData) {
+              for (var doc in orderSnap.data!.docs) {
+                revenue += (doc.data() as Map<String, dynamic>)['totalAmount']?.toDouble() ?? 0.0;
+              }
+            }
+            if (bookingSnap.hasData) {
+              for (var doc in bookingSnap.data!.docs) {
+                revenue += (doc.data() as Map<String, dynamic>)['totalCost']?.toDouble() ?? 0.0;
+              }
+            }
+
+            return _buildMetricTile(
+              label: "Today's Revenue",
+              value: '₹${revenue.toStringAsFixed(0)}',
+              icon: Icons.currency_rupee,
+              color: Colors.orange,
+              error: orderSnap.error ?? bookingSnap.error,
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildMetricTile({
+    required String label,
+    required String value,
+    required IconData icon,
+    required Color color,
+    Object? error,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 18),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 10, fontWeight: FontWeight.w500),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (error != null)
+                   GestureDetector(
+                     onTap: () => showDialog(
+                       context: context,
+                       builder: (ctx) => AlertDialog(
+                         title: const Text('Index Required'),
+                         content: ClickableErrorText(errorText: error.toString()),
+                         actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Close'))],
+                       ),
+                     ),
+                     child: const Icon(Icons.error_outline, color: Colors.red, size: 16),
+                   )
+                else
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: color,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTodayProfitItem({
+    required String label,
+    required Timestamp startTs,
+    required Timestamp endTs,
+    required bool isStateAdmin,
+    required String? assignedState,
+    required bool isNetProfit,
+  }) {
+    Query orderQuery = FirebaseFirestore.instance.collection('orders')
+        .where('orderDate', isGreaterThanOrEqualTo: startTs)
+        .where('orderDate', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      orderQuery = orderQuery.where('state', isEqualTo: assignedState);
+    }
+
+    Query bookingQuery = FirebaseFirestore.instance.collection('bookings')
+        .where('createdAt', isGreaterThanOrEqualTo: startTs)
+        .where('createdAt', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      bookingQuery = bookingQuery.where('state', isEqualTo: assignedState);
+    }
+
+    Query expenseQuery = FirebaseFirestore.instance.collection('expenses')
+        .where('createdAt', isGreaterThanOrEqualTo: startTs)
+        .where('createdAt', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      expenseQuery = expenseQuery.where('state', isEqualTo: assignedState);
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: orderQuery.snapshots(),
+      builder: (context, orderSnap) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: bookingQuery.snapshots(),
+          builder: (context, bookingSnap) {
+            return StreamBuilder<QuerySnapshot>(
+              stream: expenseQuery.snapshots(),
+              builder: (context, expenseSnap) {
+                if (orderSnap.connectionState == ConnectionState.waiting || 
+                    bookingSnap.connectionState == ConnectionState.waiting ||
+                    expenseSnap.connectionState == ConnectionState.waiting) {
+                  return _buildMetricTile(
+                    label: label,
+                    value: "...",
+                    icon: isNetProfit ? Icons.account_balance_wallet : Icons.trending_up,
+                    color: isNetProfit ? Colors.indigo : Colors.green,
+                  );
+                }
+
+                double profit = 0;
+                double deliveryCosts = 0;
+                double otherExpensesAmount = 0;
+                
+                if (orderSnap.hasData) {
+                  for (var doc in orderSnap.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (data['status'] == 'cancelled') continue;
+                    
+                    final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                    deliveryCosts += dFee;
+
+                    final items = data['items'] as List<dynamic>? ?? [];
+                    for (var item in items) {
+                      final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                      final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+                      final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+                      final itemRevenue = price * quantity;
+                      
+                      final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
+                      final isPlatformItem = metadata['isPlatformOwned'] == true || 
+                                           item['sellerId'] == 'admin' || 
+                                           data['storeId'] == 'admin' ||
+                                           basePrice > 0;
+                      
+                      if (isPlatformItem) {
+                        profit += (itemRevenue - (basePrice * quantity));
+                      } else {
+                        // For Store Partners: 25% of Margin (Price - Cost)
+                        // If basePrice is missing, fallback to 20% of Revenue
+                        if (basePrice > 0) {
+                          profit += (itemRevenue - (basePrice * quantity)) * 0.25;
+                        } else {
+                          profit += (itemRevenue * 0.2);
+                        }
+                      }
+                    }
+                  }
+                }
+                
+                if (bookingSnap.hasData) {
+                  for (var doc in bookingSnap.data!.docs) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    if (data['status'] == 'cancelled') continue;
+                    
+                    double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                    double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
+                    profit += comm;
+                  }
+                }
+
+                if (expenseSnap.hasData) {
+                   for (var doc in expenseSnap.data!.docs) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      otherExpensesAmount += (data['amount'] as num?)?.toDouble() ?? 0.0;
+                   }
+                }
+
+                if (isNetProfit) {
+                  profit = profit - deliveryCosts - otherExpensesAmount;
+                }
+
+                return _buildMetricTile(
+                  label: label,
+                  value: '₹${profit.toStringAsFixed(0)}',
+                  icon: isNetProfit ? Icons.account_balance_wallet : Icons.trending_up,
+                  color: isNetProfit ? Colors.indigo : Colors.green,
+                  error: orderSnap.error ?? bookingSnap.error ?? expenseSnap.error,
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildProfitDashboardCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+    required bool isNetProfit,
+  }) {
+    return Card(
+      elevation: 4,
+      shadowColor: color.withValues(alpha: 0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
-        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 4, offset: const Offset(0, 2)),
-          ],
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: TextStyle(color: Colors.grey[600], fontSize: 11)),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                '₹${value.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, size: 28, color: Colors.white),
+              const SizedBox(height: 8),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _ordersStream,
+                  builder: (context, orderSnap) {
+                    return StreamBuilder<QuerySnapshot>(
+                      stream: _bookingsStream,
+                      builder: (context, bookingSnap) {
+                        return StreamBuilder<QuerySnapshot>(
+                          stream: FirebaseFirestore.instance.collection('expenses').snapshots(),
+                          builder: (context, expenseSnap) {
+                            if (orderSnap.connectionState == ConnectionState.waiting || 
+                                bookingSnap.connectionState == ConnectionState.waiting ||
+                                expenseSnap.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
+                            }
+
+                            double totalProfit = 0;
+                            double totalDelivery = 0;
+                            double totalExpenses = 0;
+
+                            if (orderSnap.hasData) {
+                              for (var doc in orderSnap.data!.docs) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                if (data['status'] == 'cancelled') continue;
+                                
+                                final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                                totalDelivery += dFee;
+
+                                final items = data['items'] as List<dynamic>? ?? [];
+                                for (var item in items) {
+                                  final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                                  final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+                                  final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+                                  final itemRevenue = price * quantity;
+                                  
+                                  final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
+                                  final isPlatformItem = metadata['isPlatformOwned'] == true || 
+                                                       item['sellerId'] == 'admin' || 
+                                                       data['storeId'] == 'admin' ||
+                                                       basePrice > 0;
+                                  
+                                  if (isPlatformItem) {
+                                    totalProfit += (itemRevenue - (basePrice * quantity));
+                                  } else {
+                                    // For Store Partners: 25% of Margin (Price - Cost)
+                                    if (basePrice > 0) {
+                                      totalProfit += (itemRevenue - (basePrice * quantity)) * 0.25;
+                                    } else {
+                                      totalProfit += (itemRevenue * 0.2);
+                                    }
+                                  }
+                                }
+                              }
+                            }
+
+                            if (bookingSnap.hasData) {
+                              for (var doc in bookingSnap.data!.docs) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                if (data['status'] == 'cancelled') continue;
+                                double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                                double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
+                                totalProfit += comm;
+                              }
+                            }
+
+                            if (expenseSnap.hasData) {
+                               for (var doc in expenseSnap.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  totalExpenses += (data['amount'] as num?)?.toDouble() ?? 0.0;
+                               }
+                            }
+
+                            if (isNetProfit) {
+                              totalProfit = totalProfit - totalDelivery - totalExpenses;
+                            }
+
+                            return Center(
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        '₹${totalProfit.toStringAsFixed(0)}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 24,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      title,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Future<Map<String, double>> _calculateDashboardFinancials() async {
-    try {
-      // Simplified calculation for dashboard (limit to recent 100 txns for speed)
-      final txSnapshot = await FirebaseFirestore.instance
-          .collection('transactions')
-          .orderBy('createdAt', descending: true)
-          .limit(100)
-          .get();
-
-      double storeRevenue = 0;
-      double storePurchaseCost = 0;
-      double sellerComm = 0;
-      double serviceComm = 0;
-      double deliveryFeePaid = 0;
-      double totalSalesRevenue = 0;
-
-      final List<String> platformRoles = ['admin', 'super_admin', 'state_admin', 'store_manager', 'core_staff', 'manager'];
-      final Map<String, String> userRoleCache = {};
-
-      for (var doc in txSnapshot.docs) {
-        final data = doc.data();
-        final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-        final metadata = data['metadata'] as Map<String, dynamic>? ?? {};
-        final description = data['description'] as String? ?? '';
-        final typeStr = data['type'] as String? ?? 'credit';
-
-        // Delivery Cost
-        if (metadata['source'] == 'delivery_fee' || description.toLowerCase().contains('delivery payout')) {
-          deliveryFeePaid += amount;
-        } 
-        // Order Related
-        else if (metadata.containsKey('orderId')) {
-          if (description.contains('Commission') || metadata.containsKey('platformFee')) {
-            if (metadata['isPlatformOwned'] != true) {
-              sellerComm += (metadata['platformFee'] as num?)?.toDouble() ?? amount;
-            }
-          } else if (typeStr == 'credit') {
-            totalSalesRevenue += amount;
-            // Check Store Ownership
-            final sellerId = metadata['sellerId'] ?? data['userId'];
-            if (sellerId != null) {
-              String? role = userRoleCache[sellerId];
-              if (role == null) {
-                final uDoc = await FirebaseFirestore.instance.collection('users').doc(sellerId).get();
-                if (uDoc.exists) {
-                  role = (uDoc.data()?['role'] as String? ?? '').toLowerCase();
-                  userRoleCache[sellerId] = role!;
-                } else {
-                  role = 'unknown';
-                }
-              }
-
-              if (platformRoles.contains(role)) {
-                storeRevenue += amount;
-              }
-            }
-          }
-        }
-        // Service Related
-        else if (metadata.containsKey('bookingId')) {
-          if (description.contains('Commission') || metadata.containsKey('platformFee')) {
-            serviceComm += (metadata['platformFee'] as num?)?.toDouble() ?? amount;
-          } else {
-            totalSalesRevenue += amount;
-          }
-        }
-      }
-
-      final storeProfit = storeRevenue - storePurchaseCost; 
-      final totalProfit = storeProfit + sellerComm + serviceComm - deliveryFeePaid;
-
-      return {
-        'totalProfit': totalProfit,
-        'storeProfit': storeProfit,
-        'totalRevenue': totalSalesRevenue,
-      };
-    } catch (e) {
-      debugPrint('Dashboard Financials Error: $e');
-      return {'totalProfit': 0, 'storeProfit': 0, 'totalRevenue': 0};
+  Widget _buildTodayDeliveryCostItem({
+    required Timestamp startTs,
+    required Timestamp endTs,
+    required bool isStateAdmin,
+    required String? assignedState,
+  }) {
+    Query orderQuery = FirebaseFirestore.instance.collection('orders')
+        .where('orderDate', isGreaterThanOrEqualTo: startTs)
+        .where('orderDate', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      orderQuery = orderQuery.where('state', isEqualTo: assignedState);
     }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: orderQuery.snapshots(),
+      builder: (context, snapshot) {
+        double cost = 0;
+        if (snapshot.hasData) {
+          for (var doc in snapshot.data!.docs) {
+             final data = doc.data() as Map<String, dynamic>;
+             if (data['status'] == 'cancelled') continue;
+             cost += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+        return _buildMetricTile(
+          label: "Delivery Cost",
+          value: '₹${cost.toStringAsFixed(0)}',
+          icon: Icons.local_shipping,
+          color: Colors.red,
+          error: snapshot.error,
+        );
+      },
+    );
+  }
+
+  Widget _buildTodayExpenseItem({
+    required Timestamp startTs,
+    required Timestamp endTs,
+    required bool isStateAdmin,
+    required String? assignedState,
+  }) {
+    Query expenseQuery = FirebaseFirestore.instance.collection('expenses')
+        .where('createdAt', isGreaterThanOrEqualTo: startTs)
+        .where('createdAt', isLessThanOrEqualTo: endTs);
+    if (isStateAdmin && assignedState != null) {
+      expenseQuery = expenseQuery.where('state', isEqualTo: assignedState);
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: expenseQuery.snapshots(),
+      builder: (context, snapshot) {
+        double cost = 0;
+        if (snapshot.hasData) {
+          for (var doc in snapshot.data!.docs) {
+             final data = doc.data() as Map<String, dynamic>;
+             cost += (data['amount'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+        return _buildMetricTile(
+          label: "Other Expense",
+          value: '₹${cost.toStringAsFixed(0)}',
+          icon: Icons.money_off,
+          color: Colors.orangeAccent,
+          error: snapshot.error,
+        );
+      },
+    );
+  }
+
+  Widget _buildTotalDeliveryCostCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 4,
+      shadowColor: color.withValues(alpha: 0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, size: 28, color: Colors.white),
+              const SizedBox(height: 8),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _ordersStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
+                    }
+                    double total = 0;
+                    if (snapshot.hasData) {
+                      for (var doc in snapshot.data!.docs) {
+                         final data = doc.data() as Map<String, dynamic>;
+                         if (data['status'] == 'cancelled') continue;
+                         total += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                      }
+                    }
+                    return Center(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '₹${total.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpenseDashboardCard({
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Card(
+      elevation: 4,
+      shadowColor: color.withValues(alpha: 0.3),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, size: 28, color: Colors.white),
+              const SizedBox(height: 8),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance.collection('expenses').snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
+                    }
+                    double total = 0;
+                    if (snapshot.hasData) {
+                      for (var doc in snapshot.data!.docs) {
+                         final data = doc.data() as Map<String, dynamic>;
+                         total += (data['amount'] as num?)?.toDouble() ?? 0.0;
+                      }
+                    }
+                    return Center(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '₹${total.toStringAsFixed(0)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

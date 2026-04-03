@@ -4,7 +4,7 @@ class User {
   final String name;
   final String? phoneNumber;
   final String? photoURL;
-  final String role; // 'customer', 'seller', 'admin'
+  final String role; // 'customer', 'admin'
   final List<String>? servicePincodes; // Added for pincode-based routing
   final DateTime createdAt;
 
@@ -72,8 +72,9 @@ class User {
 
 class UserRole {
   static const String customer = 'customer';
-  static const String seller = 'seller';
   static const String admin = 'admin';
 
-  static const List<String> all = [customer, seller, admin];
+  static const String storePartner = 'store_partner';
+
+  static const List<String> all = [customer, admin, storePartner];
 }

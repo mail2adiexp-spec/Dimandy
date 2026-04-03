@@ -14,7 +14,6 @@ import 'package:ecommerce_app/services/notification_service.dart';
 // Role constants
 class UserRole {
   static const String user = 'user';
-  static const String seller = 'seller';
   static const String serviceProvider = 'service_provider';
   static const String coreStaff = 'core_staff';
   static const String storeManager = 'store_manager';
@@ -25,6 +24,7 @@ class UserRole {
   // New Roles for Multi-State System
   static const String superAdmin = 'super_admin';
   static const String stateAdmin = 'state_admin';
+  static const String storePartner = 'store_partner';
 }
 
 class AppUser {
@@ -86,12 +86,6 @@ class AuthProvider extends ChangeNotifier {
   bool get isAdmin => _isAdmin;
   bool get isInitialized => _isInitialized; // Add this getter
 
-  bool get isSeller {
-    if (_currentUser == null) return false;
-    final role = _currentUser!.role ?? UserRole.user;
-    return role == UserRole.seller || _isAdmin;
-  }
-
   bool get isServiceProvider {
     if (_currentUser == null) return false;
     return _currentUser!.role == UserRole.serviceProvider;
@@ -106,6 +100,11 @@ class AuthProvider extends ChangeNotifier {
   bool get isStoreManager {
     if (_currentUser == null) return false;
     return _currentUser!.role == UserRole.storeManager;
+  }
+
+  bool get isStorePartner {
+    if (_currentUser == null) return false;
+    return _currentUser!.role == UserRole.storePartner;
   }
 
   bool get isManager {
@@ -652,7 +651,20 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> resetPassword({required String email}) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
+      // Use ActionCodeSettings to allow redirecting back to the app
+      final actionCodeSettings = ActionCodeSettings(
+        url: 'https://www.dimandy.in/auth',
+        handleCodeInApp: true,
+        androidPackageName: 'in.dimandy.app', // Corrected Application ID
+        androidInstallApp: true,
+        androidMinimumVersion: '12',
+        iOSBundleId: 'in.dimandy.app',
+      );
+      
+      await _auth.sendPasswordResetEmail(
+        email: email.trim(),
+        actionCodeSettings: actionCodeSettings,
+      );
     } on FirebaseAuthException catch (e) {
       if (e.code == 'user-not-found') {
         throw Exception('No account found with this email address.');

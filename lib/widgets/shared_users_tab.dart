@@ -213,16 +213,12 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                       leading: CircleAvatar(
                         backgroundColor: role == 'admin'
                             ? Colors.red
-                            : role == 'seller'
-                            ? Colors.blue
                             : role == 'delivery_partner'
                             ? Colors.orange
                             : Colors.green,
                         child: Icon(
                           role == 'admin'
                               ? Icons.admin_panel_settings
-                              : role == 'seller'
-                              ? Icons.store
                               : role == 'delivery_partner'
                               ? Icons.delivery_dining
                               : Icons.person,
@@ -241,8 +237,6 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                         ),
                         backgroundColor: role == 'admin'
                             ? Colors.red[100]
-                            : role == 'seller'
-                            ? Colors.blue[100]
                             : role == 'delivery_partner'
                             ? Colors.orange[100]
                             : Colors.green[100],
@@ -499,14 +493,6 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
                       if (role == 'delivery_partner') {
                         updates['service_pincode'] = pincodeController.text.trim();
                       }
-                      if (role == 'seller') {
-                         final raw = servicePincodesController.text.trim();
-                         if (raw.isNotEmpty) {
-                           updates['servicePincodes'] = raw.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-                         } else {
-                           updates['servicePincodes'] = [];
-                         }
-                      }
 
                       await FirebaseFirestore.instance
                           .collection('users')
@@ -551,7 +537,6 @@ class _SharedUsersTabState extends State<SharedUsersTab> {
 
     final List<DropdownMenuItem<String>> items = [
       const DropdownMenuItem(value: 'user', child: Text('User')),
-      const DropdownMenuItem(value: 'seller', child: Text('Seller')),
       const DropdownMenuItem(
         value: 'delivery_partner',
         child: Text('Delivery Partner'),

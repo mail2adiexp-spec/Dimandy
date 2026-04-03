@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import '../models/order_model.dart';
 import '../services/invoice_service.dart';
+import '../services/notification_service.dart';
+import '../widgets/modify_order_dialog.dart';
 
 class OrderDetailsDialog extends StatelessWidget {
   final String orderId;
@@ -135,6 +137,21 @@ class OrderDetailsDialog extends StatelessWidget {
                       ),
                     ],
                   ),
+                  if (['pending', 'confirmed'].contains(orderData['status'] ?? 'pending'))
+                    IconButton(
+                      icon: Icon(Icons.edit_note, color: Theme.of(context).colorScheme.onPrimary),
+                      tooltip: 'Modify Order Items',
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (context) => ModifyOrderDialog(orderId: orderId, orderData: orderData, isCustomer: false),
+                        ).then((updated) {
+                          if (updated == true) {
+                            Navigator.pop(context); // Close details and refresh
+                          }
+                        });
+                      },
+                    ),
                   IconButton(
                     icon: Icon(
                       Icons.close,
@@ -341,7 +358,7 @@ class OrderDetailsDialog extends StatelessWidget {
     return Column(
       children: items.map((item) {
         final itemMap = item as Map<String, dynamic>;
-        final productName = itemMap['productName'] as String? ?? 'Unknown Product';
+        final productName = itemMap['productName'] as String? ?? itemMap['name'] as String? ?? 'Unknown Product';
         final quantity = itemMap['quantity'] as int? ?? 1;
         final price = (itemMap['price'] as num?)?.toDouble() ?? 0.0;
         final imageUrl = itemMap['imageUrl'] as String?;

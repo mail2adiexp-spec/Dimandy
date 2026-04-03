@@ -16,11 +16,15 @@ import '../providers/cart_provider.dart';
 import '../providers/auth_provider.dart';
 import 'cart_screen.dart';
 import 'account_screen.dart';
+import '../providers/service_category_provider.dart';
+import '../models/service_category_model.dart';
+import 'category_service_providers_screen.dart';
 import '../services/recommendation_service.dart';
 import '../widgets/marquee_widget.dart';
 import '../widgets/notifications_dialog.dart';
 import '../widgets/app_download_notification.dart';
 import '../widgets/custom_image.dart'; // Import CustomImage
+import 'package:url_launcher/url_launcher.dart'; // New
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -56,7 +60,8 @@ class _HomeScreenState extends State<HomeScreen> {
           }
         }
       });
-    _loadRecommendations();
+    // Removed recently viewed loading as requested
+    // _loadRecommendations();
     _scrollController.addListener(_onScroll);
     
     // Show app download notification popup on web after first frame
@@ -107,7 +112,8 @@ class _HomeScreenState extends State<HomeScreen> {
   // Pull-to-refresh handler
   Future<void> _handleRefresh() async {
     // Reload recommendations (products and categories auto-update via realtime listeners)
-    await _loadRecommendations();
+    // Removed recommendations refresh as requested
+    // await _loadRecommendations();
     
     final productProvider = context.read<ProductProvider>();
     // Reset product pagination
@@ -587,16 +593,47 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                           },
                         ),
-                        // Recently Viewed Section
+
+                        // Call & Order Banner
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: FirebaseFirestore.instance.collection('app_settings').doc('general').snapshots(),
+                          builder: (context, snapshot) {
+                            if (!snapshot.hasData || !snapshot.data!.exists) {
+                              return const SliverToBoxAdapter(child: SizedBox.shrink());
+                            }
+                            final data = snapshot.data!.data() as Map<String, dynamic>?;
+                            final phone = data?['contactPhoneNumber'] as String? ?? '';
+                            if (phone.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
+
+                            return SliverToBoxAdapter(
+                              child: _buildCallAndOrderBanner(context, phone),
+                            );
+                          },
+                        ),
+                        // Services Category Section (Replacement for Recently Viewed)
                         SliverToBoxAdapter(
-                          child: Consumer<RecommendationService>(
-                            builder: (context, recommendationService, _) {
-                              return _buildProductCarousel(
-                                context,
-                                '👁️ Recently Viewed',
-                                recommendationService.recentlyViewed,
-                                sectionHeight: 180,
-                                cardWidth: 140,
+                          child: Consumer<ServiceCategoryProvider>(
+                            builder: (context, provider, _) {
+                              final allCategories = provider.serviceCategories;
+                              if (allCategories.isEmpty) return const SizedBox.shrink();
+                              final categories = allCategories.take(10).toList();
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  SizedBox(
+                                    height: 145, // Reduced to eliminate extra bottom padding
+                                    child: ListView.builder(
+                                      scrollDirection: Axis.horizontal,
+                                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                                      itemCount: categories.length,
+                                      itemBuilder: (context, index) {
+                                        final category = categories[index];
+                                        return _buildServiceCategoryCarouselItem(context, category);
+                                      },
+                                    ),
+                                  ),
+                                ],
                               );
                             },
                           ),
@@ -605,10 +642,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         // Category grid
                         SliverToBoxAdapter(
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 8,
-                            ),
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 8), // Removed top padding
                             child: Builder(
                               builder: (context) {
                                 if (categoryProvider.isLoading) {
@@ -1000,6 +1034,73 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildServiceCategoryCarouselItem(BuildContext context, ServiceCategory category) {
+    final color = Color(int.parse(category.colorHex.replaceFirst('#', '0xFF')));
+    final hasImage = category.imageUrl != null && category.imageUrl!.isNotEmpty;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      child: InkWell(
+        onTap: () {
+          Navigator.pushNamed(
+            context,
+            CategoryServiceProvidersScreen.routeName,
+            arguments: category,
+          );
+        },
+        borderRadius: BorderRadius.circular(12),
+        child: Column(
+          children: [
+            Container(
+              width: 110, // Match premium grid look
+              height: 110,
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1), // Stronger shadow for larger cards
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+                border: Border.all(color: Colors.grey.withValues(alpha: 0.1), width: 1),
+              ),
+              child: Center(
+                child: hasImage
+                    ? ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: CustomImage(
+                          imageUrl: category.imageUrl!,
+                          width: double.infinity,
+                          height: double.infinity,
+                          fit: BoxFit.cover, // Cover to fill the large square
+                          errorWidget: Icon(Icons.design_services, color: color, size: 40),
+                        ),
+                      )
+                    : Icon(Icons.design_services, color: color, size: 48),
+              ),
+            ),
+            const SizedBox(height: 4), // Reduced spacing
+            SizedBox(
+              width: 110, // Matching container width
+              child: Text(
+                category.name,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildCategoryCard(
     String label,
     String? categoryValue,
@@ -1156,6 +1257,81 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCallAndOrderBanner(BuildContext context, String phone) {
+    return Container(
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.green.shade600, Colors.green.shade400],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.green.withValues(alpha: 0.3),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(
+              color: Colors.white24,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.phone_in_talk, color: Colors.white, size: 28),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Call & Order Now!',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'No Sign-up required! Place your order over phone.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.9),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final Uri url = Uri.parse('tel:$phone');
+              if (await canLaunchUrl(url)) {
+                await launchUrl(url);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.green.shade700,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: const Text('CALL', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),

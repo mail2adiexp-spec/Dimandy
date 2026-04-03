@@ -39,8 +39,8 @@ android {
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion  // Required for mobile_scanner
         targetSdk = 35
-        versionCode = 35
-        versionName = "1.1.10.35"
+        versionCode = 37
+        versionName = "1.1.12.37"
 
         externalNativeBuild {
             cmake {

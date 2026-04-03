@@ -11,6 +11,7 @@ import '../widgets/shared_users_tab.dart';
 import '../widgets/shared_services_tab.dart';
 
 import '../screens/role_management_tab.dart';
+import 'main_navigation_screen.dart';
 
 class CoreStaffDashboardScreen extends StatefulWidget {
   static const routeName = '/core-staff-dashboard';
@@ -22,7 +23,7 @@ class CoreStaffDashboardScreen extends StatefulWidget {
 }
 
 class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> with TickerProviderStateMixin {
-  late TabController _tabController;
+  TabController? _tabController;
   late AnimationController _refreshController;
   PermissionChecker? _permissionChecker;
   bool _isLoading = true;
@@ -109,8 +110,8 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
         // Assuming 'store staff' shouldn't see global user count.
         userCount = 0; 
 
-      } else {
-        print('🌍 Fetching global metrics');
+      } else if (authProvider.isSuperAdmin) {
+        print('🌍 Fetching global metrics (Super Admin)');
         final productsSnap = await FirebaseFirestore.instance.collection('products').count().get();
         final ordersSnap = await FirebaseFirestore.instance.collection('orders').count().get();
         final usersSnap = await FirebaseFirestore.instance.collection('users').where('role', isEqualTo: 'user').count().get();
@@ -118,6 +119,12 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
         productCount = productsSnap.count ?? 0;
         orderCount = ordersSnap.count ?? 0;
         userCount = usersSnap.count ?? 0;
+      } else {
+        // Logged in as staff/manager/partner but NO store assigned and NOT super admin
+        print('⚠️ Restricted access: No store assigned and not super admin');
+        productCount = 0;
+        orderCount = 0;
+        userCount = 0;
       }
 
       print('Products: $productCount, Orders: $orderCount, Users: $userCount');
@@ -181,6 +188,7 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
     } catch (e) {
       debugPrint('Error fetching permissions: $e');
     } finally {
+      if (_tabController == null) _setupTabs(); // Ensure tabs are set up even if error
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -233,11 +241,6 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
        _tabViews.add(_buildPartnerRequestsTab());
     }
 
-    // Sellers Management
-    if (_permissionChecker?.canManageSellers == true) {
-       _tabs.add(const Tab(icon: Icon(Icons.store), text: 'Sellers'));
-       _tabViews.add(_buildRoleBasedUsersTab('seller'));
-    }
 
     // Reports Download
     if (_permissionChecker?.canDownloadReports == true) {
@@ -323,9 +326,7 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
   @override
   void dispose() {
     _refreshController.dispose();
-    if (_tabs.isNotEmpty) {
-      _tabController.dispose();
-    }
+    _tabController?.dispose();
     super.dispose();
   }
 
@@ -360,21 +361,9 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
     return Scaffold(
       appBar: AppBar(
         title: const Text('Staff Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: _logout,
-          ),
-        ],
-        bottom: _tabs.isNotEmpty
-            ? TabBar(
-                controller: _tabController,
-                isScrollable: true,
-                tabs: _tabs,
-              )
-            : null,
       ),
-      body: _tabs.isEmpty
+      drawer: _buildDrawer(),
+      body: _tabs.isEmpty || _tabController == null
           ? const Center(child: Text('No access to any modules.'))
           : TabBarView(
               controller: _tabController,
@@ -383,7 +372,87 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
     );
   }
 
+  Widget _buildDrawer() {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.currentUser;
+    
+    return Drawer(
+      child: Column(
+        children: [
+          UserAccountsDrawerHeader(
+            decoration: BoxDecoration(color: Theme.of(context).primaryColor),
+            accountName: Text(user?.name ?? 'Staff Member', style: const TextStyle(fontWeight: FontWeight.bold)),
+            accountEmail: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(user?.email ?? ''),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Role: ${user?.role?.toUpperCase() ?? 'NONE'}',
+                    style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+            currentAccountPicture: CircleAvatar(
+              backgroundColor: Colors.white,
+              backgroundImage: user?.photoURL != null ? NetworkImage(user!.photoURL!) : null,
+              child: user?.photoURL == null ? const Icon(Icons.person, size: 40) : null,
+            ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.dashboard_outlined),
+            title: const Text('Overview'),
+            selected: _tabController?.index == 0,
+            onTap: () {
+              setState(() => _tabController?.index = 0);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.inventory_2_outlined),
+            title: const Text('Products'),
+            selected: _tabController?.index == 1,
+            onTap: () {
+              setState(() => _tabController?.index = 1);
+              Navigator.pop(context);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.receipt_long_outlined),
+            title: const Text('Orders'),
+            selected: _tabController?.index == 2,
+            onTap: () {
+              setState(() => _tabController?.index = 2);
+              Navigator.pop(context);
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.shopping_bag_outlined),
+            title: const Text('Back to Shopping'),
+            onTap: () => Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false),
+          ),
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onTap: _logout,
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDashboardHome() {
+    final authProvider = Provider.of<AuthProvider>(context);
+    final userName = authProvider.currentUser?.name ?? 'Staff';
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -393,8 +462,8 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Welcome, Staff Member',
-                style: Theme.of(context).textTheme.headlineSmall,
+                'Welcome, $userName',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
               ),
                RotationTransition(
                  turns: _refreshController,
@@ -402,38 +471,44 @@ class _CoreStaffDashboardScreenState extends State<CoreStaffDashboardScreen> wit
                    icon: const Icon(Icons.refresh),
                    onPressed: () async {
                      _refreshController.repeat();
-                     ScaffoldMessenger.of(context).showSnackBar(
-                       const SnackBar(content: Text('Refreshing metrics...'), duration: Duration(seconds: 1)),
-                     );
                      await _fetchDashboardMetrics();
-                     await Future.delayed(const Duration(seconds: 1));
                      if (mounted) {
                         _refreshController.stop();
                         _refreshController.reset();
                      }
                    },
-                   tooltip: 'Refresh Metrics',
                  ),
                ),
             ],
           ),
           if (_lastError != null)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              padding: const EdgeInsets.symmetric(vertical: 12.0),
               child: Container(
-                padding: const EdgeInsets.all(8),
-                color: Colors.red[100],
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error, color: Colors.red),
-                    const SizedBox(width: 8),
-                    Expanded(child: Text('Error: $_lastError', style: const TextStyle(color: Colors.red))),
+                    const Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _lastError!.contains('PERMISSION_DENIED') 
+                          ? 'Missing permission for some metrics. Please contact admin.'
+                          : 'Error: $_lastError', 
+                        style: const TextStyle(color: Colors.orange, fontSize: 13)
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),

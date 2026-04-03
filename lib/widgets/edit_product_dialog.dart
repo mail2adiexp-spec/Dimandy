@@ -28,6 +28,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _priceController;
   late TextEditingController _basePriceController; // Added
   late TextEditingController _mrpController;
+  late TextEditingController _discountController;
   late TextEditingController _stockController;
   late TextEditingController _minQtyController;
   late TextEditingController _maxQtyController;
@@ -55,6 +56,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _stockController = TextEditingController(text: widget.productData['stock'].toString());
     _minQtyController = TextEditingController(text: (widget.productData['minimumQuantity'] ?? 1).toString());
     _maxQtyController = TextEditingController(text: (widget.productData['maximumQuantity'] ?? 0).toString());
+    _discountController = TextEditingController(text: (widget.productData['discountPercent'] ?? '').toString());
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? [widget.productData['imageUrl']]);
@@ -68,6 +70,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _priceController.dispose();
     _basePriceController.dispose(); // Added
     _mrpController.dispose();
+    _discountController.dispose();
     _stockController.dispose();
     _minQtyController.dispose();
     _maxQtyController.dispose();
@@ -140,17 +143,19 @@ class _EditProductDialogState extends State<EditProductDialog> {
         debugPrint('Error fetching platform fee for update: $e');
       }
 
-      final sellerPrice = double.parse(_priceController.text);
-      final listingPrice = sellerPrice * (1 + platformFeePercent);
+      final sellingPrice = double.parse(_priceController.text);
+      final discountPercent = double.tryParse(_discountController.text) ?? 0;
+      final finalPrice = sellingPrice * (1 - (discountPercent / 100));
 
       await FirebaseFirestore.instance.collection('products').doc(widget.productId).update({
         'name': _nameController.text.trim(),
         'description': _descriptionController.text.trim(),
         'basePrice': double.parse(_basePriceController.text),
-        'price': listingPrice, // Store Listing Price
-        'sellerPrice': sellerPrice, // Preserve Seller's price
+        'price': finalPrice, // Store Final Discounted Price
+        'sellerPrice': sellingPrice, 
+        'discountPercent': discountPercent > 0 ? discountPercent : null,
         'mrp': double.parse(_mrpController.text),
-        'isHotDeal': double.parse(_mrpController.text) > listingPrice,
+        'isHotDeal': double.parse(_mrpController.text) > finalPrice,
         'stock': int.parse(_stockController.text),
         'minimumQuantity': int.parse(_minQtyController.text),
         'maximumQuantity': int.parse(_maxQtyController.text),
@@ -161,6 +166,28 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'imageUrl': allUrls.isNotEmpty ? allUrls.first : null, // Main image
         'updatedAt': FieldValue.serverTimestamp(),
       });
+
+      // --- LOG STOCK INCREASE AS PURCHASE ---
+      final newStock = int.parse(_stockController.text);
+      final oldStock = (widget.productData['stock'] as num?)?.toInt() ?? 0;
+      final bPrice = double.parse(_basePriceController.text);
+      
+      if (newStock > oldStock) {
+          final diff = newStock - oldStock;
+          for (var sId in _selectedStoreIds) {
+            await FirebaseFirestore.instance.collection('purchases').add({
+              'productId': widget.productId,
+              'productName': _nameController.text.trim(),
+              'quantity': diff,
+              'purchasePrice': bPrice,
+              'totalAmount': diff * bPrice,
+              'storeId': sId,
+              'type': 'restock',
+              'createdAt': FieldValue.serverTimestamp(),
+              'state': widget.productData['state'],
+            });
+          }
+      }
 
       if (mounted) {
         Navigator.pop(context, true); // Return true to indicate success
@@ -345,60 +372,30 @@ class _EditProductDialogState extends State<EditProductDialog> {
                            return null;
                        },
                      ),
+                     const SizedBox(height: 12),
+                     TextFormField(
+                       controller: _discountController,
+                       decoration: const InputDecoration(
+                         labelText: 'Discount (%) - Optional',
+                         border: OutlineInputBorder(),
+                         suffixText: '%',
+                         prefixIcon: Icon(Icons.label_outline),
+                       ),
+                       keyboardType: TextInputType.number,
+                     ),
                     const SizedBox(height: 12),
-                    // Platform Fee & Listing Price Preview
-                    FutureBuilder<DocumentSnapshot>(
-                      future: FirebaseFirestore.instance.collection('app_settings').doc('general').get(),
-                      builder: (context, snapshot) {
-                        double platformFeePercent = 0.05; // Default 5%
-                        if (snapshot.hasData && snapshot.data!.exists) {
-                          final data = snapshot.data!.data() as Map<String, dynamic>;
-                          platformFeePercent = (data['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 
-                                             (data['platformFeePercentage'] as num?)?.toDouble() ?? 0.0;
-                          platformFeePercent = platformFeePercent / 100;
-                        }
-
+                    ListenableBuilder(
+                      listenable: Listenable.merge([_priceController, _discountController]),
+                      builder: (context, _) {
+                        final price = double.tryParse(_priceController.text) ?? 0;
+                        final discount = double.tryParse(_discountController.text) ?? 0;
+                        if (discount <= 0) return const SizedBox.shrink();
+                        final finalPrice = price * (1 - (discount / 100));
                         return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.blue[50],
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.blue[100]!),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.info_outline, size: 16, color: Colors.blue),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: ListenableBuilder(
-                                  listenable: _priceController,
-                                  builder: (context, child) {
-                                    final price = double.tryParse(_priceController.text) ?? 0;
-                                    final platformFee = price * platformFeePercent;
-                                    final listingPrice = price + platformFee;
-                                    
-                                    return Text.rich(
-                                      TextSpan(
-                                        children: [
-                                          TextSpan(text: 'Fee (${(platformFeePercent * 100).toStringAsFixed(0)}%): '),
-                                          TextSpan(
-                                            text: '\u20B9${platformFee.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
-                                          ),
-                                          const TextSpan(text: '  |  Listing Price: '),
-                                          TextSpan(
-                                            text: '\u20B9${listingPrice.toStringAsFixed(2)}',
-                                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green),
-                                          ),
-                                        ],
-                                        style: TextStyle(color: Colors.blue[900], fontSize: 13),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
+                          padding: const EdgeInsets.all(8),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(4)),
+                          child: Text('Effective Listing Price: \u20B9${finalPrice.toStringAsFixed(2)}', style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold)),
                         );
                       }
                     ),
@@ -422,7 +419,12 @@ class _EditProductDialogState extends State<EditProductDialog> {
                             controller: _stockController,
                             decoration: InputDecoration(labelText: 'Stock', border: const OutlineInputBorder(), suffixText: _selectedUnit),
                             keyboardType: TextInputType.number,
-                            validator: (v) => int.tryParse(v ?? '') == null ? 'Invalid' : null,
+                            validator: (v) {
+                              final val = int.tryParse(v ?? '');
+                              if (val == null) return 'Invalid';
+                              if (val < 0) return 'Cannot be negative';
+                              return null;
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),

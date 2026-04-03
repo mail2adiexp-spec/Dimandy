@@ -119,7 +119,7 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                         crossAxisCount: crossAxisCount,
                         crossAxisSpacing: 16,
                         mainAxisSpacing: 16,
-                        childAspectRatio: 1.4, // Adjust for card height
+                        childAspectRatio: 0.85, // Taller cards to prevent overflow
                       ),
                       itemCount: docs.length,
                       itemBuilder: (context, index) {
@@ -241,7 +241,7 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
             ),
           ),
           Expanded(
-            child: Padding(
+            child: SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -298,7 +298,7 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  Expanded(
+                  Container(
                     child: store.pincodes.isEmpty 
                       ? const Text('No pincodes assigned', style: TextStyle(fontStyle: FontStyle.italic, color: Colors.grey))
                       : Wrap(
@@ -324,15 +324,13 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                               : const SizedBox.shrink()),
                         ),
                   ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Added: ${DateFormat('dd MMM yyyy').format(store.createdAt.toDate())}',
+                    style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                  ),
                 ],
               ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text(
-              'Added: ${DateFormat('dd MMM yyyy').format(store.createdAt.toDate())}',
-              style: TextStyle(fontSize: 11, color: Colors.grey[400]),
             ),
           ),
         ],

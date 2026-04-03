@@ -502,8 +502,27 @@ class _DeliveryPartnerDashboardScreenState
                   flex: 1,
                   child: OutlinedButton.icon(
                     onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Request dismissed')),
+                      showDialog(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: const Text('Reject Order'),
+                          content: const Text('Are you sure you want to reject this order?'),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(context, 'cancel'),
+                              child: const Text('Cancel'),
+                            ),
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context, 'reject');
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Request dismissed')),
+                                );
+                              },
+                              child: const Text('Reject', style: TextStyle(color: Colors.red)),
+                            ),
+                          ],
+                        ),
                       );
                     },
                     icon: const Icon(Icons.close, size: 18),
@@ -1010,10 +1029,12 @@ class _DeliveryPartnerDashboardScreenState
               ),
             ],
 
-            // QR Code & Payment Section (for out_for_delivery status)
+            // QR Code Section (for out_for_delivery status)
             if (order.status == 'out_for_delivery') ...[
               const SizedBox(height: 16),
               const Divider(),
+              const SizedBox(height: 8),
+              const Text('Request payment from customer:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
               
               // Show QR Code Button
@@ -1022,7 +1043,7 @@ class _DeliveryPartnerDashboardScreenState
                 child: ElevatedButton.icon(
                   onPressed: () => _showQRCode(context),
                   icon: const Icon(Icons.qr_code_2),
-                  label: const Text('Show QR Code to Customer'),
+                  label: const Text('Show Store QR Code'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.purple,
                     foregroundColor: Colors.white,
@@ -1030,57 +1051,8 @@ class _DeliveryPartnerDashboardScreenState
                   ),
                 ),
               ),
-              
-              // Payment Proof Upload
-              if (order.paymentProofUrl == null)
-                PaymentProofUploadWidget(
-                  orderId: orderId,
-                  deliveryPartnerId: order.deliveryPartnerId ?? '',
-                  onUploadComplete: () {
-                    setState(() {}); // Refresh to show updated data
-                  },
-                )
-              else ...[              const SizedBox(height: 12),
-                Card(
-                  color: Colors.green[50],
-                  child: Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: Row(
-                      children: [
-                        Icon(Icons.check_circle, color: Colors.green[700]),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Payment Proof Uploaded',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.green[900],
-                                ),
-                              ),
-                              if (!order.paymentVerified)
-                                Text(
-                                  'Awaiting admin verification',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.green[700],
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.image),
-                          onPressed: () => _viewPaymentProof(context, order.paymentProofUrl!),
-                          tooltip: 'View Screenshot',
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
+              const SizedBox(height: 8),
+              const Text('Confirm payment type during "Mark Delivered" step.', style: TextStyle(fontSize: 12, color: Colors.grey)),
             ],
 
             // Release Order Button (Only if not yet picked up)
@@ -1273,7 +1245,7 @@ class _DeliveryPartnerDashboardScreenState
         return 'out_for_delivery';
       case 'out_for_delivery':
         return 'delivered';
-      case 'out_for_pickup': // Added
+      case 'out_for_pickup':
         return 'returned';
       default:
         return currentStatus;
@@ -1309,29 +1281,14 @@ class _DeliveryPartnerDashboardScreenState
     }
 
     if (nextStatus == 'delivered') {
-      // 1. Ensure proof is uploaded if required, BEFORE updating status
-      final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
-      final latestData = orderDoc.data();
-      final latestPaymentProofUrl = latestData?['paymentProofUrl'];
-      final latestPaymentMethod = latestData?['paymentMethod'] ?? order.paymentMethod;
-
-      if (latestPaymentMethod == 'qr_code' && latestPaymentProofUrl == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Payment proof required! Please upload screenshot first.'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        return; // Exit immediately
-      }
-
-      // 2. Fetch Store QR Code
+      // 1. Fetch Store QR Code
       String? qrCodeUrl;
       String? upiId;
+      final orderDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
+      final latestData = orderDoc.data();
+      final latestPaymentMethod = (latestData?['paymentMethod'] ?? order.paymentMethod)?.toString().toUpperCase() ?? 'COD';
 
-      if (latestPaymentMethod == 'qr_code' || latestPaymentMethod == 'cod' || latestPaymentMethod == 'cash_on_delivery') {
+      if (latestPaymentMethod == 'QR_CODE' || latestPaymentMethod == 'COD' || latestPaymentMethod == 'CASH_ON_DELIVERY') {
         try {
           final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
           if (settingsDoc.exists) {
@@ -1343,48 +1300,60 @@ class _DeliveryPartnerDashboardScreenState
         }
       }
 
-      // 3. Show dialog
+      // 2. Show Confirmation Dialog
       if (mounted) {
-        final paymentConfirmed = await showDialog<bool>(
+        final paymentSelection = await showDialog<String>(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-            title: const Text('Payment Details'),
+            title: const Text('Payment Confirmation'),
             content: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                   const Text('Verify if you have received the payment from customer.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                   const SizedBox(height: 16),
                   Text('Amount to Collect: ₹${order.totalAmount.toStringAsFixed(2)}', 
-                       style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
                   const SizedBox(height: 12),
-                  Text('Method: ${latestPaymentMethod?.replaceAll('_', ' ').toUpperCase() ?? "COD"}'),
+                  const Divider(),
                   
-                  if (latestPaymentMethod == 'online' || latestPaymentMethod == 'prepaid') ...[
+                  if (latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID') ...[
                      const SizedBox(height: 8),
-                     const Text('Payment is Prepaid. No cash to collect.', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                     const Center(
+                       child: Column(
+                         children: [
+                           Icon(Icons.check_circle, color: Colors.green, size: 48),
+                           SizedBox(height: 8),
+                           Text('PREPAID ORDER', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                           Text('No cash to collect from customer.', style: TextStyle(color: Colors.grey)),
+                         ],
+                       ),
+                     ),
                   ] else ...[
                      const SizedBox(height: 8),
-                     const Text('Please collect payment from customer.', style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                     const Text('Ask customer to pay now:', style: TextStyle(fontWeight: FontWeight.bold)),
                      
                      if (qrCodeUrl != null) ...[
-                       const SizedBox(height: 16),
-                       const Divider(),
-                       const Text('Store UPI QR Code:', style: TextStyle(fontWeight: FontWeight.bold)),
-                       const SizedBox(height: 8),
-                       Center(
-                         child: Image.network(
-                           qrCodeUrl,
-                           height: 200,
-                           width: 200,
-                           fit: BoxFit.contain,
-                           errorBuilder: (ctx, _, __) => const Icon(Icons.broken_image, size: 50),
-                         ),
-                       ),
-                       if (upiId != null) ...[
-                         const SizedBox(height: 8),
-                         Center(child: Text('UPI ID: $upiId', style: const TextStyle(fontWeight: FontWeight.bold))),
-                       ],
+                        const SizedBox(height: 12),
+                        Center(
+                          child: Column(
+                            children: [
+                              Image.network(
+                                qrCodeUrl,
+                                height: 180,
+                                width: 180,
+                                fit: BoxFit.contain,
+                                errorBuilder: (ctx, _, __) => const Icon(Icons.broken_image, size: 50),
+                              ),
+                              if (upiId != null) ...[
+                                const SizedBox(height: 4),
+                                Text('UPI ID: $upiId', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
+                              ],
+                            ],
+                          ),
+                        ),
                      ]
                   ],
                 ],
@@ -1392,51 +1361,112 @@ class _DeliveryPartnerDashboardScreenState
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel Delivery'),
+                onPressed: () => Navigator.pop(context, 'cancel'),
+                child: const Text('Cancel'),
               ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(context, true),
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                child: const Text('Payment Received & Deliver'),
-              ),
+              if (latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID') 
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context, 'delivered'),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                  child: const Text('Confirm Delivery'),
+                )
+              else ...[
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context, 'delivered_cash'),
+                   icon: const Icon(Icons.money),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                  label: const Text('Received Cash'),
+                ),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context, 'delivered_qr'),
+                  icon: const Icon(Icons.qr_code),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+                  label: const Text('Received via QR'),
+                ),
+              ],
             ],
           ),
         );
 
-        if (paymentConfirmed != true) {
-          return; // Delivery was cancelled by the delivery partner
+        if (paymentSelection == null || paymentSelection == 'cancel') return;
+
+        try {
+          final Map<String, dynamic> updateData = {
+            'status': 'delivered',
+            'deliveryStatus': 'delivered',
+            'statusHistory.delivered': FieldValue.serverTimestamp(),
+            'deliveredAt': FieldValue.serverTimestamp(),
+            'actualDelivery': DateTime.now().toIso8601String(),
+          };
+
+          if (paymentSelection == 'delivered_qr') {
+            updateData['qrAtDoorstep'] = true;
+            updateData['paymentVerified'] = true;
+          } else if (paymentSelection == 'delivered_cash') {
+            updateData['qrAtDoorstep'] = false;
+            updateData['paymentVerified'] = true;
+          } else {
+             updateData['paymentVerified'] = true;
+          }
+
+          await FirebaseFirestore.instance.collection('orders').doc(orderId).update(updateData);
+          
+          // Record transaction for delivery partner earnings
+          try {
+            final deliveryFee = (latestData?['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+            final partnerId = latestData?['deliveryPartnerId'] as String?;
+            
+            if (deliveryFee > 0 && partnerId != null) {
+              await TransactionService().recordTransaction(
+                TransactionModel(
+                  id: '', // Firestore will generate
+                  userId: partnerId,
+                  amount: deliveryFee,
+                  type: TransactionType.credit,
+                  description: 'Delivery Partner Fee: #${orderId.substring(0, 8)}',
+                  status: TransactionStatus.completed,
+                  referenceId: orderId,
+                  metadata: {
+                    'orderId': orderId,
+                    'type': 'delivery_earning',
+                    'sellerId': partnerId, // Standard for revenue tracking
+                  },
+                  createdAt: DateTime.now(),
+                ),
+              );
+              debugPrint('Transaction recorded for partner: $partnerId, amount: $deliveryFee');
+            }
+          } catch (te) {
+            debugPrint('Error recording earning transaction: $te');
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Order delivered successfully!')),
+            );
+            setState(() {});
+          }
+          return; 
+        } catch (e) {
+           if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error updating order: $e')));
+           return;
         }
       }
     }
 
+    // Default status update for other transitions (shipped, out_for_delivery, etc.)
     try {
-      await FirebaseFirestore.instance
-          .collection('orders')
-          .doc(orderId)
-          .update({
-            'status': nextStatus,
-            'statusHistory.$nextStatus': FieldValue.serverTimestamp(),
-            if (nextStatus == 'delivered')
-               'actualDelivery': DateTime.now().toIso8601String(),
-            if (nextStatus == 'delivered')
-               'deliveredAt': FieldValue.serverTimestamp(),
-            if (nextStatus == 'delivered')
-              'deliveryStatus': 'delivered',
-          });
-
-      // Note: Transaction record for delivery fee is now handled automatically 
-      // by the 'onOrderUpdate' Cloud Function.
-
-      // Status and transaction completed successfully.
+      await FirebaseFirestore.instance.collection('orders').doc(orderId).update({
+        'status': nextStatus,
+        'deliveryStatus': nextStatus,
+        'statusHistory.$nextStatus': FieldValue.serverTimestamp(),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('✓ Order verified and marked as ${_getStatusLabel(nextStatus)}'),
-            backgroundColor: Colors.green,
-          ),
+          SnackBar(content: Text('Status updated to ${_getStatusLabel(nextStatus)}')),
         );
+        setState(() {});
       }
     } catch (e) {
       if (mounted) {
@@ -1706,9 +1736,26 @@ class _DeliveryPartnerDashboardScreenState
           ),
           const SizedBox(height: 24),
 
+          // Stats Filter Selector
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildDateFilterChip('Today', 'today'),
+                const SizedBox(width: 8),
+                _buildDateFilterChip('Yesterday', 'yesterday'),
+                const SizedBox(width: 8),
+                _buildDateFilterChip('7 Days', 'week'),
+                const SizedBox(width: 8),
+                _buildDateFilterChip('All Time', 'all'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Business Stats
           Text(
-            'Business Stats',
+            'Business Performance',
             style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
@@ -1718,99 +1765,79 @@ class _DeliveryPartnerDashboardScreenState
             stream: _statsStream,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            context,
-                            'Total Deliveries',
-                            '0',
-                            Icons.local_shipping,
-                            Colors.blue,
-                            isLoading: true,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            context,
-                            'Completed Today',
-                            '0',
-                            Icons.today,
-                            Colors.green,
-                            isLoading: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            context,
-                            'Total Earnings',
-                            '₹0',
-                            Icons.currency_rupee,
-                            Colors.orange,
-                            isLoading: true,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            context,
-                            'Success Rate',
-                            '0%',
-                            Icons.trending_up,
-                            Colors.purple,
-                            isLoading: true,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
+                return const Center(child: CircularProgressIndicator());
               }
 
               final allOrders = snapshot.data?.docs ?? [];
-              final totalCount = allOrders.length;
+              final now = DateTime.now();
+              final todayStart = DateTime(now.year, now.month, now.day);
+              
+              DateTime? filterDate;
+              if (_selectedDateFilter == 'today') {
+                filterDate = todayStart;
+              } else if (_selectedDateFilter == 'yesterday') {
+                filterDate = todayStart.subtract(const Duration(days: 1));
+              } else if (_selectedDateFilter == 'week') {
+                filterDate = todayStart.subtract(const Duration(days: 7));
+              }
 
-              // Filter completed orders
-              final completedOrders = allOrders.where((doc) {
+              // Filter orders based on the selected period
+              final filteredOrders = allOrders.where((doc) {
+                if (_selectedDateFilter == 'all') return true;
+                
+                final data = doc.data() as Map<String, dynamic>;
+                final date = (data['deliveredAt'] as Timestamp? ?? data['createdAt'] as Timestamp?)?.toDate();
+                if (date == null) return false;
+
+                if (_selectedDateFilter == 'yesterday') {
+                  final yesterdayEnd = todayStart;
+                  final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+                  return date.isAfter(yesterdayStart) && date.isBefore(yesterdayEnd);
+                }
+
+                return date.isAfter(filterDate!);
+              }).toList();
+
+              final totalCount = filteredOrders.length;
+              final completedOrders = filteredOrders.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 return data['deliveryStatus'] == 'delivered';
               }).toList();
 
-              // Calculate today's deliveries
-              final today = DateTime.now();
-              final todayStart = DateTime(today.year, today.month, today.day);
               int todayCount = 0;
+              double cashToDeposit = 0;
+              double qrCollections = 0;
+              double prePaidOnline = 0;
+              double totalEarnings = 0;
+
               for (var doc in completedOrders) {
                 final data = doc.data() as Map<String, dynamic>;
                 final deliveredAt = data['deliveredAt'] as Timestamp?;
+                final method = data['paymentMethod']?.toString().toUpperCase() ?? 'COD'; 
+                final amount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                final pointOfSaleQR = data['paymentProofUrl'] != null || data['qrAtDoorstep'] == true;
+
                 if (deliveredAt != null) {
                   final deliveredDate = deliveredAt.toDate();
                   if (deliveredDate.isAfter(todayStart)) {
                     todayCount++;
                   }
                 }
+
+                if (method == 'ONLINE' || method == 'PREPAID') {
+                  prePaidOnline += amount;
+                } else if (pointOfSaleQR) {
+                  qrCollections += amount;
+                } else {
+                  cashToDeposit += amount;
+                }
+                
+                totalEarnings += (data['deliveryFee'] as num?)?.toDouble() ?? 0;
               }
 
-              // Calculate total earnings
-              double totalEarnings = 0;
-              for (var doc in completedOrders) {
-                final data = doc.data() as Map<String, dynamic>;
-                final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
-                totalEarnings += deliveryFee;
-              }
-
-              // Calculate success rate
-              final successRate = totalCount > 0
-                  ? (completedOrders.length / totalCount * 100)
-                  : 0.0;
+              final successRate = totalCount > 0 
+                ? (completedOrders.length / totalCount * 100).toStringAsFixed(1) 
+                : '0';
 
               return Column(
                 children: [
@@ -1819,7 +1846,7 @@ class _DeliveryPartnerDashboardScreenState
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Total Deliveries',
+                          'Filtered Orders',
                           '$totalCount',
                           Icons.local_shipping,
                           Colors.blue,
@@ -1829,9 +1856,9 @@ class _DeliveryPartnerDashboardScreenState
                       Expanded(
                         child: _buildStatCard(
                           context,
-                          'Completed Today',
-                          '$todayCount',
-                          Icons.today,
+                          'Delivered',
+                          '${completedOrders.length}',
+                          Icons.check_circle,
                           Colors.green,
                         ),
                       ),
@@ -1854,11 +1881,67 @@ class _DeliveryPartnerDashboardScreenState
                         child: _buildStatCard(
                           context,
                           'Success Rate',
-                          '${successRate.toStringAsFixed(0)}%',
+                          '$successRate%',
                           Icons.trending_up,
                           Colors.purple,
                         ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  // Financial Summary Section
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Financial Breakdown',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                         _selectedDateFilter.toUpperCase(),
+                        style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Cash To Deposit',
+                          '₹${cashToDeposit.toStringAsFixed(0)}',
+                          Icons.money_off,
+                          Colors.red,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'QR Collection',
+                          '₹${qrCollections.toStringAsFixed(0)}',
+                          Icons.qr_code,
+                          Colors.teal,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          'Pre-paid Online',
+                          '₹${prePaidOnline.toStringAsFixed(0)}',
+                          Icons.account_balance,
+                          Colors.indigo,
+                        ),
+                      ),
+                      const Expanded(child: SizedBox()), // Placeholder for alignment
                     ],
                   ),
                 ],
@@ -2155,6 +2238,7 @@ class _DeliveryPartnerDashboardScreenState
 
   // ==================== PHASE 2: EARNINGS DIALOG ====================
   void _showEarningsDialog(String deliveryPartnerId) {
+    bool isSyncing = false;
     showDialog(
       context: context,
       builder: (ctx) => Dialog(
@@ -2163,139 +2247,192 @@ class _DeliveryPartnerDashboardScreenState
           width: 800,
           height: 600,
           padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Earnings History',
-                    style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(ctx),
-                  ),
-                ],
-              ),
-              const Divider(),
-              const SizedBox(height: 16),
-
-              // Total Earnings Card
-              StreamBuilder<QuerySnapshot>(
-                stream: _totalEarningsStream,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Card(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                     Expanded(
+                       child: Column(
+                         crossAxisAlignment: CrossAxisAlignment.start,
+                         children: [
+                           const Text(
+                            'Earnings History',
+                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                          ),
+                          Text('Sync older earnings to your wallet', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                         ],
+                       ),
+                     ),
+                    Row(
+                      children: [
+                        StatefulBuilder(
+                          builder: (context, setStateSync) {
+                            return TextButton.icon(
+                              onPressed: isSyncing ? null : () async {
+                                setStateSync(() => isSyncing = true);
+                                await _syncMissingTransactions(deliveryPartnerId);
+                                if (context.mounted) {
+                                  Navigator.pop(ctx);
+                                  _showEarningsDialog(deliveryPartnerId);
+                                }
+                              },
+                              icon: isSyncing 
+                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) 
+                                : const Icon(Icons.sync, size: 18),
+                              label: Text(isSyncing ? 'Syncing...' : 'Sync Balance'),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(ctx),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const Divider(),
+                const SizedBox(height: 16),
+  
+                // Available Balance Card (New)
+                FutureBuilder<double>(
+                  future: TransactionService().getBalance(deliveryPartnerId),
+                  builder: (context, balanceSnapshot) {
+                    final balance = balanceSnapshot.data ?? 0.0;
+                    final isWalletLoading = balanceSnapshot.connectionState == ConnectionState.waiting;
+  
+                    return Card(
+                      color: Colors.blue.shade50,
                       child: Padding(
-                        padding: EdgeInsets.all(24),
-                        child: Center(child: CircularProgressIndicator()),
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Available Balance', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                                  if (isWalletLoading)
+                                    const SizedBox(height: 8, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                                  else
+                                    Text(
+                                      '₹${balance.toStringAsFixed(2)}',
+                                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     );
-                  }
-
-                  double totalEarnings = 0;
-                  final deliveries = snapshot.data?.docs ?? [];
-                  
-                  for (var doc in deliveries) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
-                    totalEarnings += fee;
-                  }
-
-                  return Card(
-                    color: Colors.green.shade50,
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.currency_rupee,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Total Earnings',
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '₹${totalEarnings.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 32,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.green,
-                                  ),
-                                ),
-                                Text(
-                                  'From ${deliveries.length} completed deliveries',
-                                  style: const TextStyle(
-                                    fontSize: 14,
-                                    color: Colors.black54,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // Wallet Button
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    final auth = Provider.of<AuthProvider>(context, listen: false);
-                    if (auth.currentUser != null) {
-                       Navigator.push(
-                         context,
-                         MaterialPageRoute(builder: (_) => SellerWalletScreen(user: auth.currentUser!)),
-                       );
-                    }
                   },
-                  icon: const Icon(Icons.account_balance_wallet),
-                  label: const Text('Manage Wallet & Withdraw'),
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    backgroundColor: Colors.blue,
-                    foregroundColor: Colors.white,
+                ),
+                const SizedBox(height: 12),
+  
+                // Total Earnings Card
+                StreamBuilder<QuerySnapshot>(
+                  stream: _totalEarningsStream,
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Card(
+                        child: Padding(
+                          padding: EdgeInsets.all(24),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                      );
+                    }
+  
+                    double totalEarnings = 0;
+                    final deliveries = snapshot.data?.docs ?? [];
+                    
+                    for (var doc in deliveries) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
+                      totalEarnings += fee;
+                    }
+  
+                    return Card(
+                      color: Colors.green.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.green,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Icon(Icons.trending_up, color: Colors.white, size: 28),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text('Lifetime Earnings', style: TextStyle(fontSize: 14, color: Colors.black54)),
+                                  Text(
+                                    '₹${totalEarnings.toStringAsFixed(2)}',
+                                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+  
+                // Wallet Button
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      final auth = Provider.of<AuthProvider>(context, listen: false);
+                      if (auth.currentUser != null) {
+                         Navigator.push(
+                           context,
+                           MaterialPageRoute(builder: (_) => SellerWalletScreen(user: auth.currentUser!)),
+                         );
+                      }
+                    },
+                    icon: const Icon(Icons.account_balance_wallet),
+                    label: const Text('Manage Wallet & Withdraw'),
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
                   ),
                 ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // Deliveries List
-              const Text(
-                'Completed Deliveries',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
+  
+                const SizedBox(height: 16),
+  
+                // Deliveries List
+                const Text(
+                  'Completed Deliveries',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+  
+                StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
                       .collection('orders')
                       .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
@@ -2306,9 +2443,9 @@ class _DeliveryPartnerDashboardScreenState
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
                     }
-
+  
                     final deliveries = snapshot.data?.docs ?? [];
-
+  
                     if (deliveries.isEmpty) {
                       return Center(
                         child: Column(
@@ -2324,8 +2461,10 @@ class _DeliveryPartnerDashboardScreenState
                         ),
                       );
                     }
-
+  
                     return ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
                       itemCount: deliveries.length,
                       itemBuilder: (context, index) {
                         final data = deliveries[index].data() as Map<String, dynamic>;
@@ -2370,8 +2509,8 @@ class _DeliveryPartnerDashboardScreenState
                     );
                   },
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2379,6 +2518,64 @@ class _DeliveryPartnerDashboardScreenState
   }
 
   // ==================== PHASE 3: PERFORMANCE DIALOG ====================
+  // Sync missing transactions for old orders
+  Future<void> _syncMissingTransactions(String partnerId) async {
+    try {
+      final orders = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPartnerId', isEqualTo: partnerId)
+          .where('deliveryStatus', isEqualTo: 'delivered')
+          .get();
+
+      if (orders.docs.isEmpty) return;
+
+      final existingTransactions = await FirebaseFirestore.instance
+          .collection('transactions')
+          .where('userId', isEqualTo: partnerId)
+          .get();
+
+      final existingOrderIds = existingTransactions.docs
+          .map((doc) => (doc.data() as Map<String, dynamic>)['referenceId'] as String?)
+          .where((id) => id != null)
+          .toSet();
+
+      int count = 0;
+      for (var doc in orders.docs) {
+        final orderId = doc.id;
+        if (existingOrderIds.contains(orderId)) continue;
+
+        final data = doc.data() as Map<String, dynamic>;
+        final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+
+        if (fee > 0) {
+          await TransactionService().recordTransaction(
+            TransactionModel(
+              id: '',
+              userId: partnerId,
+              amount: fee,
+              type: TransactionType.credit,
+              description: 'Retroactive Delivery Fee: #${orderId.substring(0, 8)}',
+              status: TransactionStatus.completed,
+              referenceId: orderId,
+              metadata: {
+                'orderId': orderId,
+                'type': 'delivery_earning',
+                'sellerId': partnerId, // Standard for revenue tracking
+                'sync': 'manual',
+              },
+              createdAt: (data['deliveredAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+            ),
+          );
+          count++;
+        }
+      }
+      
+      debugPrint('Sync completed: $count transactions added.');
+    } catch (e) {
+      debugPrint('Sync Error: $e');
+    }
+  }
+
   void _showPerformanceDialog(String deliveryPartnerId) {
     showDialog(
       context: context,
@@ -2730,6 +2927,26 @@ class _DeliveryPartnerDashboardScreenState
             ],
           ),
         ),
+      ),
+    );
+  }
+  Widget _buildDateFilterChip(String label, String value) {
+    final isSelected = _selectedDateFilter == value;
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (bool selected) {
+        if (selected) {
+          setState(() {
+            _selectedDateFilter = value;
+          });
+        }
+      },
+      selectedColor: Theme.of(context).colorScheme.primaryContainer,
+      checkmarkColor: Theme.of(context).colorScheme.primary,
+      labelStyle: TextStyle(
+        color: isSelected ? Theme.of(context).colorScheme.primary : Colors.black87,
+        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
       ),
     );
   }

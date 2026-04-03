@@ -37,7 +37,7 @@ class ServiceCategoryProvider with ChangeNotifier {
                 return null;
               }
             }).whereType<ServiceCategory>().toList();
-            _serviceCategories.sort((a, b) => a.name.compareTo(b.name));
+            _serviceCategories.sort((a, b) => a.order.compareTo(b.order));
             _isLoading = false;
             notifyListeners();
             debugPrint(

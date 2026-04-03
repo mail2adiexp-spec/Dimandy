@@ -5,44 +5,37 @@ service firebase.storage {
     
     // Helper function to get user data safely
     function getUserData() {
-      return request.auth != null 
-        ? firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data
-        : null;
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid));
     }
     
     // Helper function to check if user is admin
     function isAdmin() {
       return request.auth != null && (
-             request.auth.token.email == 'mail2adiexp@gmail.com' ||
-             (getUserData() != null && getUserData().role == 'admin')
+             request.auth.token.email in ['mail2adiexp@gmail.com', 'rfnindrajit@gmail.com', 'sounak@bongbazar.com', 'admin@bongbazar.com'] ||
+             (firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) && 
+              firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role in ['admin', 'Admin', 'super_admin', 'Super Admin', 'state_admin', 'State Admin', 'administrator', 'Administrator'])
       );
     }
     
-    // Helper function to check if user is seller
-    function isSeller() {
-      return request.auth != null && 
-             getUserData() != null && 
-             (getUserData().role == 'seller' || getUserData().role == 'Seller');
-    }
     
     // Helper function to check if user is service provider
     function isServiceProvider() {
       return request.auth != null && 
              getUserData() != null && 
-             (getUserData().role in ['seller', 'service_provider'] || 
-              getUserData().role in ['Seller', 'Service Provider']);
+             (getUserData().data.role == 'service_provider' || 
+              getUserData().data.role == 'Service Provider');
     }
     
     // Helper function to check if user is core staff
     function isCoreStaff() {
       return request.auth != null && 
              getUserData() != null && 
-             (getUserData().role == 'core_staff' || getUserData().role == 'Core Staff');
+             (getUserData().data.role == 'core_staff' || getUserData().data.role == 'Core Staff');
     }
     
     // Helper function to validate image size (max 3MB)
     function isValidImageSize() {
-      return request.resource.size <= 3 * 1024 * 1024;
+      return request.resource.size <= 10 * 1024 * 1024;
     }
     
     // Helper function to validate image type
@@ -63,8 +56,6 @@ service firebase.storage {
                       (fileName == request.auth.uid + '.jpg' || isAdmin());
     }
     
-    // 2. Seller profile images
-    match /seller_profiles/{userId} {
       allow read: if true;
       allow write: if request.auth != null && 
                      request.auth.uid == userId && 
@@ -74,19 +65,19 @@ service firebase.storage {
                       (request.auth.uid == userId || isAdmin());
     }
     
-    // 3. Seller product images
-    // Allow sellers, store managers, core staff, and admins to upload/delete
+    // 2. Product images
+    // Allow store managers, core staff, and admins to upload/delete
     match /products/{productId}/{allPaths=**} {
       allow read: if true;
       allow write: if request.auth != null && 
                      isValidImageSize() &&
                      isValidImageType() && (
                        isAdmin() ||
-                       (getUserData() != null && getUserData().role in ['seller', 'Seller', 'store_manager', 'Store Manager', 'core_staff', 'Core Staff'])
+                       (getUserData() != null && getUserData().data.role in ['store_manager', 'Store Manager', 'store_partner', 'Store Partner', 'core_staff', 'Core Staff', 'manager', 'Manager', 'super_admin', 'Super Admin', 'state_admin', 'State Admin'])
                      );
       allow delete: if request.auth != null && (
                        isAdmin() ||
-                       (getUserData() != null && getUserData().role in ['seller', 'Seller', 'store_manager', 'Store Manager', 'core_staff', 'Core Staff'])
+                       (getUserData() != null && getUserData().data.role in ['store_manager', 'Store Manager', 'store_partner', 'Store Partner', 'core_staff', 'Core Staff', 'manager', 'Manager', 'super_admin', 'Super Admin', 'state_admin', 'State Admin'])
                     );
     }
     

@@ -66,7 +66,8 @@ class OrderProvider extends ChangeNotifier {
     required double totalAmount,
     required String deliveryAddress,
     required String phoneNumber,
-    required String state, // Added state parameter
+    required String state,
+    required String paymentMethod,
   }) async {
     final userId = authProvider.currentUser?.uid;
     if (userId == null) {
@@ -78,6 +79,7 @@ class OrderProvider extends ChangeNotifier {
     debugPrint('OrderProvider: Items count: ${items.length}');
     debugPrint('OrderProvider: Total amount: $totalAmount');
     debugPrint('OrderProvider: State: $state');
+    debugPrint('OrderProvider: Payment Method: $paymentMethod');
 
     try {
       // Extract pincode from address
@@ -105,8 +107,6 @@ class OrderProvider extends ChangeNotifier {
         debugPrint('Error fetching delivery settings: $e');
       }
 
-      // Extract unique seller IDs for security rules
-      final sellerIds = items.map((e) => e.sellerId).toSet().toList();
 
       final orderData = {
         'userId': userId,
@@ -115,12 +115,12 @@ class OrderProvider extends ChangeNotifier {
         'deliveryAddress': deliveryAddress,
         'phoneNumber': phoneNumber,
         'state': state, // Save state top-level
+        'paymentMethod': paymentMethod,
         'orderDate': FieldValue.serverTimestamp(),
         'status': 'pending',
         'statusHistory': {'pending': DateTime.now().toIso8601String()},
         'deliveryPincode': deliveryPincode,
         'deliveryFee': deliveryFee, // Save calculated fee
-        'sellerIds': sellerIds, // Added for security filtering
       };
       
       // =======================================================================
@@ -137,35 +137,36 @@ class OrderProvider extends ChangeNotifier {
               
           if (sellerSnapshot.docs.isNotEmpty) {
             // Found matching seller(s). For now, pick the first one.
-            // In future, can implement round-robin or load balancing.
             final matchedSellerDoc = sellerSnapshot.docs.first;
             final matchedSellerId = matchedSellerDoc.id;
-            final matchedSellerName = matchedSellerDoc.data()['name'] ?? 'Local Store'; // Or business name
             
-            debugPrint('Routing: Found matching seller $matchedSellerName ($matchedSellerId)');
+            debugPrint('Routing: Found matching seller ${matchedSellerDoc.data()['name'] ?? 'Local Store'} ($matchedSellerId)');
             
             // Update items belonging to 'admin' to this seller
             final updatedItems = (orderData['items'] as List<dynamic>).map((item) {
               if (item['sellerId'] == 'admin') {
-                debugPrint('Routing: Re-assigning item ${item['productName']} from admin to $matchedSellerId');
                 final Map<String, dynamic> newItem = Map.from(item);
                 newItem['sellerId'] = matchedSellerId;
-                // We keep the original productName. 
-                // The user will see this item in their order history, 
-                // and the sellerId will be this local store.
                 return newItem;
               }
               return item;
             }).toList();
             
             orderData['items'] = updatedItems;
-          } else {
-             debugPrint('Routing: No specific seller found for pincode $deliveryPincode. Keeping as admin.');
           }
         } catch (e) {
           debugPrint('Routing Error: $e');
         }
       }
+      
+      // Recalculate unique seller IDs AFTER routing for accurate dashboard filtering
+      final finalItems = orderData['items'] as List<dynamic>;
+      final finalSellerIds = finalItems
+          .map((item) => item['sellerId'] as String?)
+          .where((id) => id != null && id.isNotEmpty)
+          .toSet()
+          .toList();
+      orderData['sellerIds'] = finalSellerIds;
       // =======================================================================
 
       final docRef = await _firestore.collection('orders').add(orderData);

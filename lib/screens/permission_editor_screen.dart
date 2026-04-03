@@ -36,34 +36,7 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
   void _loadPermissionSections() {
     // Reset
     permissionSections = {};
-
-    if (widget.userRole == 'seller') {
-      permissionSections['Product Management'] = {
-        'can_add_product': 'Add New Products',
-        'can_edit_product': 'Edit Products',
-        'can_delete_product': 'Delete Products',
-        'can_upload_product_images': 'Upload Product Images',
-        'can_manage_inventory': 'Manage Inventory/Stock',
-        'can_set_prices': 'Set Product Prices',
-        'can_set_discounts': 'Set Discounts/Offers',
-      };
-      permissionSections['Order Management'] = {
-        'can_view_orders': 'View Orders',
-        'can_update_order_status': 'Update Order Status',
-        'can_cancel_orders': 'Cancel Orders',
-        'can_process_refunds': 'Process Refunds', // Added back
-      };
-      permissionSections['Analytics & Reports'] = {
-        'can_view_analytics': 'View Sales Analytics',
-        'can_view_reports': 'View Sales Reports',
-        'can_export_data': 'Export Data',
-      };
-      permissionSections['Customer Interaction'] = {
-        'can_view_reviews': 'View Customer Reviews',
-        'can_respond_reviews': 'Respond to Reviews',
-        'can_contact_customers': 'Contact Customers',
-      };
-    } else if (widget.userRole == 'service_provider') {
+    if (widget.userRole == 'service_provider') {
       permissionSections['Service Management'] = {
         'can_add_service': 'Add New Services',
         'can_edit_service': 'Edit Services',
@@ -129,7 +102,6 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_manage_gifts': 'Manage Gifts',
       };
       permissionSections['Partner Management'] = {
-        'can_manage_sellers': 'Manage Sellers',
         'can_manage_services': 'Manage Services',
         'can_manage_service_providers': 'Manage Service Providers',
         'can_manage_deliveries': 'Manage Delivery Partners',
@@ -170,7 +142,6 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_manage_orders': 'Manage Orders (State)',
         'can_manage_products': 'Manage Products (State)',
         'can_manage_services': 'Manage Services (State)',
-        'can_manage_sellers': 'Manage Sellers (State)',
         'can_manage_service_providers': 'Manage Service Providers (State)',
         'can_manage_delivery_partners': 'Manage Delivery Partners (State)',
         'can_manage_partner_requests': 'Manage Partner Requests (State)',

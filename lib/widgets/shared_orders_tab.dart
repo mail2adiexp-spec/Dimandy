@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import '../providers/auth_provider.dart';
 import 'order_details_dialog.dart';
 import 'barcode_scanner_dialog.dart';
+import 'add_manual_order_dialog.dart'; // New
 
 class SharedOrdersTab extends StatefulWidget {
   final bool canManage;
@@ -14,6 +18,7 @@ class SharedOrdersTab extends StatefulWidget {
   final bool isDeliveryPartner; // Optional: for Delivery Partner dashboard specific view
   final List<String>? matchStatuses; // Optional: to show only specific orders
   final List<String>? pincodes; // Optional: to filter orders for a specific store service area
+  final bool showAddButton; // Optional: to hide the 'Add Order' button (Guest Order)
 
   const SharedOrdersTab({
     Key? key, 
@@ -22,6 +27,7 @@ class SharedOrdersTab extends StatefulWidget {
     this.isDeliveryPartner = false,
     this.matchStatuses,
     this.pincodes,
+    this.showAddButton = true,
   }) : super(key: key);
 
   @override
@@ -74,7 +80,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
     super.didUpdateWidget(oldWidget);
     if (widget.sellerId != oldWidget.sellerId || 
         widget.isDeliveryPartner != oldWidget.isDeliveryPartner ||
-        widget.pincodes != oldWidget.pincodes) {
+        !listEquals(widget.pincodes, oldWidget.pincodes)) {
       _initializeStream();
     }
   }
@@ -93,6 +99,11 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
       // Note: This requires an index on deliveryPincode (or whichever field stores the pincode)
       // Usually, it's 'deliveryPincode' or 'pincode' in order data
       query = query.where('deliveryPincode', whereIn: widget.pincodes);
+    }
+    
+    // Seller ID Filter
+    if (widget.sellerId != null) {
+      query = query.where('sellerIds', arrayContains: widget.sellerId);
     }
     
     query = query.orderBy('orderDate', descending: true);
@@ -170,6 +181,26 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                           style: TextButton.styleFrom(
                             foregroundColor: Colors.red,
                             textStyle: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      if (widget.canManage && widget.showAddButton)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: ElevatedButton.icon(
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => const AddManualOrderDialog(),
+                              );
+                            },
+                            icon: const Icon(Icons.add, size: 16),
+                            label: const Text('Add Order', style: TextStyle(fontSize: 12)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
                           ),
                         ),
                     ],
@@ -390,12 +421,45 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                   return const Center(child: Text('No matching orders found'));
                 }
 
-                return ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 100),
-                  itemCount: docs.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 12),
-                  itemBuilder: (context, index) {
+                return Column(
+                  children: [
+                    if (widget.canManage)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: InkWell(
+                          onTap: () => _generateProductSalesReport(docs),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.blue.shade100),
+                            ),
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.picture_as_pdf, color: Colors.blue, size: 20),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Download Selling Report (PDF)',
+                                  style: TextStyle(
+                                    color: Colors.blue,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    Expanded(
+                      child: ListView.separated(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(bottom: 100),
+                        itemCount: docs.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
                     final doc = docs[index];
                     final data = doc.data() as Map<String, dynamic>;
                     final orderId = doc.id;
@@ -450,6 +514,20 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                               style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                                               overflow: TextOverflow.ellipsis,
                                             ),
+                                            if (data['isGuest'] == true)
+                                              Container(
+                                                margin: const EdgeInsets.only(top: 4),
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.orange.withValues(alpha: 0.1),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                  border: Border.all(color: Colors.orange.withValues(alpha: 0.5)),
+                                                ),
+                                                child: const Text(
+                                                  'GUEST ORDER',
+                                                  style: TextStyle(color: Colors.orange, fontSize: 10, fontWeight: FontWeight.bold),
+                                                ),
+                                              ),
                                             Text(
                                               orderDate != null ? DateFormat('MMM dd, yyyy • hh:mm a').format(orderDate) : '-',
                                               style: TextStyle(color: Colors.grey[600], fontSize: 12),
@@ -801,14 +879,17 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                     ),
                   );
                 },
-                );
-              },
+              ),
             ),
-          ),
-        ],
+          ],
+          );
+        },
       ),
-    );
-  }
+    ),
+  ],
+),
+);
+}
 
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
@@ -825,7 +906,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
           ),
           const SizedBox(height: 4),
           Padding(
-            padding: const EdgeInsets.only(left: 24.0), // Indent value below label
+            padding: const EdgeInsets.only(left: 24.0),
             child: Text(value, style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13), overflow: TextOverflow.ellipsis),
           ),
         ],
@@ -847,6 +928,113 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
     }
 
     return query.snapshots();
+  }
+
+  Future<void> _generateProductSalesReport(List<QueryDocumentSnapshot> docs) async {
+    // Aggregate sales by product
+    final Map<String, Map<String, dynamic>> productSales = {};
+    double grandTotalSales = 0.0;
+    int grandTotalQty = 0;
+
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      final status = data['status'] as String? ?? 'pending';
+
+      // Selling means completed/delivered as per user request
+      if (status != 'delivered' && status != 'completed') continue;
+
+      final items = (data['items'] as List<dynamic>?) ?? [];
+      for (var item in items) {
+        final pId = item['productId']?.toString() ?? item['id']?.toString() ?? 'N/A';
+        final pName = item['productName']?.toString() ?? item['name']?.toString() ?? 'Unknown Product';
+        final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+        final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+        final lineTotal = price * qty;
+
+        if (productSales.containsKey(pId)) {
+          productSales[pId]!['qty'] += qty;
+          productSales[pId]!['total'] += lineTotal;
+        } else {
+          productSales[pId] = {
+            'name': pName,
+            'qty': qty,
+            'total': lineTotal,
+          };
+        }
+        grandTotalQty += qty;
+        grandTotalSales += lineTotal;
+      }
+    }
+
+    if (productSales.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No delivered/completed orders found to generate report.')),
+        );
+      }
+      return;
+    }
+
+    // Generate PDF
+    final pdf = pw.Document();
+    final period = _selectedDateFilter == 'Custom Range'
+        ? '${DateFormat('dd/MM/yy').format(_customStartDate!)} - ${DateFormat('dd/MM/yy').format(_customEndDate!)}'
+        : _selectedDateFilter;
+
+    pdf.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4,
+        build: (pw.Context context) {
+          return [
+            pw.Header(level: 0, text: 'Product Selling Report (Sold Items)'),
+            pw.SizedBox(height: 10),
+            pw.Text('Note: This report only includes orders with status "delivered" or "completed".'),
+            pw.SizedBox(height: 5),
+            pw.Text('Period: $period'),
+            pw.Text('Report Generated: ${DateFormat('dd MMM yyyy, HH:mm').format(DateTime.now())}'),
+            pw.Divider(),
+            pw.SizedBox(height: 20),
+            pw.Table(
+              border: pw.TableBorder.all(),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(3),
+                1: const pw.FlexColumnWidth(1),
+                2: const pw.FlexColumnWidth(1.5),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                  children: [
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Product Name', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Qty Sold', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Total Sales Value', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  ],
+                ),
+                ...productSales.values.map((p) => pw.TableRow(
+                      children: [
+                        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(p['name'])),
+                        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(p['qty'].toString())),
+                        pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Rs.${p['total'].toStringAsFixed(2)}')),
+                      ],
+                    )),
+                pw.TableRow(
+                  decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                  children: [
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('GRAND TOTAL', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text(grandTotalQty.toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                    pw.Padding(padding: const pw.EdgeInsets.all(5), child: pw.Text('Rs.${grandTotalSales.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 30),
+            pw.Align(alignment: pw.Alignment.centerRight, child: pw.Text('DEMANDY - Sales Analytics Summary')),
+          ];
+        },
+      ),
+    );
+
+    await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
   Color _getStatusColor(String status) {

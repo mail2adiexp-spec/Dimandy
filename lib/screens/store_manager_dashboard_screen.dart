@@ -10,6 +10,7 @@ import '../widgets/shared_orders_tab.dart';
 import '../widgets/shared_products_tab.dart';
 import '../widgets/barcode_scanner_dialog.dart';
 import '../utils/locations_data.dart';
+import 'main_navigation_screen.dart';
 
 class StoreManagerDashboardScreen extends StatefulWidget {
   static const routeName = '/store-manager-dashboard';
@@ -127,6 +128,11 @@ class _StoreManagerDashboardScreenState extends State<StoreManagerDashboardScree
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.home_outlined),
+            tooltip: 'Back to Shopping',
+            onPressed: () => Navigator.of(context).pushNamed(MainNavigationScreen.routeName),
+          ),
+          IconButton(
             icon: const Icon(Icons.qr_code_scanner),
             onPressed: () => _openScanner(context),
             tooltip: 'Quick Scan',
@@ -200,12 +206,26 @@ class _DashboardTab extends StatelessWidget {
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance
           .collection('orders')
-          .where('deliveryPincode', whereIn: store.pincodes)
+          .where('sellerIds', arrayContains: store.id)
           .snapshots(),
       builder: (context, snapshot) {
+        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
         int totalOrders = snapshot.data?.docs.length ?? 0;
-        int pendingOrders = snapshot.data?.docs.where((d) => ['pending', 'confirmed', 'packed'].contains(d['status'])).length ?? 0;
-        double totalRevenue = snapshot.data?.docs.fold(0.0, (sum, d) => sum! + (d['totalAmount'] ?? 0.0)) ?? 0.0;
+        int pendingOrders = snapshot.data!.docs.where((d) => ['pending', 'confirmed', 'packed'].contains(d['status'])).length;
+        
+        double totalRevenue = 0.0;
+        for (var doc in snapshot.data!.docs) {
+          final data = doc.data() as Map<String, dynamic>;
+          final items = (data['items'] as List<dynamic>?) ?? [];
+          for (var item in items) {
+            if (item['sellerId'] == store.id) {
+              final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+              final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+              totalRevenue += (price * qty);
+            }
+          }
+        }
 
         return GridView.count(
           crossAxisCount: 2,
@@ -238,7 +258,7 @@ class _DashboardTab extends StatelessWidget {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection('orders')
-              .where('deliveryPincode', whereIn: store.pincodes)
+              .where('sellerIds', arrayContains: store.id)
               .where('orderDate', isGreaterThanOrEqualTo: Timestamp.fromDate(DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day)))
               .snapshots(),
           builder: (context, snapshot) {
@@ -246,7 +266,7 @@ class _DashboardTab extends StatelessWidget {
               return const Center(child: CircularProgressIndicator());
             }
 
-            final orders = snapshot.data?.docs ?? [];
+            final docs = snapshot.data?.docs ?? [];
             final dailyTotals = <DateTime, double>{};
             
             // Initialize last 7 days with 0
@@ -255,11 +275,20 @@ class _DashboardTab extends StatelessWidget {
               dailyTotals[date] = 0.0;
             }
 
-            for (var doc in orders) {
-              final date = (doc['orderDate'] as Timestamp).toDate();
+            for (var doc in docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final date = (data['orderDate'] as Timestamp).toDate();
               final day = DateTime(date.year, date.month, date.day);
+              
               if (dailyTotals.containsKey(day)) {
-                dailyTotals[day] = dailyTotals[day]! + (doc['totalAmount'] ?? 0.0);
+                final items = (data['items'] as List<dynamic>?) ?? [];
+                for (var item in items) {
+                  if (item['sellerId'] == store.id) {
+                    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                    final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                    dailyTotals[day] = dailyTotals[day]! + (price * qty);
+                  }
+                }
               }
             }
 
