@@ -50,7 +50,7 @@ import '../widgets/manage_stores_tab.dart';
 import 'permission_editor_screen.dart';
 import '../widgets/manage_admins_tab.dart'; // NEW
 import 'admin_financial_screen.dart'; // NEW
-import '../widgets/add_manual_order_dialog.dart';
+import '../screens/add_manual_order_screen.dart';
 
 
 class AdminPanelScreen extends StatefulWidget {
@@ -580,10 +580,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       onTap: () {
                         if (itemIndex == -1) {
                           if (isMobile) Navigator.pop(context);
-                          showDialog(
-                            context: context,
-                            builder: (context) => const AddManualOrderDialog(),
-                          );
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(builder: (context) => const AddManualOrderScreen()),
+                                );
                         } else {
                           setState(() {
                             _currentStackIndex = itemIndex;

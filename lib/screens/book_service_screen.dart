@@ -279,7 +279,7 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
     return DateFormat('hh:mm a').format(dt);
   }
 
-  void _confirmBooking() {
+  Future<void> _confirmBooking() async {
     if (_selectedDate == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -423,19 +423,30 @@ class _BookServiceScreenState extends State<BookServiceScreen> {
 
     // Clear any existing items to treat this as a direct 'Buy Now'
     context.read<CartProvider>().clear();
-    context.read<CartProvider>().addProduct(product, metadata: metadata);
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Service added! Proceeding to checkout...',
-        ),
-        duration: const Duration(seconds: 1),
-      ),
-    );
-
-    // Direct navigation to checkout
-    Navigator.of(context).pushNamed(CheckoutScreen.routeName);
+    try {
+      await context.read<CartProvider>().addProduct(product, metadata: metadata);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Service added! Proceeding to checkout...',
+            ),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        Navigator.of(context).pushNamed(CheckoutScreen.routeName);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

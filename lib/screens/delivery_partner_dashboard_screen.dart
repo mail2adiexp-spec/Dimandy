@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'order_tracking_screen.dart';
 import '../models/order_model.dart';
 import '../models/app_settings_model.dart';
 import '../widgets/qr_code_display_dialog.dart';
@@ -1288,7 +1289,7 @@ class _DeliveryPartnerDashboardScreenState
       final latestData = orderDoc.data();
       final latestPaymentMethod = (latestData?['paymentMethod'] ?? order.paymentMethod)?.toString().toUpperCase() ?? 'COD';
 
-      if (latestPaymentMethod == 'QR_CODE' || latestPaymentMethod == 'COD' || latestPaymentMethod == 'CASH_ON_DELIVERY') {
+      if (latestPaymentMethod.contains('QR') || latestPaymentMethod.contains('COD') || latestPaymentMethod == 'CASH_ON_DELIVERY') {
         try {
           final settingsDoc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
           if (settingsDoc.exists) {
@@ -1302,89 +1303,142 @@ class _DeliveryPartnerDashboardScreenState
 
       // 2. Show Confirmation Dialog
       if (mounted) {
+        String? selectedMode;
         final paymentSelection = await showDialog<String>(
           context: context,
           barrierDismissible: false,
-          builder: (context) => AlertDialog(
-            title: const Text('Payment Confirmation'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                   const Text('Verify if you have received the payment from customer.', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                   const SizedBox(height: 16),
-                  Text('Amount to Collect: ₹${order.totalAmount.toStringAsFixed(2)}', 
-                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  
-                  if (latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID') ...[
-                     const SizedBox(height: 8),
-                     const Center(
-                       child: Column(
-                         children: [
-                           Icon(Icons.check_circle, color: Colors.green, size: 48),
-                           SizedBox(height: 8),
-                           Text('PREPAID ORDER', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
-                           Text('No cash to collect from customer.', style: TextStyle(color: Colors.grey)),
-                         ],
-                       ),
-                     ),
-                  ] else ...[
-                     const SizedBox(height: 8),
-                     const Text('Ask customer to pay now:', style: TextStyle(fontWeight: FontWeight.bold)),
-                     
-                     if (qrCodeUrl != null) ...[
-                        const SizedBox(height: 12),
-                        Center(
-                          child: Column(
-                            children: [
-                              Image.network(
-                                qrCodeUrl,
-                                height: 180,
-                                width: 180,
-                                fit: BoxFit.contain,
-                                errorBuilder: (ctx, _, __) => const Icon(Icons.broken_image, size: 50),
+          builder: (context) => StatefulBuilder(
+            builder: (context, setState) {
+              bool isPrepaid = latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID';
+
+              return AlertDialog(
+                title: const Text('Payment Confirmation'),
+                content: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                       const Text('Verify if you have received the payment from customer.', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                       const SizedBox(height: 16),
+                      Text('Amount to Collect: ₹${order.totalAmount.toStringAsFixed(2)}', 
+                           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
+                      const SizedBox(height: 12),
+                      const Divider(),
+                      
+                      if (isPrepaid) ...[
+                         const SizedBox(height: 8),
+                         const Center(
+                           child: Column(
+                             children: [
+                               Icon(Icons.check_circle, color: Colors.green, size: 48),
+                               SizedBox(height: 8),
+                               Text('PREPAID ORDER', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                               Text('No cash to collect from customer.', style: TextStyle(color: Colors.grey)),
+                             ],
+                           ),
+                         ),
+                      ] else if (selectedMode == null) ...[
+                         const SizedBox(height: 8),
+                         const Text('Select Payment Mode:', style: TextStyle(fontWeight: FontWeight.bold)),
+                         const SizedBox(height: 16),
+                         Row(
+                           children: [
+                             Expanded(
+                               child: ElevatedButton.icon(
+                                 onPressed: () => setState(() => selectedMode = 'cash'),
+                                 icon: const Icon(Icons.money),
+                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
+                                 label: const Text('Cash'),
+                               ),
+                             ),
+                             const SizedBox(width: 12),
+                             Expanded(
+                               child: ElevatedButton.icon(
+                                 onPressed: () => setState(() => selectedMode = 'qr'),
+                                 icon: const Icon(Icons.qr_code),
+                                 style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)),
+                                 label: const Text('QR Code'),
+                               ),
+                             ),
+                           ],
+                         ),
+                      ] else if (selectedMode == 'cash') ...[
+                         const SizedBox(height: 8),
+                         const Center(
+                           child: Column(
+                             children: [
+                               Icon(Icons.money, color: Colors.blue, size: 48),
+                               SizedBox(height: 8),
+                               Text('CASH COLLECTION', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold, fontSize: 16)),
+                               Text('Collect exactly the amount shown above.', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                             ],
+                           ),
+                         ),
+                      ] else if (selectedMode == 'qr') ...[
+                         const SizedBox(height: 8),
+                         const Text('Ask customer to scan QR code:', style: TextStyle(fontWeight: FontWeight.bold)),
+                         if (qrCodeUrl != null) ...[
+                            const SizedBox(height: 12),
+                            Center(
+                              child: Column(
+                                children: [
+                                  Image.network(
+                                    qrCodeUrl,
+                                    height: 180,
+                                    width: 180,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (ctx, _, __) => const Icon(Icons.broken_image, size: 50),
+                                  ),
+                                  if (upiId != null) ...[
+                                    const SizedBox(height: 4),
+                                    Text('UPI ID: $upiId', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
+                                  ],
+                                ],
                               ),
-                              if (upiId != null) ...[
-                                const SizedBox(height: 4),
-                                Text('UPI ID: $upiId', style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 12)),
-                              ],
-                            ],
-                          ),
-                        ),
-                     ]
-                  ],
+                            ),
+                         ] else ...[
+                            const SizedBox(height: 12),
+                            const Center(child: Text('QR Code not configured by Store.', style: TextStyle(color: Colors.red))),
+                         ]
+                      ],
+                    ],
+                  ),
+                ),
+                actions: [
+                  if (!isPrepaid && selectedMode != null)
+                    TextButton(
+                      onPressed: () => setState(() => selectedMode = null),
+                      child: const Text('Back'),
+                    )
+                  else
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, 'cancel'),
+                      child: const Text('Cancel'),
+                    ),
+                  
+                  if (isPrepaid) 
+                    ElevatedButton(
+                      onPressed: () => Navigator.pop(context, 'delivered'),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
+                      child: const Text('Confirm Delivery'),
+                    )
+                  else if (selectedMode == 'cash')
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(context, 'delivered_cash'),
+                       icon: const Icon(Icons.check_circle),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                      label: const Text('Verify Cash & Done'),
+                    )
+                  else if (selectedMode == 'qr')
+                    ElevatedButton.icon(
+                      onPressed: () => Navigator.pop(context, 'delivered_qr'),
+                      icon: const Icon(Icons.check_circle),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
+                      label: const Text('Verify QR & Done'),
+                    ),
                 ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'cancel'),
-                child: const Text('Cancel'),
-              ),
-              if (latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID') 
-                ElevatedButton(
-                  onPressed: () => Navigator.pop(context, 'delivered'),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white),
-                  child: const Text('Confirm Delivery'),
-                )
-              else ...[
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context, 'delivered_cash'),
-                   icon: const Icon(Icons.money),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                  label: const Text('Received Cash'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () => Navigator.pop(context, 'delivered_qr'),
-                  icon: const Icon(Icons.qr_code),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.teal, foregroundColor: Colors.white),
-                  label: const Text('Received via QR'),
-                ),
-              ],
-            ],
+              );
+            },
           ),
         );
 
@@ -1438,6 +1492,54 @@ class _DeliveryPartnerDashboardScreenState
             }
           } catch (te) {
             debugPrint('Error recording earning transaction: $te');
+          }
+
+          // Record transactions for each seller in the order (Product Earnings)
+          try {
+            final Map<String, double> sellerEarnings = {};
+            for (var item in order.items) {
+              if (item.sellerId.isEmpty) continue;
+              
+              // Profit = (Price - BasePrice) * Quantity
+              final profit = (item.price - item.basePrice) * item.quantity;
+              // Commission %: Use item's custom percentage or default 0%
+              final commissionPercent = item.adminProfitPercentage ?? 0.0;
+              final adminShare = profit * (commissionPercent / 100);
+              
+              // Seller gets: (BasePrice * Quantity) + (Profit - AdminShare)
+              final sellerShare = (item.basePrice * item.quantity) + (profit - adminShare);
+              
+              sellerEarnings[item.sellerId] = (sellerEarnings[item.sellerId] ?? 0.0) + sellerShare;
+              debugPrint('Calculating earning for seller ${item.sellerId}: Price=${item.price}, Base=${item.basePrice}, Profit=$profit, Comm%=$commissionPercent, SellerShare=$sellerShare');
+            }
+
+            final txService = TransactionService();
+            for (var entry in sellerEarnings.entries) {
+              final sellerId = entry.key;
+              final amount = entry.value;
+              if (amount > 0) {
+                await txService.recordTransaction(
+                  TransactionModel(
+                    id: '',
+                    userId: sellerId,
+                    amount: amount,
+                    type: TransactionType.credit,
+                    description: 'Sales Earning: Order #${orderId.substring(0, 8)}',
+                    status: TransactionStatus.completed,
+                    referenceId: orderId,
+                    metadata: {
+                      'orderId': orderId,
+                      'type': 'product_earning',
+                      'sellerId': sellerId,
+                    },
+                    createdAt: DateTime.now(),
+                  ),
+                );
+                debugPrint('Recorded earning of ₹${amount.toStringAsFixed(2)} for seller: $sellerId');
+              }
+            }
+          } catch (se) {
+            debugPrint('Error recording seller earnings: $se');
           }
           
           if (mounted) {
@@ -1494,174 +1596,13 @@ class _DeliveryPartnerDashboardScreenState
     }
   }
 
-  void _showOrderDetails(OrderModel order, String orderId) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (bottomSheetContext) => DraggableScrollableSheet(
-        initialChildSize: 0.7,
-        minChildSize: 0.5,
-        maxChildSize: 0.95,
-        expand: false,
-        builder: (sheetContext, scrollController) => Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  bottomSheetContext,
-                ).colorScheme.primaryContainer,
-                borderRadius: const BorderRadius.vertical(
-                  top: Radius.circular(20),
-                ),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.receipt_long),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Order Details',
-                      style: Theme.of(bottomSheetContext).textTheme.titleLarge,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close),
-                    onPressed: () => Navigator.pop(bottomSheetContext),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: ListView(
-                controller: scrollController,
-                padding: const EdgeInsets.all(16),
-                children: [
-                  Text(
-                    'Order #${orderId.substring(0, orderId.length >= 8 ? 8 : orderId.length)}',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Customer Info
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Customer Info',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(),
-                          ListTile(
-                            leading: const Icon(Icons.location_on),
-                            title: const Text('Address'),
-                            subtitle: Text(order.deliveryAddress),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          ListTile(
-                            leading: const Icon(Icons.phone),
-                            title: const Text('Phone'),
-                            subtitle: Text(order.phoneNumber),
-                            contentPadding: EdgeInsets.zero,
-                             trailing: IconButton(
-                               icon: const Icon(Icons.call, color: Colors.blue),
-                               onPressed: () => _makePhoneCall(order.phoneNumber),
-                             ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Order Items
-                  Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Order Items',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const Divider(),
-                          ...order.items.map(
-                            (item) => ListTile(
-                              leading: item.imageUrl != null
-                                  ? ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        item.imageUrl!,
-                                        width: 50,
-                                        height: 50,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    )
-                                  : Container(
-                                      width: 50,
-                                      height: 50,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[300],
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.shopping_bag),
-                                    ),
-                              title: Text(item.productName),
-                              subtitle: Text('Qty: ${item.quantity}'),
-                              trailing: Text(
-                                '₹${item.price.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              contentPadding: EdgeInsets.zero,
-                            ),
-                          ),
-                          const Divider(),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Total Amount',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              Text(
-                                '₹${order.totalAmount.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.green,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
+   void _showOrderDetails(OrderModel order, String orderId) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OrderTrackingScreen(
+          order: order,
+          isAdminOrPartner: true,
         ),
       ),
     );

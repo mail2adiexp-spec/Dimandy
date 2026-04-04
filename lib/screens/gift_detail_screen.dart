@@ -198,7 +198,7 @@ class _GiftDetailScreenState extends State<GiftDetailScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
+                onPressed: () async {
                   final cart =
                       Provider.of<CartProvider>(context, listen: false);
                   final productToAdd = Product(
@@ -208,14 +208,32 @@ class _GiftDetailScreenState extends State<GiftDetailScreen> {
                     price: widget.gift.price,
                     imageUrl: widget.gift.imageUrl ?? '',
                     sellerId: '',
+                    category: 'Gifts',
+                    stock: 999, // mock stock
                   );
-                  cart.addProduct(productToAdd);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('${widget.gift.name} added to cart!'),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
+                  try {
+                    await cart.addProduct(productToAdd);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('${widget.gift.name} added to cart!'),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(e.toString().replaceAll('Exception: ', '')),
+                          backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
                 },
                 icon: const Icon(Icons.shopping_cart),
                 label: const Text('Order Now'),

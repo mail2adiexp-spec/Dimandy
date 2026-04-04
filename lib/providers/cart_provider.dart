@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../models/product_model.dart';
 
@@ -26,7 +27,9 @@ class CartItem {
     'basePrice': product.basePrice,
     'imageUrl': product.imageUrl,
     'quantity': quantity,
+    'stock': product.stock, // Added stock
     'storeIds': product.storeIds,
+    'adminProfitPercentage': product.adminProfitPercentage,
     if (metadata != null) 'metadata': metadata,
   };
 
@@ -40,7 +43,9 @@ class CartItem {
         price: (map['price'] as num?)?.toDouble() ?? 0.0,
         basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
         imageUrl: map['imageUrl']?.toString() ?? '',
+        stock: (map['stock'] as num?)?.toInt() ?? 0, // Restore stock
         storeIds: List<String>.from(map['storeIds'] ?? []),
+        adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
       ),
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       metadata: map['metadata'] is Map ? (map['metadata'] as Map).cast<String, dynamic>() : null,
@@ -51,6 +56,7 @@ class CartItem {
 class CartProvider extends ChangeNotifier {
   static const _storageKey = 'cart_v1';
   final Map<String, CartItem> _items = {};
+  final Map<String, bool> _addingMutex = {};
 
   CartProvider() {
     // Defer async init to after construction
@@ -64,9 +70,19 @@ class CartProvider extends ChangeNotifier {
       _items.values.fold(0.0, (sum, item) => sum + item.totalPrice);
   bool get isEmpty => _items.isEmpty;
 
-  void addProduct(Product product, {Map<String, dynamic>? metadata}) {
+  Future<void> addProduct(Product product, {int quantityToAdd = 1, Map<String, dynamic>? metadata}) async {
     debugPrint('CartProvider: addProduct called for ${product.id}');
     final id = product.id;
+    String getBaseProductId(String productId) {
+      final suffixes = ['_100g', '_250g', '_500g', '_1kg', '_2kg', '_5kg'];
+      for (final suffix in suffixes) {
+        if (productId.endsWith(suffix)) {
+          return productId.substring(0, productId.length - suffix.length);
+        }
+      }
+      return productId;
+    }
+    final baseProductId = getBaseProductId(id);
     
     // Services check: category is 'Services', unit is 'service', or ID starts with 'svc_'
     final isService = product.category == 'Services' || 
@@ -74,19 +90,75 @@ class CartProvider extends ChangeNotifier {
                       product.id.startsWith('svc_');
     
     // Only check stock for actual products (not services)
-    if (!isService && product.stock <= 0) {
-      throw Exception('Product is out of stock');
+    if (!isService) {
+      // Mutex lock to prevent race conditions on rapid taps
+      while (_addingMutex[baseProductId] == true) {
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+      _addingMutex[baseProductId] = true;
+
+      try {
+        DocumentSnapshot? doc;
+        // Try fetching base product first
+        doc = await FirebaseFirestore.instance.collection('products').doc(baseProductId).get();
+        
+        // If base not found and it's different from full ID, try fetching full ID
+        if (!doc.exists && baseProductId != id) {
+           doc = await FirebaseFirestore.instance.collection('products').doc(id).get();
+        }
+
+        int remoteStock = product.stock; // Fallback to passed stock
+
+        if (doc.exists) {
+          final data = doc.data() as Map<String, dynamic>?;
+          if (data != null) {
+            remoteStock = (data['stock'] as num?)?.toInt() ?? 0;
+          }
+        }
+        
+        if (remoteStock <= 0) {
+          throw Exception('Product is out of stock');
+        }
+        
+        // Calculate total quantity of THIS BASE PRODUCT already in cart (including all variants)
+        int totalBaseQtyInCart = 0;
+        for (var item in _items.values) {
+           final itemBaseId = getBaseProductId(item.product.id);
+           if (itemBaseId == baseProductId) {
+              totalBaseQtyInCart += item.quantity;
+           }
+        }
+
+        if (totalBaseQtyInCart + quantityToAdd > remoteStock) {
+          throw Exception('Only $remoteStock items available in stock');
+        }
+        
+        _addingMutex[baseProductId] = false;
+      } catch (e) {
+         _addingMutex[baseProductId] = false;
+         if (e.toString().contains('stock')) {
+           throw Exception(e.toString().replaceAll('Exception: ', ''));
+         }
+         // If it's just a 'not found' or network error, we might still want to allow adding if local stock > 0
+         // but user explicitly complained about Stock check, so we should be careful.
+         // Given the "Product not found" error was annoying, I'll let it use product.stock as fallback.
+         debugPrint('Stock check failed: $e. Using local stock: ${product.stock}');
+         if (product.stock <= 0) {
+            throw Exception('Product is out of stock');
+         }
+      }
     }
     
     if (_items.containsKey(id)) {
-      // Only validate stock for products, not services
-      if (!isService && _items[id]!.quantity + 1 > product.stock) {
-        throw Exception('Only ${product.stock} items available in stock');
-      }
-      _items[id]!.quantity += 1;
+      _items[id]!.quantity += quantityToAdd;
     } else {
-      _items[id] = CartItem(product: product, quantity: 1, metadata: metadata);
+      _items[id] = CartItem(product: product, quantity: quantityToAdd, metadata: metadata);
     }
+    
+    if (!isService) {
+      _addingMutex[baseProductId] = false;
+    }
+    
     _persistAndNotify();
   }
 

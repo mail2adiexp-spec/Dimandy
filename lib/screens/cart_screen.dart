@@ -80,7 +80,22 @@ class CartScreen extends StatelessWidget {
                         if (!isService)
                           IconButton(
                             icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () => cart.addProduct(p),
+                            onPressed: () async {
+                              try {
+                                await cart.addProduct(p);
+                              } catch (e) {
+                                if (context.mounted) {
+                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(e.toString().replaceAll('Exception: ', '')),
+                                      backgroundColor: Colors.red,
+                                      duration: const Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              }
+                            },
                           ),
                         IconButton(
                           icon: const Icon(Icons.delete_outline),

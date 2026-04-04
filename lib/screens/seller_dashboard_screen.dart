@@ -98,6 +98,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
     final mrpCtrl = TextEditingController(); // Added MRP
     final stockCtrl = TextEditingController();
     final minQtyCtrl = TextEditingController(text: '1');
+    final profitPercentageCtrl = TextEditingController(); // Added for Admin Profit Sharing
     
     // Use CategoryProvider for dynamic categories
     final categoryProvider = Provider.of<CategoryProvider>(context, listen: false);
@@ -387,6 +388,21 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       ),
                     ],
 
+                    // Admin Profit Sharing % (Visible only to Admin/Super Admin)
+                    if (Provider.of<AuthProvider>(context, listen: false).hasAdminAccess) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: profitPercentageCtrl,
+                        decoration: const InputDecoration(
+                          labelText: 'Admin Profit Commission (%) [Admin Only]',
+                          border: OutlineInputBorder(),
+                          suffixText: '%',
+                          helperText: 'Leave empty to use system default (0%)',
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      ),
+                    ],
+
                     const SizedBox(height: 24),
                     
                     // Actions
@@ -443,6 +459,9 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                                       'unit': selectedUnit,
                                       'imageUrl': imageUrls.first,
                                       'imageUrls': imageUrls,
+                                      'adminProfitPercentage': profitPercentageCtrl.text.isNotEmpty 
+                                          ? double.tryParse(profitPercentageCtrl.text) 
+                                          : null,
                                       'isFeatured': false, // Sellers cannot feature their own products
                                       'isHotDeal': mrp > listingPrice,
                                       'createdAt': FieldValue.serverTimestamp(),
@@ -1032,7 +1051,7 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
               child: StreamBuilder<QuerySnapshot>(
                 stream: _deliveredOrdersStream,
                 builder: (context, snapshot) {
-                  double totalRevenue = 0;
+                  double totalEarnings = 0;
                   if (snapshot.hasData) {
                     for (var doc in snapshot.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
@@ -1040,13 +1059,20 @@ class _SellerDashboardScreenState extends State<SellerDashboardScreen> {
                       for (var item in items) {
                         if (item['sellerId'] == user.uid) {
                           final price = (item['price'] as num?)?.toDouble() ?? 0;
+                          final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0;
                           final quantity = (item['quantity'] as num?)?.toInt() ?? 0;
-                          totalRevenue += price * quantity;
+                          final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 0.0;
+                          
+                          final profit = (price - basePrice) * quantity;
+                          final adminShare = profit * (adminProfitPercentage / 100);
+                          final sellerShare = (basePrice * quantity) + (profit - adminShare);
+                          
+                          totalEarnings += sellerShare;
                         }
                       }
                     }
                   }
-                  return _buildModernStatCard('Revenue', '₹${totalRevenue.toStringAsFixed(0)}', Icons.currency_rupee, Colors.green, Colors.green[50]!);
+                  return _buildModernStatCard('Earnings', '₹${totalEarnings.toStringAsFixed(0)}', Icons.currency_rupee, Colors.green, Colors.green[50]!);
                 },
               ),
             ),

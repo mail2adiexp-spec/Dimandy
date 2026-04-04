@@ -8,6 +8,7 @@ class Product {
   final double price;
   final double? sellerPrice; // The price intended by the seller (before platform fee)
   final double basePrice; // Added basePrice (Buying Price)
+  final double? adminProfitPercentage; // Custom profit sharing percentage (Admin only)
   final String imageUrl; // Primary image
   final List<String>? imageUrls; // Multiple images (minimum 4)
   final String? category; // Product category
@@ -35,6 +36,7 @@ class Product {
     required this.price,
     this.sellerPrice,
     this.basePrice = 0.0,
+    this.adminProfitPercentage,
     required this.imageUrl,
     this.imageUrls,
     this.category,
@@ -65,6 +67,7 @@ class Product {
       'price': price,
       'sellerPrice': sellerPrice,
       'basePrice': basePrice,
+      'adminProfitPercentage': adminProfitPercentage,
       'imageUrl': imageUrl,
       'imageUrls': imageUrls,
       'category': category,
@@ -96,6 +99,7 @@ class Product {
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
       sellerPrice: (map['sellerPrice'] as num?)?.toDouble(),
       basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
+      adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
       imageUrl: map['imageUrl'] ?? '',
       imageUrls: (map['imageUrls'] as List<dynamic>?)?.map((e) => e.toString()).toList() 
           ?? (map['images'] as List<dynamic>?)?.map((e) => e.toString()).toList(),

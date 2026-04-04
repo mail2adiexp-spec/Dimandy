@@ -495,6 +495,31 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                           ),
                         ),
                       ),
+                    if (product.stock <= 0)
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(10.0),
+                          ),
+                          alignment: Alignment.center,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Out of Stock',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 8,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -540,26 +565,51 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
                 ),
               ),
               InkWell(
-                onTap: () {
-                   context.read<CartProvider>().addProduct(product);
-                   ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     SnackBar(
-                       content: Text('${product.name} added to cart'),
-                       duration: const Duration(seconds: 1),
-                     ),
-                   );
+                onTap: product.stock <= 0 
+                  ? () {
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Item is out of stock'),
+                          duration: Duration(seconds: 1),
+                        ),
+                      );
+                    }
+                  : () async {
+                   try {
+                     await context.read<CartProvider>().addProduct(product);
+                     if (context.mounted) {
+                       ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(
+                           content: Text('${product.name} added to cart'),
+                           duration: const Duration(seconds: 1),
+                         ),
+                       );
+                     }
+                   } catch (e) {
+                     if (context.mounted) {
+                       ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                       ScaffoldMessenger.of(context).showSnackBar(
+                         SnackBar(
+                           content: Text(e.toString().replaceAll('Exception: ', '')),
+                           backgroundColor: Colors.red,
+                           duration: const Duration(seconds: 1),
+                         ),
+                       );
+                     }
+                   }
                 },
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
+                    color: product.stock <= 0 ? Colors.grey[300] : Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Icon(
                     Icons.add_shopping_cart,
                     size: 16,
-                    color: Theme.of(context).colorScheme.primary,
+                    color: product.stock <= 0 ? Colors.grey : Theme.of(context).colorScheme.primary,
                   ),
                 ),
               ),
@@ -570,3 +620,4 @@ class _CategoryProductsScreenState extends State<CategoryProductsScreen> {
     );
   }
 }
+

@@ -71,7 +71,7 @@ class GiftCard extends StatelessWidget {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
                           final cart = Provider.of<CartProvider>(
                             context,
                             listen: false,
@@ -83,14 +83,32 @@ class GiftCard extends StatelessWidget {
                             price: gift.price,
                             imageUrl: gift.imageUrl ?? '',
                             sellerId: '',
+                            category: 'Gifts', // Ensure it doesn't fail stock check trivially if it's a gift or set it
+                            stock: 999, // Gifts are made to order? Usually yes, so mock stock
                           );
-                          cart.addProduct(productToAdd);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('${gift.name} added to cart!'),
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                          try {
+                            await cart.addProduct(productToAdd);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${gift.name} added to cart!'),
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(e.toString().replaceAll('Exception: ', '')),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
                         },
                         icon: const Icon(Icons.shopping_cart_outlined, size: 18),
                         label: const Text('Order'),

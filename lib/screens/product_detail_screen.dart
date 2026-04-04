@@ -68,7 +68,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
   Future<void> _loadRecommendations() async {
     final recommendations = await context.read<RecommendationService>()
-        .getSimilarProducts(widget.product, limit: 4);
+        .getSimilarProducts(widget.product, limit: 18);
     if (mounted) {
       setState(() {
         _recommendedProducts = recommendations;
@@ -340,14 +340,26 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.add, size: 16),
-                          padding: const EdgeInsets.all(4),
-                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                          onPressed: () {
-                            setState(() => _quantity++);
-                          },
-                        ),
+                          IconButton(
+                            icon: const Icon(Icons.add, size: 16),
+                            padding: const EdgeInsets.all(4),
+                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                            onPressed: () {
+                              // If stock is limited, don't allow counter to exceed stock
+                              if (_quantity < widget.product.stock) {
+                                setState(() => _quantity++);
+                              } else {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('Only ${widget.product.stock} items available in stock'),
+                                    backgroundColor: Colors.red,
+                                    duration: const Duration(seconds: 1),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -361,23 +373,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () {
-                  if (_isWeightBased(product)) {
-                     _addToCartWeightBased();
-                  } else {
-                     _addToCartStandard();
-                  }
-                },
+                onPressed: widget.product.stock <= 0 
+                  ? null 
+                  : () {
+                      if (_isWeightBased(product)) {
+                         _addToCartWeightBased();
+                      } else {
+                         _addToCartStandard();
+                      }
+                    },
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: widget.product.stock <= 0 ? Colors.grey : Colors.deepPurple,
                   foregroundColor: Colors.white,
+                  disabledBackgroundColor: Colors.grey,
+                  disabledForegroundColor: Colors.white,
                 ),
                 icon: const Icon(Icons.add_shopping_cart, size: 20),
                 label: Text(
-                  _isWeightBased(product) 
-                      ? 'Add ${_selectedWeightVariant!.label} to Cart - ${formatINR(product.price * _selectedWeightVariant!.multiplier)}'
-                      : 'Add to Cart', 
+                  widget.product.stock <= 0 
+                      ? 'Out of Stock' 
+                      : (_isWeightBased(product) 
+                          ? 'Add ${_selectedWeightVariant!.label} to Cart - ${formatINR(product.price * _selectedWeightVariant!.multiplier)}'
+                          : 'Add to Cart'), 
                   style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
               ),
@@ -441,97 +459,100 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 8),
             // Recommended Products - Compact
             if (_recommendedProducts.isNotEmpty) ...[
-              Row(
-                children: [
-                  const Text(
-                    'You May Also Like',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                  ),
-                ],
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'You May Also Like',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
               ),
-              const SizedBox(height: 6),
-              SizedBox(
-                height: 180,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _recommendedProducts.length,
-                  itemBuilder: (ctx, i) {
-                    final prod = _recommendedProducts[i];
-                    return GestureDetector(
-                      onTap: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (ctx) => ProductDetailScreen(
-                              product: prod,
-                            ),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        width: 120,
-                        margin: const EdgeInsets.only(right: 8),
-                        child: Card(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: ClipRRect(
-                                  borderRadius: const BorderRadius.vertical(
-                                    top: Radius.circular(4),
-                                  ),
-                                  child: (prod.imageUrl.isNotEmpty)
-                                      ? Image.network(
-                                          prod.imageUrl,
-                                          width: double.infinity,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (c, e, s) => const Icon(
-                                            Icons.broken_image,
-                                            size: 24,
-                                            color: Colors.grey,
-                                          ),
-                                        )
-                                      : const Center(
-                                          child: Icon(
-                                            Icons.image_not_supported,
-                                            size: 24,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.all(4),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      prod.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    Text(
-                                      formatINR(prod.price),
-                                      style: const TextStyle(
-                                        color: Colors.green,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _recommendedProducts.length,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  childAspectRatio: 0.65,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
+                ),
+                itemBuilder: (ctx, i) {
+                  final prod = _recommendedProducts[i];
+                  return GestureDetector(
+                    onTap: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (ctx) => ProductDetailScreen(
+                            product: prod,
                           ),
                         ),
+                      );
+                    },
+                    child: Card(
+                      elevation: 1,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                    );
-                  },
-                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(8),
+                              ),
+                              child: (prod.imageUrl.isNotEmpty)
+                                  ? Image.network(
+                                      prod.imageUrl,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (c, e, s) => const Icon(
+                                        Icons.broken_image,
+                                        size: 24,
+                                        color: Colors.grey,
+                                      ),
+                                    )
+                                  : const Center(
+                                      child: Icon(
+                                        Icons.image_not_supported,
+                                        size: 24,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(6),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  prod.name,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  formatINR(prod.price),
+                                  style: const TextStyle(
+                                    color: Colors.deepPurple,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ],
@@ -578,7 +599,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  void _addToCartStandard() {
+  Future<void> _addToCartStandard() async {
     if (_quantity < widget.product.minimumQuantity) {
        ScaffoldMessenger.of(context).showSnackBar(
          SnackBar(
@@ -590,22 +611,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     final cart = context.read<CartProvider>();
     try {
-      for (int i = 0; i < _quantity; i++) {
-        cart.addProduct(widget.product);
+      await cart.addProduct(widget.product, quantityToAdd: _quantity);
+      if (mounted) {
+        _showSuccessMsg('Added $_quantity item(s) to cart');
+        setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
       }
-      _showSuccessMsg('Added $_quantity item(s) to cart');
-      setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
-  void _addToCartWeightBased() {
+  Future<void> _addToCartWeightBased() async {
     if (_selectedWeightVariant == null) return;
     
     final variant = _selectedWeightVariant!;
@@ -629,15 +652,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     final cart = context.read<CartProvider>();
     try {
-      cart.addProduct(virtualProduct);
-      _showSuccessMsg('Added ${variant.label} pack to cart');
+      await cart.addProduct(virtualProduct);
+      if (mounted) {
+        _showSuccessMsg('Added ${variant.label} pack to cart');
+      }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(e.toString().replaceAll('Exception: ', '')),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceAll('Exception: ', '')),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 

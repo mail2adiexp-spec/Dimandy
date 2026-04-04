@@ -174,6 +174,7 @@ class OrderItem {
   final int quantity;
   final double price;
   final double basePrice; // Added for profit calculation
+  final double? adminProfitPercentage; // Custom profit sharing %
   final String? imageUrl;
   final Map<String, dynamic>? metadata;
 
@@ -184,6 +185,7 @@ class OrderItem {
     required this.quantity,
     required this.price,
     this.basePrice = 0.0,
+    this.adminProfitPercentage,
     this.imageUrl,
     this.metadata,
   });
@@ -196,6 +198,7 @@ class OrderItem {
       quantity: map['quantity'] ?? 1,
       price: (map['price'] ?? 0).toDouble(),
       basePrice: (map['basePrice'] ?? 0).toDouble(),
+      adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
       imageUrl: map['imageUrl'],
       metadata: map['metadata'] as Map<String, dynamic>?,
     );
@@ -209,6 +212,7 @@ class OrderItem {
       'quantity': quantity,
       'price': price,
       'basePrice': basePrice,
+      'adminProfitPercentage': adminProfitPercentage,
       'imageUrl': imageUrl,
       if (metadata != null) 'metadata': metadata,
     };

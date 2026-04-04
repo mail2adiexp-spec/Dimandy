@@ -28,7 +28,7 @@ class _StorePartnerDashboardScreenState extends State<StorePartnerDashboardScree
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchStoreDetails();
     });
@@ -110,9 +110,16 @@ class _StorePartnerDashboardScreenState extends State<StorePartnerDashboardScree
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text('${_store!.name} - Partner', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            Text('Partner ID: ${context.read<AuthProvider>().currentUser?.uid.substring(0, 8)}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text('${_store!.name} - Partner', 
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text('Partner ID: ${context.read<AuthProvider>().currentUser?.uid.substring(0, 8)}', 
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
         bottom: TabBar(
@@ -120,6 +127,7 @@ class _StorePartnerDashboardScreenState extends State<StorePartnerDashboardScree
           isScrollable: true,
           tabs: const [
             Tab(text: 'Financials', icon: Icon(Icons.account_balance_wallet_outlined)),
+            Tab(text: 'Settlements', icon: Icon(Icons.motorcycle_outlined)),
             Tab(text: 'Selling Details', icon: Icon(Icons.receipt_long_outlined)),
             Tab(text: 'Inventory/Purchase', icon: Icon(Icons.inventory_2_outlined)),
             Tab(text: 'Store Info', icon: Icon(Icons.store_outlined)),
@@ -141,6 +149,7 @@ class _StorePartnerDashboardScreenState extends State<StorePartnerDashboardScree
         controller: _tabController,
         children: [
           _FinancialsTab(store: _store!),
+          _DeliverySettlementsTab(store: _store!),
           SharedOrdersTab(canManage: true, pincodes: _store!.pincodes),
           SharedProductsTab(canManage: true, storeId: _store!.id, isPartnerView: true),
           _StoreInfoTab(store: _store!),
@@ -262,6 +271,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
     required double sales,
     required double purchase,
     required double profit,
+    required double netProfit,
+    required double commission,
     required int totalOrders,
     required int cancelled,
     required int refunded,
@@ -314,7 +325,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             _buildPdfRow('Total Sales', 'Rs. ${sales.toStringAsFixed(2)}'),
             _buildPdfRow('Total Spent on Stock', 'Rs. ${purchase.toStringAsFixed(2)}'),
             _buildPdfRow('Gross Profit (on Sales)', 'Rs. ${profit.toStringAsFixed(2)}'),
-            _buildPdfRow('Your Net Profit (75%)', 'Rs. ${(profit * 0.75).toStringAsFixed(2)}'),
+            _buildPdfRow('Admin Commission', 'Rs. ${commission.toStringAsFixed(2)}'),
+            _buildPdfRow('Your Net Profit', 'Rs. ${netProfit.toStringAsFixed(2)}'),
             
             pw.SizedBox(height: 30),
             pw.Text('Order Statistics', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
@@ -394,10 +406,12 @@ class _FinancialsTabState extends State<_FinancialsTab> {
 
         double totalSales = 0.0;
         double totalPurchaseCost = 0.0;
+        double totalPlatformShare = 0.0; // Dynamic commission calculation
         int totalSoldQty = 0;
         int cancelledOrders = 0;
         int refundedOrders = 0;
         int totalOrders = snapshot.data!.docs.length;
+        double totalCashCollected = 0.0;
 
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -421,17 +435,37 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             final price = (item['price'] as num?)?.toDouble() ?? 0.0;
             final buyingPrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
             final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+            final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 0.0; // Default to 0% if empty
+
+            final itemSales = price * qty;
+            final itemPurchase = buyingPrice * qty;
+            final itemProfit = itemSales - itemPurchase;
             
-            totalSales += (price * qty);
-            totalPurchaseCost += (buyingPrice * qty);
+            totalSales += itemSales;
+            totalPurchaseCost += itemPurchase;
             totalSoldQty += qty;
+            
+            // Apply platform share only on profit
+            if (itemProfit > 0) {
+              totalPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+            }
+          }
+
+          final paymentMethod = data['paymentMethod'] as String? ?? '';
+          final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+          final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          
+          if (paymentMethod != 'online' && collectedMethod != 'qr') {
+            totalCashCollected += totalAmount;
           }
         }
 
         double totalGrossProfit = totalSales - totalPurchaseCost;
-
-        double platformShare = totalGrossProfit * 0.25;
-        double netPartnerProfit = totalGrossProfit * 0.75;
+        double platformShare = totalPlatformShare; // Uses dynamic per-item calculation
+        double netPartnerProfit = totalGrossProfit - totalPlatformShare;
+        
+        double rightfulEarning = totalPurchaseCost + netPartnerProfit;
+        double settlementAmount = rightfulEarning - totalCashCollected;
 
         return StreamBuilder<QuerySnapshot>(
           stream: _purchasesStream,
@@ -467,7 +501,9 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                               sales: totalSales,
                               purchase: totalPurchaseCost,
                               profit: totalGrossProfit,
-                              totalOrders: totalOrders,
+                              netProfit: netPartnerProfit,
+                              commission: platformShare,
+                               totalOrders: totalOrders,
                               cancelled: cancelledOrders,
                               refunded: refundedOrders,
                             ),
@@ -514,6 +550,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                     ),
                   const SizedBox(height: 8),
                   _buildNetProfitCard(netPartnerProfit),
+                  const SizedBox(height: 16),
+                  _buildSettlementBanner(settlementAmount),
                   const SizedBox(height: 20),
                   
                   GridView.count(
@@ -527,7 +565,7 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                       _SummaryMiniCard(title: 'Total Sales', value: '₹${totalSales.toStringAsFixed(2)}', icon: Icons.trending_up, color: Colors.blue),
                       _SummaryMiniCard(title: 'Total Purchase', value: '₹${totalInventoryInvestment.toStringAsFixed(2)}', icon: Icons.shopping_cart_checkout, color: Colors.orange),
                       _SummaryMiniCard(title: 'Gross Profit', value: '₹${totalGrossProfit.toStringAsFixed(2)}', icon: Icons.analytics, color: Colors.green),
-                      _SummaryMiniCard(title: 'Admin Share (25%)', value: '₹${platformShare.toStringAsFixed(2)}', icon: Icons.account_balance, color: Colors.deepOrange),
+                      _SummaryMiniCard(title: 'Admin Commission', value: '₹${platformShare.toStringAsFixed(2)}', icon: Icons.account_balance, color: Colors.deepOrange),
                       _SummaryMiniCard(title: 'Total Orders', value: '$totalOrders', icon: Icons.receipt_long, color: Colors.purple),
                       _SummaryMiniCard(title: 'Total Cancelled', value: '$cancelledOrders', icon: Icons.cancel_outlined, color: Colors.red),
                     ],
@@ -568,6 +606,272 @@ class _FinancialsTabState extends State<_FinancialsTab> {
           const SizedBox(height: 8),
           Text('₹${profit.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSettlementBanner(double amount) {
+    final isAdminOwning = amount >= 0;
+    final displayAmount = amount.abs().toStringAsFixed(2);
+    final color = isAdminOwning ? Colors.blue.shade700 : Colors.red.shade700;
+    final bgColor = isAdminOwning ? Colors.blue.shade50 : Colors.red.shade50;
+    final icon = isAdminOwning ? Icons.account_balance : Icons.warning_amber_rounded;
+    final title = isAdminOwning ? 'Admin Owes You' : 'You Owe Admin';
+    final buttonText = isAdminOwning ? 'Request Payout' : 'Pay Admin';
+    final desc = isAdminOwning 
+        ? 'Aapka ₹$displayAmount ka haq baki hai. Payout request bhejein.'
+        : 'Aapke paas extra cash aaya hai. Kripya ₹$displayAmount jama karein.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(width: 8),
+              Text(
+                'Settlement Status',
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(title, style: TextStyle(color: Colors.grey.shade800, fontSize: 14)),
+          Text('₹$displayAmount', style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          Text(desc, style: TextStyle(color: Colors.grey.shade700, fontSize: 12)),
+          const SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: color,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              onPressed: () {
+                if (isAdminOwning) {
+                  _showRequestPayoutDialog(context, amount);
+                } else {
+                  showDialog(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Pay Admin'),
+                      content: Text('Please transfer ₹$displayAmount to the Admin\'s bank account/UPI to clear your dues.\n\nOnline payment gateway integration will be available soon.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
+                      ],
+                    ),
+                  );
+                }
+              },
+              child: Text(buttonText),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRequestPayoutDialog(BuildContext context, double maxAmount) async {
+    final amountController = TextEditingController(text: maxAmount.toStringAsFixed(2));
+    final accountNumberController = TextEditingController();
+    final ifscController = TextEditingController();
+    final upiController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+    String? errorMessage;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Request Payout'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (errorMessage != null) ...[
+                    Text(
+                      errorMessage!,
+                      style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  TextFormField(
+                    controller: amountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: '₹',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter amount';
+                      }
+                      final amount = double.tryParse(value);
+                      if (amount == null || amount <= 0) {
+                        return 'Enter valid amount';
+                      }
+                      if (amount > maxAmount) {
+                        return 'Cannot exceed ₹${maxAmount.toStringAsFixed(2)}';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('Bank Details', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: accountNumberController,
+                    decoration: const InputDecoration(
+                      labelText: 'Account Number',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., 1234567890',
+                      prefixIcon: Icon(Icons.account_balance),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: ifscController,
+                    decoration: const InputDecoration(
+                      labelText: 'IFSC Code',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., SBIN0001234',
+                      prefixIcon: Icon(Icons.code),
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                  ),
+                  const SizedBox(height: 16),
+                  const Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text('OR UPI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                  ),
+                  const SizedBox(height: 8),
+                  TextFormField(
+                    controller: upiController,
+                    decoration: const InputDecoration(
+                      labelText: 'UPI ID',
+                      border: OutlineInputBorder(),
+                      hintText: 'e.g., name@upi',
+                      prefixIcon: Icon(Icons.payment),
+                    ),
+                  ),
+                  if (isLoading)
+                    const Padding(
+                      padding: EdgeInsets.only(top: 16),
+                      child: CircularProgressIndicator(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isLoading ? null : () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: isLoading
+                  ? null
+                  : () async {
+                      if (formKey.currentState!.validate()) {
+                        final accountNo = accountNumberController.text.trim();
+                        final ifsc = ifscController.text.trim();
+                        final upi = upiController.text.trim();
+
+                        final hasBankDetails = accountNo.isNotEmpty && ifsc.isNotEmpty;
+                        final hasUpi = upi.isNotEmpty;
+
+                        if (!hasBankDetails && !hasUpi) {
+                          setState(() => errorMessage = 'Please provide Bank Details or UPI ID');
+                          return;
+                        }
+                        if (accountNo.isNotEmpty && ifsc.isEmpty) {
+                          setState(() => errorMessage = 'Please provide IFSC Code');
+                          return;
+                        }
+                        if (ifsc.isNotEmpty && accountNo.isEmpty) {
+                          setState(() => errorMessage = 'Please provide Account Number');
+                          return;
+                        }
+
+                        final List<String> parts = [];
+                        if (hasBankDetails) {
+                          parts.add('Account: $accountNo');
+                          parts.add('IFSC: ${ifsc.toUpperCase()}');
+                        }
+                        if (hasUpi) {
+                          parts.add('UPI: $upi');
+                        }
+                        final details = parts.join(' | ');
+
+                        setState(() { isLoading = true; errorMessage = null; });
+                        try {
+                          final amount = double.parse(amountController.text);
+                          final userId = context.read<AuthProvider>().currentUser!.uid;
+                          
+                          final now = DateTime.now();
+                          final last24Hours = now.subtract(const Duration(hours: 24));
+                          final recentPayouts = await FirebaseFirestore.instance
+                              .collection('payouts')
+                              .where('userId', isEqualTo: userId)
+                              .where('requestDate', isGreaterThan: Timestamp.fromDate(last24Hours))
+                              .get();
+                              
+                          if (recentPayouts.docs.length >= 2) {
+                             throw Exception('You can only make 2 payout requests every 24 hours');
+                          }
+
+                          await FirebaseFirestore.instance.collection('payouts').add({
+                            'userId': userId,
+                            'amount': amount,
+                            'status': 'pending', 
+                            'requestDate': Timestamp.now(),
+                            'paymentDetails': details,
+                            'role': 'store_partner',
+                            'storeId': widget.store.id,
+                          });
+                          
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Payout requested successfully'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            setState(() {
+                              errorMessage = e.toString().replaceAll('Exception: ', '');
+                              isLoading = false;
+                            });
+                          }
+                        }
+                      }
+                    },
+              child: const Text('Request'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -795,6 +1099,360 @@ class _StoreInfoTab extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DeliverySettlementsTab extends StatefulWidget {
+  final StoreModel store;
+  const _DeliverySettlementsTab({required this.store});
+
+  @override
+  State<_DeliverySettlementsTab> createState() => _DeliverySettlementsTabState();
+}
+
+class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
+  DateTimeRange? _selectedDateRange;
+  String _selectedFilter = 'Today';
+  bool _isLoading = false;
+  Map<String, List<Map<String, dynamic>>> _deliveryPartnerOrders = {};
+  Map<String, Map<String, dynamic>> _deliveryPartnerProfiles = {};
+
+  double _totalCashToCollect = 0.0;
+  double _totalQR = 0.0;
+  double _totalPrepaid = 0.0;
+  int _activeBoys = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    _selectedDateRange = DateTimeRange(start: today, end: today);
+    _fetchSettlementData();
+  }
+
+  void _handleFilterChange(String? value) {
+    if (value == null) return;
+    
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTimeRange? newRange;
+
+    switch (value) {
+      case 'Today':
+        newRange = DateTimeRange(start: today, end: today);
+        break;
+      case 'Yesterday':
+        final yesterday = today.subtract(const Duration(days: 1));
+        newRange = DateTimeRange(start: yesterday, end: yesterday);
+        break;
+      case 'Last 7 Days':
+        newRange = DateTimeRange(start: today.subtract(const Duration(days: 7)), end: today);
+        break;
+    }
+
+    setState(() {
+      _selectedFilter = value;
+      _selectedDateRange = newRange;
+      _fetchSettlementData();
+    });
+  }
+
+  Future<void> _fetchSettlementData() async {
+    setState(() => _isLoading = true);
+    
+    try {
+      Query query = FirebaseFirestore.instance
+          .collection('orders')
+          .where('deliveryPincode', whereIn: widget.store.pincodes);
+
+      if (_selectedDateRange != null) {
+        query = query
+            .where('orderDate', isGreaterThanOrEqualTo: _selectedDateRange!.start)
+            .where('orderDate', isLessThanOrEqualTo: _selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59)));
+      }
+
+      final snap = await query.get();
+      
+      Map<String, List<Map<String, dynamic>>> groupedOrders = {};
+      Set<String> dpIds = {};
+      
+      double cash = 0;
+      double qr = 0;
+      double prepaid = 0;
+      
+      for (var doc in snap.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        data['id'] = doc.id;
+        
+        final status = data['status'] as String? ?? '';
+        if (status != 'out_for_delivery' && status != 'delivered') continue;
+        
+        final dpId = data['deliveryPartnerId'] as String?;
+        if (dpId == null || dpId.isEmpty) continue;
+        
+        dpIds.add(dpId);
+        groupedOrders.putIfAbsent(dpId, () => []).add(data);
+        
+        if (status == 'delivered') {
+          final paymentMethod = data['paymentMethod'] as String? ?? '';
+          final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+          
+          if (paymentMethod == 'online') {
+            prepaid += total;
+          } else {
+            if (collectedMethod == 'qr') {
+              qr += total;
+            } else {
+              cash += total;
+            }
+          }
+        }
+      }
+      
+      Map<String, Map<String, dynamic>> profiles = {};
+      if (dpIds.isNotEmpty) {
+        final List<String> listIds = dpIds.toList();
+        for (int i = 0; i < listIds.length; i += 10) {
+          final chunk = listIds.skip(i).take(10).toList();
+          final userSnap = await FirebaseFirestore.instance
+              .collection('users')
+              .where(FieldPath.documentId, whereIn: chunk)
+              .get();
+          for (var udoc in userSnap.docs) {
+            profiles[udoc.id] = udoc.data() as Map<String, dynamic>;
+          }
+        }
+      }
+      
+      if (mounted) {
+        setState(() {
+          _deliveryPartnerOrders = groupedOrders;
+          _deliveryPartnerProfiles = profiles;
+          _totalCashToCollect = cash;
+          _totalQR = qr;
+          _totalPrepaid = prepaid;
+          _activeBoys = dpIds.length;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching settlements: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Delivery Settlements', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Container(
+                height: 32,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedFilter,
+                    icon: const Icon(Icons.arrow_drop_down, size: 20, color: Colors.blue),
+                    style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.bold),
+                    items: ['Today', 'Yesterday', 'Last 7 Days']
+                        .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                        .toList(),
+                    onChanged: _handleFilterChange,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1.4,
+            children: [
+              _SummaryMiniCard(title: 'Cash to Collect', value: '₹${_totalCashToCollect.toStringAsFixed(2)}', icon: Icons.money, color: Colors.green),
+              _SummaryMiniCard(title: 'QR Payments', value: '₹${_totalQR.toStringAsFixed(2)}', icon: Icons.qr_code_2, color: Colors.blue),
+              _SummaryMiniCard(title: 'Prepaid Delivered', value: '₹${_totalPrepaid.toStringAsFixed(2)}', icon: Icons.credit_card, color: Colors.orange),
+              _SummaryMiniCard(title: 'Active Boys', value: '$_activeBoys', icon: Icons.motorcycle, color: Colors.purple),
+            ],
+          ),
+          
+          const SizedBox(height: 24),
+          const Text('Delivery Partners', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          
+          if (_isLoading)
+            const Center(child: Padding(padding: EdgeInsets.all(24.0), child: CircularProgressIndicator()))
+          else if (_deliveryPartnerOrders.isEmpty)
+            const Center(child: Padding(padding: EdgeInsets.all(24.0), child: Text('No deliveries for selected date.')))
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _deliveryPartnerOrders.length,
+              itemBuilder: (context, index) {
+                final dpId = _deliveryPartnerOrders.keys.elementAt(index);
+                final orders = _deliveryPartnerOrders[dpId]!;
+                final profile = _deliveryPartnerProfiles[dpId];
+                
+                return _buildDeliveryBoyCard(dpId, profile, orders);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeliveryBoyCard(String dpId, Map<String, dynamic>? profile, List<Map<String, dynamic>> orders) {
+    int outForDelivery = 0;
+    int delivered = 0;
+    double cash = 0;
+    double qr = 0;
+    double prepaid = 0;
+    
+    for (var data in orders) {
+      if (data['status'] == 'out_for_delivery') outForDelivery++;
+      if (data['status'] == 'delivered') {
+        delivered++;
+        final paymentMethod = data['paymentMethod'] as String? ?? '';
+        final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+        
+        if (paymentMethod == 'online') {
+          prepaid += total;
+        } else {
+          if (collectedMethod == 'qr') {
+            qr += total;
+          } else {
+            cash += total;
+          }
+        }
+      }
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      elevation: 2,
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        leading: CircleAvatar(
+          backgroundColor: Colors.blue.shade100,
+          child: const Icon(Icons.person, color: Colors.blue),
+        ),
+        title: Text(profile?['name'] ?? 'Unknown Partner', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(profile?['phone'] ?? 'No phone'),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _StatusBadge(label: '$outForDelivery Picked', color: Colors.orange),
+                const SizedBox(width: 8),
+                _StatusBadge(label: '$delivered Delivered', color: Colors.green),
+              ],
+            ),
+          ],
+        ),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.grey.shade50,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Financial Breakdown', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Cash to Collect:', style: TextStyle(fontWeight: FontWeight.w500)),
+                    Text('₹${cash.toStringAsFixed(2)}', style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold, fontSize: 16)),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('QR Received:'),
+                    Text('₹${qr.toStringAsFixed(2)}'),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Prepaid Orders:'),
+                    Text('₹${prepaid.toStringAsFixed(2)}'),
+                  ],
+                ),
+                const Divider(height: 24),
+                const Text('Order Details (Picked Items)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ...orders.map((o) {
+                  final items = o['items'] as List<dynamic>? ?? [];
+                  final itemNames = items.map((i) => '${i['quantity']}x ${i['name']}').join(', ');
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(o['status'] == 'delivered' ? Icons.check_circle : Icons.local_shipping, size: 16, color: o['status'] == 'delivered' ? Colors.green : Colors.orange),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Order #${o['id'].toString().substring(0,6)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                              Text(itemNames, style: const TextStyle(fontSize: 12)),
+                            ],
+                          ),
+                        ),
+                        Text('₹${o['totalAmount']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  const _StatusBadge({required this.label, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.bold)),
     );
   }
 }

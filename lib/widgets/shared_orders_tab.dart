@@ -7,10 +7,11 @@ import 'package:provider/provider.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import '../screens/order_tracking_screen.dart';
+import '../models/order_model.dart';
 import '../providers/auth_provider.dart';
-import 'order_details_dialog.dart';
 import 'barcode_scanner_dialog.dart';
-import 'add_manual_order_dialog.dart'; // New
+import '../screens/add_manual_order_screen.dart';
 
 class SharedOrdersTab extends StatefulWidget {
   final bool canManage;
@@ -188,9 +189,9 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                           padding: const EdgeInsets.only(left: 8),
                           child: ElevatedButton.icon(
                             onPressed: () {
-                              showDialog(
-                                context: context,
-                                builder: (context) => const AddManualOrderDialog(),
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const AddManualOrderScreen()),
                               );
                             },
                             icon: const Icon(Icons.add, size: 16),
@@ -217,7 +218,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                       SizedBox(
                         width: 140,
                         child: DropdownButtonFormField<String>(
-                          initialValue: _selectedDateFilter,
+                          value: _selectedDateFilter,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Date Range',
@@ -284,7 +285,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                       SizedBox(
                         width: 140,
                         child: DropdownButtonFormField<String>(
-                          initialValue: _selectedStatusFilter,
+                          value: _selectedStatusFilter,
                           isExpanded: true,
                           decoration: const InputDecoration(
                             labelText: 'Status',
@@ -560,22 +561,8 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                         isDense: true,
                                         items: _statuses.where((s) {
                                           if (!widget.canManage) return true;
-                                          // If Delivery Partner, see only relevant (usually they don't change status here, but let's keep logic simple)
-                                          // If Seller (assuming canManage=true and not isDeliveryPartner implies seller/admin)
-                                          // Restrict 'shipped', 'out_for_delivery', 'delivered', 'cancelled' for Sellers
-                                          // But if it IS already one of those, we must show it so it can be viewed.
                                           final isRestricted = ['shipped', 'out_for_delivery', 'delivered', 'cancelled'].contains(s);
                                           final isCurrent = status == s;
-                                          
-                                          // If I am just a seller (not admin, assuming isAdmin is handled by parent passing canManage=true)
-                                          // We need a way to know if 'admin' or 'seller'. 
-                                          // SharedOrdersTab doesn't explicitly know 'role', but text says "Seller Dashboard".
-                                          // We will assume if canManage is true, we apply restrictions unless we add an 'isAdmin' flag.
-                                          // However, for now, enforcing restrictions for everyone using this widget in this context 
-                                          // as per user request "seller dashboard main...".
-                                          // Ideally, Admin uses a different view or we pass 'isSeller' flag.
-                                          // Given the prompt context, I will apply restriction.
-                                          
                                           if (isRestricted && !isCurrent) return false;
                                           return true; 
                                         }).map((s) => DropdownMenuItem(
@@ -596,10 +583,6 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                             final normalizedScannedCode = scannedCode.trim().toLowerCase();
 
                                             // Verify barcode
-                                            // As verified in plan, we check match against items or the Order ID itself.
-                                            // Shipping labels often contain the Order ID as a barcode.
-                                            
-                                            // data['items'] is List<dynamic>
                                             final items = data['items'] as List<dynamic>? ?? [];
                                             bool matchFound = false;
 
@@ -716,9 +699,14 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                                     icon: const Icon(Icons.info_outline, size: 14),
                                     label: const Text('Details', style: TextStyle(fontSize: 11)),
                                     onPressed: () {
-                                      showDialog(
-                                        context: context,
-                                        builder: (context) => OrderDetailsDialog(orderId: orderId, orderData: data),
+                                       Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => OrderTrackingScreen(
+                                            order: OrderModel.fromMap(data, orderId),
+                                            isAdminOrPartner: true,
+                                          ),
+                                        ),
                                       );
                                     },
                                     style: OutlinedButton.styleFrom(

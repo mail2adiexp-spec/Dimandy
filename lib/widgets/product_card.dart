@@ -194,25 +194,29 @@ class ProductCard extends StatelessWidget {
                             ),
                           );
                         }
-                      : () {
+                      : () async {
                           try {
-                            context.read<CartProvider>().addProduct(product);
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('${product.name} added to cart'),
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
+                            await context.read<CartProvider>().addProduct(product);
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('${product.name} added to cart'),
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
                           } catch (e) {
-                            ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text(e.toString().replaceAll('Exception: ', '')),
-                                backgroundColor: Colors.red,
-                                duration: const Duration(seconds: 1),
-                              ),
-                            );
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(e.toString().replaceAll('Exception: ', '')),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
                           }
                         },
                   ),

@@ -168,13 +168,21 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
 
         return CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           slivers: [
             // Header with Search, Filters, and Actions
             SliverToBoxAdapter(child: _buildHeader(products)),
 
             // Products Grid
             if (products.isEmpty)
-              SliverFillRemaining(child: _buildEmptyState())
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    vertical: MediaQuery.of(context).viewInsets.bottom > 0 ? 10 : 40,
+                  ),
+                  child: _buildEmptyState(),
+                ),
+              )
             else
               _buildProductsGrid(products),
           ],
@@ -272,17 +280,50 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
   }
 
   Widget _buildEmptyState() {
+    bool isFiltered = _productSearchQuery.isNotEmpty || 
+                      _selectedProductCategory != null || 
+                      _minProductPrice != null || 
+                      _maxProductPrice != null || 
+                      _stockFilter != 'All' || 
+                      _selectedProductCategories.isNotEmpty || 
+                      _featuredFilter != 'All' || 
+                      _hotDealFilter != 'All' || 
+                      _customerChoiceFilter != 'All';
+
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.search_off, size: 60, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text(
-            'No products found',
-            style: TextStyle(fontSize: 16, color: Colors.grey[600]),
-          ),
-        ],
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('No products found', style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const SizedBox(height: 8),
+            const Text('Try adjusting your filters or search query', style: TextStyle(color: Colors.grey)),
+            if (isFiltered) ...[
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _productSearchQuery = '';
+                    _selectedProductCategory = null;
+                    _minProductPrice = null;
+                    _maxProductPrice = null;
+                    _stockFilter = 'All';
+                    _selectedProductCategories.clear();
+                    _featuredFilter = 'All';
+                    _hotDealFilter = 'All';
+                    _customerChoiceFilter = 'All';
+                    _isProductSelectionMode = false;
+                  });
+                },
+                icon: const Icon(Icons.clear_all),
+                label: const Text('Clear All Filters'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
@@ -291,12 +332,14 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           // Top Row: Count and Actions
           // Top Row: Count and Actions
           MediaQuery.of(context).size.width < 600
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       'Total Products: ${products.length}',
@@ -436,6 +479,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
           // Search and Category
           MediaQuery.of(context).size.width < 600
               ? Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     TextField(
                       decoration: InputDecoration(
@@ -452,7 +496,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       onChanged: (val) =>
                           setState(() => _productSearchQuery = val),
                     ),
-                    const SizedBox(height: 12),
+                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
                       decoration: InputDecoration(
                         hintText: 'Category',
@@ -581,6 +625,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Price Range
@@ -807,10 +852,10 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
       ), // Increased to 100 bottom padding
       sliver: SliverGrid(
         gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: MediaQuery.of(context).size.width < 600 ? 3 : 4,
-          crossAxisSpacing: 8, // Reduced spacing for denser grid
-          mainAxisSpacing: 8,
-          childAspectRatio: 0.55, // Adjusted aspect ratio for narrower columns
+          crossAxisCount: MediaQuery.of(context).size.width < 600 ? 2 : 4,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+          childAspectRatio: MediaQuery.of(context).size.width < 600 ? 0.48 : 0.7, // Taller cards on mobile (2 cols)
         ),
         delegate: SliverChildBuilderDelegate((context, index) {
           final product = products[index];
@@ -1204,6 +1249,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final stockCtrl = TextEditingController();
     final minQtyCtrl = TextEditingController(text: '1');
     final maxQtyCtrl = TextEditingController(text: '0');
+    final adminProfitPercentageCtrl = TextEditingController(); // Added commission controller
 
     String selectedCategory = Provider.of<CategoryProvider>(context, listen: false).categories.isNotEmpty
         ? Provider.of<CategoryProvider>(context, listen: false).categories.first.name
@@ -1319,6 +1365,20 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       const SizedBox(height: 16),
                       SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
                       const SizedBox(height: 16),
+                      // Admin Commission (Only for Admin/Super Admin)
+                      if (auth.hasAdminAccess) ...[
+                        TextFormField(
+                          controller: adminProfitPercentageCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Admin Profit Sharing (%) [Admin Only]',
+                            border: OutlineInputBorder(),
+                            suffixText: '%',
+                            helperText: 'Leave empty for 0% (Seller gets full profit)',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       OutlinedButton.icon(
                         onPressed: () => pickImages(setState), 
                         icon: const Icon(Icons.image), 
@@ -1374,6 +1434,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 'sellerId': auth.isAdmin ? 'admin' : auth.currentUser?.uid ?? 'partner',
                                 'storeIds': selectedStoreIds,
                                 'state': selectedState,
+                                'adminProfitPercentage': adminProfitPercentageCtrl.text.isNotEmpty 
+                                    ? double.tryParse(adminProfitPercentageCtrl.text) 
+                                    : null, // If empty, defaults to null (handled as 0% in calculations)
                                 'createdAt': FieldValue.serverTimestamp(),
                               });
                               if (_selectedImages.isNotEmpty) {

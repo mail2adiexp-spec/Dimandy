@@ -103,8 +103,8 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
               final val = _manualController.text.trim();
               if (val.isEmpty) return;
               Navigator.pop(ctx);
-              
               if (_isMatch(val, widget.expectedOrderId)) {
+                controller.stop();
                 Navigator.pop(context, true);
               } else {
                 _showErrorDialog(val);
@@ -158,6 +158,7 @@ class _BarcodeScannerScreenState extends State<BarcodeScannerScreen> {
     setState(() => isScanned = true);
 
     if (_isMatch(scannedValue, widget.expectedOrderId)) {
+      controller.stop();
       Navigator.pop(context, true);
     } else {
       _showErrorDialog(scannedValue);

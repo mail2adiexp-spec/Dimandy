@@ -31,6 +31,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _stockController;
   late TextEditingController _minQtyController;
   late TextEditingController _maxQtyController;
+  late TextEditingController _adminProfitPercentageController; // Added
   
   late String _selectedCategory;
   late String _selectedUnit;
@@ -55,6 +56,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _stockController = TextEditingController(text: widget.productData['stock'].toString());
     _minQtyController = TextEditingController(text: (widget.productData['minimumQuantity'] ?? 1).toString());
     _maxQtyController = TextEditingController(text: (widget.productData['maximumQuantity'] ?? 0).toString());
+    _adminProfitPercentageController = TextEditingController(
+      text: (widget.productData['adminProfitPercentage'] as num?)?.toString() ?? '',
+    );
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? (widget.productData['imageUrl'] != null ? [widget.productData['imageUrl']] : []));
@@ -71,6 +75,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _stockController.dispose();
     _minQtyController.dispose();
     _maxQtyController.dispose();
+    _adminProfitPercentageController.dispose();
     super.dispose();
   }
 
@@ -150,6 +155,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'storeIds': _selectedStoreIds, // Save storeIds
         'imageUrls': allUrls,
         'imageUrl': allUrls.isNotEmpty ? allUrls.first : null, // Main image
+        'adminProfitPercentage': _adminProfitPercentageController.text.isNotEmpty 
+            ? double.tryParse(_adminProfitPercentageController.text) 
+            : null,
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -547,6 +555,22 @@ class _EditProductDialogState extends State<EditProductDialog> {
                  ),
 
                 const SizedBox(height: 12),
+                // Admin Profit Sharing % (Visible only to Admin/Super Admin)
+                if (Provider.of<AuthProvider>(context, listen: false).hasAdminAccess) ...[
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _adminProfitPercentageController,
+                    decoration: const InputDecoration(
+                      labelText: 'Admin Profit Commission (%) [Admin Only]',
+                      border: OutlineInputBorder(),
+                      suffixText: '%',
+                      helperText: 'Leave empty to use system default (0%)',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+
                 Column(
                   children: [
                      Consumer<CategoryProvider>(

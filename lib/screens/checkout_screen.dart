@@ -31,6 +31,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _selectedPaymentMethod = 'COD'; // COD or Online
   bool _isPlacingOrder = false;
   bool _saveAddress = true;
+  double _deliveryFee = 0.0;
+  double _deliveryFeePercentage = 0.0;
+  double _deliveryFeeMaxCap = 0.0;
 
   @override
   void initState() {
@@ -56,6 +59,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _fillFromAddress(addrProvider.defaultAddress!);
     } else {
       setState(() {});
+    }
+    
+    _fetchDeliverySettings();
+  }
+
+  Future<void> _fetchDeliverySettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+      if (doc.exists) {
+        final data = doc.data();
+        if (data != null) {
+          setState(() {
+            _deliveryFeePercentage = (data['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0;
+            _deliveryFeeMaxCap = (data['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Error fetching delivery settings: $e');
     }
   }
 
@@ -119,14 +141,52 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               debugPrint('Error calculating remaining amount: $e');
                             }
                             
+                            // Calculate Delivery Fee based on percentage
+                            final calculatedFee = cart.totalAmount * (_deliveryFeePercentage / 100);
+                            _deliveryFee = _deliveryFeeMaxCap > 0 && calculatedFee > _deliveryFeeMaxCap 
+                                ? _deliveryFeeMaxCap 
+                                : calculatedFee;
+                            
+                            final grandTotal = cart.totalAmount + _deliveryFee;
+
                             return Column(
                               children: [
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                   children: [
-                                    Text('Items: ${cart.itemCount}'),
+                                    Text('Items Subtotal (${cart.itemCount})'),
                                     Text(
                                       formatINR(cart.totalAmount),
+                                      style: const TextStyle(fontWeight: FontWeight.w500),
+                                    ),
+                                  ],
+                                ),
+                                if (_deliveryFeePercentage > 0) ...[
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('Delivery Fee (${_deliveryFeePercentage}%)'),
+                                      Text(
+                                        formatINR(_deliveryFee),
+                                        style: const TextStyle(fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                                const Divider(height: 24),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text(
+                                      'Grand Total',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    Text(
+                                      formatINR(grandTotal),
                                       style: const TextStyle(
                                         fontSize: 18,
                                         fontWeight: FontWeight.bold,
@@ -175,7 +235,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                         ),
                                       ),
                                       Text(
-                                        formatINR(remainingAmount),
+                                        formatINR(remainingAmount + _deliveryFee), // Fee typically remains part of the final payment
                                         style: const TextStyle(
                                           fontSize: 16,
                                           color: Colors.orange,
@@ -198,7 +258,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                         SizedBox(width: 8),
                                         Expanded(
                                           child: Text(
-                                            'Pay remaining amount on service completion',
+                                            'Pay remaining amount + delivery fee on completion',
                                             style: TextStyle(fontSize: 12, color: Colors.blue),
                                           ),
                                         ),
@@ -535,6 +595,61 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     try {
       final fullAddress =
           '${_addressController.text}, ${_cityController.text}, ${_selectedState!}, ${_postalCodeController.text}';
+
+      // Check current stock from database before placing order
+      for (var cartItem in cart.items) {
+        final isService = cartItem.product.category == 'Services' || 
+                          cartItem.product.unit?.toLowerCase() == 'service' || 
+                          cartItem.product.id.startsWith('svc_');
+        
+        if (!isService) {
+           String getBaseProductId(String productId) {
+             final suffixes = ['_100g', '_250g', '_500g', '_1kg', '_2kg', '_5kg'];
+             for (final suffix in suffixes) {
+               if (productId.endsWith(suffix)) {
+                 return productId.substring(0, productId.length - suffix.length);
+               }
+             }
+             return productId;
+           }
+           final baseProductId = getBaseProductId(cartItem.product.id);
+           
+           DocumentSnapshot? productDoc;
+           productDoc = await FirebaseFirestore.instance.collection('products').doc(baseProductId).get();
+           
+           if (!productDoc.exists && baseProductId != cartItem.product.id) {
+              productDoc = await FirebaseFirestore.instance.collection('products').doc(cartItem.product.id).get();
+           }
+
+           if (productDoc.exists) {
+             final currentStock = (productDoc.data() as Map<String, dynamic>?)?['stock'] as num? ?? 0;
+             
+             int totalBaseQtyInCart = 0;
+             for (var item in cart.items) {
+               final itemBaseId = getBaseProductId(item.product.id);
+               if (itemBaseId == baseProductId) {
+                 totalBaseQtyInCart += item.quantity;
+               }
+             }
+
+             if (currentStock < totalBaseQtyInCart) {
+               if (mounted) {
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   SnackBar(
+                     content: Text('Not enough stock for ${cartItem.product.name}. Total required: $totalBaseQtyInCart, Available: $currentStock'),
+                     backgroundColor: Colors.red,
+                     duration: const Duration(seconds: 3),
+                   ),
+                 );
+                 setState(() {
+                   _isPlacingOrder = false;
+                 });
+               }
+               return;
+             }
+           }
+        }
+      }
 
       // Convert cart items to order items
       final orderItems = cart.items.map((cartItem) {
