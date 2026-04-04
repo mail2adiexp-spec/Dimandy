@@ -141,11 +141,18 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               debugPrint('Error calculating remaining amount: $e');
                             }
                             
-                            // Calculate Delivery Fee based on percentage
-                            final calculatedFee = cart.totalAmount * (_deliveryFeePercentage / 100);
-                            _deliveryFee = _deliveryFeeMaxCap > 0 && calculatedFee > _deliveryFeeMaxCap 
+                            // Calculate Delivery Fee: (Global % of Total) + (Sum of per-product overrides)
+                            double totalProductOverrides = 0.0;
+                            for (var item in cart.items) {
+                              totalProductOverrides += (item.product.deliveryFeeOverride ?? 0.0) * item.quantity;
+                            }
+
+                            final calculatedGlobalFee = cart.totalAmount * (_deliveryFeePercentage / 100);
+                            final cappedGlobalFee = _deliveryFeeMaxCap > 0 && calculatedGlobalFee > _deliveryFeeMaxCap 
                                 ? _deliveryFeeMaxCap 
-                                : calculatedFee;
+                                : calculatedGlobalFee;
+                            
+                            _deliveryFee = cappedGlobalFee + totalProductOverrides;
                             
                             final grandTotal = cart.totalAmount + _deliveryFee;
 
@@ -660,6 +667,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           quantity: cartItem.quantity,
           price: cartItem.product.price,
           basePrice: cartItem.product.basePrice, // New: Capture buying price
+          adminProfitPercentage: cartItem.product.adminProfitPercentage, // Capture commission
+          deliveryFeeOverride: cartItem.product.deliveryFeeOverride, // Capture delivery fee override
           imageUrl: cartItem.product.imageUrl,
           metadata: cartItem.metadata,
         );
@@ -691,6 +700,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         phoneNumber: _phoneController.text,
         state: _selectedState!,
         paymentMethod: _selectedPaymentMethod,
+        deliveryFee: _deliveryFee, // Pass explicitly calculated delivery fee (Global + Overrides)
       );
 
       debugPrint('Checkout: Order ID received: $orderId');

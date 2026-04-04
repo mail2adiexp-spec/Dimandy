@@ -32,6 +32,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _minQtyController;
   late TextEditingController _maxQtyController;
   late TextEditingController _adminProfitPercentageController; // Added
+  late TextEditingController _deliveryFeeOverrideController; // Added
   
   late String _selectedCategory;
   late String _selectedUnit;
@@ -59,6 +60,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _adminProfitPercentageController = TextEditingController(
       text: (widget.productData['adminProfitPercentage'] as num?)?.toString() ?? '',
     );
+    _deliveryFeeOverrideController = TextEditingController(
+      text: (widget.productData['deliveryFeeOverride'] as num?)?.toString() ?? '',
+    );
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? (widget.productData['imageUrl'] != null ? [widget.productData['imageUrl']] : []));
@@ -76,6 +80,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _minQtyController.dispose();
     _maxQtyController.dispose();
     _adminProfitPercentageController.dispose();
+    _deliveryFeeOverrideController.dispose();
     super.dispose();
   }
 
@@ -157,6 +162,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'imageUrl': allUrls.isNotEmpty ? allUrls.first : null, // Main image
         'adminProfitPercentage': _adminProfitPercentageController.text.isNotEmpty 
             ? double.tryParse(_adminProfitPercentageController.text) 
+            : null,
+        'deliveryFeeOverride': _deliveryFeeOverrideController.text.isNotEmpty 
+            ? double.tryParse(_deliveryFeeOverrideController.text) 
             : null,
         'updatedAt': FieldValue.serverTimestamp(),
       });
@@ -555,7 +563,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
                  ),
 
                 const SizedBox(height: 12),
-                // Admin Profit Sharing % (Visible only to Admin/Super Admin)
+                // Admin Commission & Delivery Fee (Visible only to Admin/Super Admin)
                 if (Provider.of<AuthProvider>(context, listen: false).hasAdminAccess) ...[
                   const SizedBox(height: 16),
                   TextFormField(
@@ -565,6 +573,17 @@ class _EditProductDialogState extends State<EditProductDialog> {
                       border: OutlineInputBorder(),
                       suffixText: '%',
                       helperText: 'Leave empty to use system default (0%)',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _deliveryFeeOverrideController,
+                    decoration: const InputDecoration(
+                      labelText: 'Delivery Fee Override (₹) [Admin Only]',
+                      border: OutlineInputBorder(),
+                      prefixText: '₹',
+                      helperText: 'Leave empty for default delivery fee',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),

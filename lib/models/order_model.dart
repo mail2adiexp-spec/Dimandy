@@ -175,6 +175,7 @@ class OrderItem {
   final double price;
   final double basePrice; // Added for profit calculation
   final double? adminProfitPercentage; // Custom profit sharing %
+  final double? deliveryFeeOverride; // Custom delivery fee override
   final String? imageUrl;
   final Map<String, dynamic>? metadata;
 
@@ -186,6 +187,7 @@ class OrderItem {
     required this.price,
     this.basePrice = 0.0,
     this.adminProfitPercentage,
+    this.deliveryFeeOverride,
     this.imageUrl,
     this.metadata,
   });
@@ -199,6 +201,7 @@ class OrderItem {
       price: (map['price'] ?? 0).toDouble(),
       basePrice: (map['basePrice'] ?? 0).toDouble(),
       adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
+      deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),
       imageUrl: map['imageUrl'],
       metadata: map['metadata'] as Map<String, dynamic>?,
     );
@@ -213,6 +216,7 @@ class OrderItem {
       'price': price,
       'basePrice': basePrice,
       'adminProfitPercentage': adminProfitPercentage,
+      'deliveryFeeOverride': deliveryFeeOverride,
       'imageUrl': imageUrl,
       if (metadata != null) 'metadata': metadata,
     };

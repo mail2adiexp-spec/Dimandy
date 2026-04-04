@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/transaction_service.dart';
 import '../models/transaction_model.dart';
 import 'seller_wallet_screen.dart';
+import 'delivery_partner_earnings_screen.dart';
 
 class DeliveryPartnerDashboardScreen extends StatefulWidget {
   static const routeName = '/delivery-dashboard';
@@ -88,8 +89,8 @@ class _DeliveryPartnerDashboardScreenState
       _recentActivityStream = FirebaseFirestore.instance
           .collection('orders')
           .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
-          .orderBy('createdAt', descending: true)
-          .limit(5)
+          // Removed orderBy to avoid requiring a composite index for new accounts
+          .limit(50) 
           .snapshots();
 
       _totalEarningsStream = FirebaseFirestore.instance
@@ -1908,7 +1909,12 @@ class _DeliveryPartnerDashboardScreenState
               subtitle: const Text('Track your income and payments'),
               trailing: const Icon(Icons.arrow_forward_ios, size: 16),
               onTap: () {
-                _showEarningsDialog(deliveryPartnerId);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => DeliveryPartnerEarningsScreen(deliveryPartnerId: deliveryPartnerId),
+                  ),
+                );
               },
             ),
           ),
@@ -1940,6 +1946,15 @@ class _DeliveryPartnerDashboardScreenState
           StreamBuilder<QuerySnapshot>(
             stream: _recentActivityStream,
             builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Center(child: Text('Error: ${snapshot.error}', style: const TextStyle(color: Colors.red, fontSize: 12))),
+                  ),
+                );
+              }
+
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Card(
                   child: Padding(
@@ -1949,9 +1964,30 @@ class _DeliveryPartnerDashboardScreenState
                 );
               }
 
-              final deliveries = snapshot.data?.docs ?? [];
+              // Robust date parsing for sorting
+              DateTime _parseAnyDate(dynamic v) {
+                if (v == null) return DateTime(2000);
+                if (v is Timestamp) return v.toDate();
+                if (v is DateTime) return v;
+                if (v is String) return DateTime.tryParse(v) ?? DateTime(2000);
+                return DateTime(2000);
+              }
 
-              if (deliveries.isEmpty) {
+              // Sort on client side to avoid index requirements
+              final rawDocs = snapshot.data?.docs ?? [];
+              final deliveries = List<QueryDocumentSnapshot>.from(rawDocs);
+              deliveries.sort((a, b) {
+                final dataA = a.data() as Map<String, dynamic>;
+                final dataB = b.data() as Map<String, dynamic>;
+                final dateA = _parseAnyDate(dataA['orderDate']);
+                final dateB = _parseAnyDate(dataB['orderDate']);
+                return dateB.compareTo(dateA);
+              });
+
+              // Just take first 5
+              final recentDeliveries = deliveries.take(5).toList();
+
+              if (recentDeliveries.isEmpty) {
                 return Card(
                   child: Padding(
                     padding: const EdgeInsets.all(24),
@@ -1973,7 +2009,7 @@ class _DeliveryPartnerDashboardScreenState
 
               return Card(
                 child: Column(
-                  children: deliveries.map((doc) {
+                  children: recentDeliveries.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
                     final orderId = doc.id;
                     final customerName = data['userName'] ?? 'Customer';
@@ -2177,345 +2213,9 @@ class _DeliveryPartnerDashboardScreenState
     );
   }
 
-  // ==================== PHASE 2: EARNINGS DIALOG ====================
-  void _showEarningsDialog(String deliveryPartnerId) {
-    bool isSyncing = false;
-    showDialog(
-      context: context,
-      builder: (ctx) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          width: 800,
-          height: 600,
-          padding: const EdgeInsets.all(24),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                     Expanded(
-                       child: Column(
-                         crossAxisAlignment: CrossAxisAlignment.start,
-                         children: [
-                           const Text(
-                            'Earnings History',
-                            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                          ),
-                          Text('Sync older earnings to your wallet', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
-                         ],
-                       ),
-                     ),
-                    Row(
-                      children: [
-                        StatefulBuilder(
-                          builder: (context, setStateSync) {
-                            return TextButton.icon(
-                              onPressed: isSyncing ? null : () async {
-                                setStateSync(() => isSyncing = true);
-                                await _syncMissingTransactions(deliveryPartnerId);
-                                if (context.mounted) {
-                                  Navigator.pop(ctx);
-                                  _showEarningsDialog(deliveryPartnerId);
-                                }
-                              },
-                              icon: isSyncing 
-                                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) 
-                                : const Icon(Icons.sync, size: 18),
-                              label: Text(isSyncing ? 'Syncing...' : 'Sync Balance'),
-                            );
-                          },
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(ctx),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const Divider(),
-                const SizedBox(height: 16),
-  
-                // Available Balance Card (New)
-                FutureBuilder<double>(
-                  future: TransactionService().getBalance(deliveryPartnerId),
-                  builder: (context, balanceSnapshot) {
-                    final balance = balanceSnapshot.data ?? 0.0;
-                    final isWalletLoading = balanceSnapshot.connectionState == ConnectionState.waiting;
-  
-                    return Card(
-                      color: Colors.blue.shade50,
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.blue,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.account_balance_wallet, color: Colors.white, size: 28),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Available Balance', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                                  if (isWalletLoading)
-                                    const SizedBox(height: 8, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                                  else
-                                    Text(
-                                      '₹${balance.toStringAsFixed(2)}',
-                                      style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.blue),
-                                    ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 12),
-  
-                // Total Earnings Card
-                StreamBuilder<QuerySnapshot>(
-                  stream: _totalEarningsStream,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Card(
-                        child: Padding(
-                          padding: EdgeInsets.all(24),
-                          child: Center(child: CircularProgressIndicator()),
-                        ),
-                      );
-                    }
-  
-                    double totalEarnings = 0;
-                    final deliveries = snapshot.data?.docs ?? [];
-                    
-                    for (var doc in deliveries) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
-                      totalEarnings += fee;
-                    }
-  
-                    return Card(
-                      color: Colors.green.shade50,
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.green,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.trending_up, color: Colors.white, size: 28),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Lifetime Earnings', style: TextStyle(fontSize: 14, color: Colors.black54)),
-                                  Text(
-                                    '₹${totalEarnings.toStringAsFixed(2)}',
-                                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.green),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-  
-                // Wallet Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      final auth = Provider.of<AuthProvider>(context, listen: false);
-                      if (auth.currentUser != null) {
-                         Navigator.push(
-                           context,
-                           MaterialPageRoute(builder: (_) => SellerWalletScreen(user: auth.currentUser!)),
-                         );
-                      }
-                    },
-                    icon: const Icon(Icons.account_balance_wallet),
-                    label: const Text('Manage Wallet & Withdraw'),
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      backgroundColor: Colors.blue,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-  
-                const SizedBox(height: 16),
-  
-                // Deliveries List
-                const Text(
-                  'Completed Deliveries',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 12),
-  
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('orders')
-                      .where('deliveryPartnerId', isEqualTo: deliveryPartnerId)
-                      .where('deliveryStatus', isEqualTo: 'delivered')
-                      .orderBy('deliveredAt', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-  
-                    final deliveries = snapshot.data?.docs ?? [];
-  
-                    if (deliveries.isEmpty) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.receipt_long, size: 64, color: Colors.grey[400]),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'No completed deliveries yet',
-                              style: TextStyle(fontSize: 16, color: Colors.grey),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-  
-                    return ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: deliveries.length,
-                      itemBuilder: (context, index) {
-                        final data = deliveries[index].data() as Map<String, dynamic>;
-                        final orderId = deliveries[index].id;
-                        final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
-                        final customerName = data['userName'] ?? 'Customer';
-                        final deliveredAt = (data['deliveredAt'] as Timestamp?)?.toDate();
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.green.shade100,
-                              child: const Icon(Icons.check, color: Colors.green),
-                            ),
-                            title: Text('Order #${orderId.substring(0, 8)}...'),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(customerName),
-                                if (deliveredAt != null)
-                                  Text(
-                                    'Delivered: ${DateFormat('MMM d, yyyy - h:mm a').format(deliveredAt)}',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey[600],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            trailing: Text(
-                              '₹${deliveryFee.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  // ==================== PHASE 2: EARNINGS DIALOG   // Earnings screen logic moved to DeliveryPartnerEarningsScreen
 
   // ==================== PHASE 3: PERFORMANCE DIALOG ====================
-  // Sync missing transactions for old orders
-  Future<void> _syncMissingTransactions(String partnerId) async {
-    try {
-      final orders = await FirebaseFirestore.instance
-          .collection('orders')
-          .where('deliveryPartnerId', isEqualTo: partnerId)
-          .where('deliveryStatus', isEqualTo: 'delivered')
-          .get();
-
-      if (orders.docs.isEmpty) return;
-
-      final existingTransactions = await FirebaseFirestore.instance
-          .collection('transactions')
-          .where('userId', isEqualTo: partnerId)
-          .get();
-
-      final existingOrderIds = existingTransactions.docs
-          .map((doc) => (doc.data() as Map<String, dynamic>)['referenceId'] as String?)
-          .where((id) => id != null)
-          .toSet();
-
-      int count = 0;
-      for (var doc in orders.docs) {
-        final orderId = doc.id;
-        if (existingOrderIds.contains(orderId)) continue;
-
-        final data = doc.data() as Map<String, dynamic>;
-        final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
-
-        if (fee > 0) {
-          await TransactionService().recordTransaction(
-            TransactionModel(
-              id: '',
-              userId: partnerId,
-              amount: fee,
-              type: TransactionType.credit,
-              description: 'Retroactive Delivery Fee: #${orderId.substring(0, 8)}',
-              status: TransactionStatus.completed,
-              referenceId: orderId,
-              metadata: {
-                'orderId': orderId,
-                'type': 'delivery_earning',
-                'sellerId': partnerId, // Standard for revenue tracking
-                'sync': 'manual',
-              },
-              createdAt: (data['deliveredAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-            ),
-          );
-          count++;
-        }
-      }
-      
-      debugPrint('Sync completed: $count transactions added.');
-    } catch (e) {
-      debugPrint('Sync Error: $e');
-    }
-  }
 
   void _showPerformanceDialog(String deliveryPartnerId) {
     showDialog(

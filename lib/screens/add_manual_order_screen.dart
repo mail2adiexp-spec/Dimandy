@@ -46,6 +46,13 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
     );
   }
 
+  double get _totalDeliveryFee {
+    return _selectedItems.fold(
+      0.0,
+      (sum, item) => sum + ((item['deliveryFeeOverride'] ?? 0.0) * item['quantity']),
+    );
+  }
+
   void _addItem(Product product) {
     setState(() {
       final index = _selectedItems.indexWhere((item) => item['productId'] == product.id);
@@ -59,6 +66,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
           'price': product.price,
           'basePrice': product.basePrice,
           'adminProfitPercentage': product.adminProfitPercentage, // Inherit commission
+          'deliveryFeeOverride': product.deliveryFeeOverride, // Inherit delivery fee override
           'quantity': 1,
           'sellerId': product.sellerId,
           'storeIds': product.storeIds,
@@ -142,6 +150,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
         'items': _selectedItems,
         'sellerIds': sellerIds,
         'totalAmount': _totalAmount,
+        'deliveryFee': _totalDeliveryFee, // Save the calculated delivery fee
         'status': 'pending',
         'orderDate': FieldValue.serverTimestamp(),
         'isGuest': true,
@@ -441,8 +450,16 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            const Text('Delivery Fee:', style: TextStyle(color: Colors.grey, fontSize: 13)),
+            Text('₹${_totalDeliveryFee.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
             const Text('Total Amount:', style: TextStyle(color: Colors.grey, fontSize: 14)),
-            Text('₹${_totalAmount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.green)),
+            Text('₹${(_totalAmount + _totalDeliveryFee).toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24, color: Colors.green)),
           ],
         ),
         const SizedBox(height: 16),

@@ -30,6 +30,7 @@ class CartItem {
     'stock': product.stock, // Added stock
     'storeIds': product.storeIds,
     'adminProfitPercentage': product.adminProfitPercentage,
+    'deliveryFeeOverride': product.deliveryFeeOverride,
     if (metadata != null) 'metadata': metadata,
   };
 
@@ -46,6 +47,7 @@ class CartItem {
         stock: (map['stock'] as num?)?.toInt() ?? 0, // Restore stock
         storeIds: List<String>.from(map['storeIds'] ?? []),
         adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
+        deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),
       ),
       quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       metadata: map['metadata'] is Map ? (map['metadata'] as Map).cast<String, dynamic>() : null,

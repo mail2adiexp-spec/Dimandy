@@ -25,6 +25,7 @@ class Product {
   final List<String> storeIds; // Added storeIds for availability
   final String? state; // Added state field
   final List<String> searchKeywords; // Added for global search
+  final double? deliveryFeeOverride; // Optional: Custom delivery fee for this product
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -52,6 +53,7 @@ class Product {
     this.maximumQuantity = 0,
     this.storeIds = const [],
     this.state,
+    this.deliveryFeeOverride,
     this.searchKeywords = const [],
     this.createdAt,
     this.updatedAt,
@@ -83,6 +85,7 @@ class Product {
       'maximumQuantity': maximumQuantity,
       'storeIds': storeIds,
       'state': state,
+      'deliveryFeeOverride': deliveryFeeOverride,
       'searchKeywords': searchKeywords,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -116,6 +119,7 @@ class Product {
       maximumQuantity: (map['maximumQuantity'] as num?)?.toInt() ?? 0,
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       state: map['state'] as String?,
+      deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),
       searchKeywords: (map['searchKeywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 

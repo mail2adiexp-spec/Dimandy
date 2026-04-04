@@ -1250,6 +1250,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final minQtyCtrl = TextEditingController(text: '1');
     final maxQtyCtrl = TextEditingController(text: '0');
     final adminProfitPercentageCtrl = TextEditingController(); // Added commission controller
+    final deliveryFeeOverrideCtrl = TextEditingController(); // Added delivery fee override
 
     String selectedCategory = Provider.of<CategoryProvider>(context, listen: false).categories.isNotEmpty
         ? Provider.of<CategoryProvider>(context, listen: false).categories.first.name
@@ -1365,7 +1366,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       const SizedBox(height: 16),
                       SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
                       const SizedBox(height: 16),
-                      // Admin Commission (Only for Admin/Super Admin)
+                      // Admin Commission & Delivery Fee (Only for Admin/Super Admin)
                       if (auth.hasAdminAccess) ...[
                         TextFormField(
                           controller: adminProfitPercentageCtrl,
@@ -1374,6 +1375,17 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                             border: OutlineInputBorder(),
                             suffixText: '%',
                             helperText: 'Leave empty for 0% (Seller gets full profit)',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: deliveryFeeOverrideCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Delivery Fee Override (₹) [Admin Only]',
+                            border: OutlineInputBorder(),
+                            prefixText: '₹',
+                            helperText: 'Leave empty for default delivery fee',
                           ),
                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                         ),
@@ -1437,6 +1449,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 'adminProfitPercentage': adminProfitPercentageCtrl.text.isNotEmpty 
                                     ? double.tryParse(adminProfitPercentageCtrl.text) 
                                     : null, // If empty, defaults to null (handled as 0% in calculations)
+                                'deliveryFeeOverride': deliveryFeeOverrideCtrl.text.isNotEmpty 
+                                    ? double.tryParse(deliveryFeeOverrideCtrl.text) 
+                                    : null,
                                 'createdAt': FieldValue.serverTimestamp(),
                               });
                               if (_selectedImages.isNotEmpty) {
@@ -1477,6 +1492,8 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
     final stockCtrl = TextEditingController(text: productData['stock'].toString());
     final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
+    final adminProfitPercentageCtrl = TextEditingController(text: (productData['adminProfitPercentage'] as num?)?.toString() ?? '');
+    final deliveryFeeOverrideCtrl = TextEditingController(text: (productData['deliveryFeeOverride'] as num?)?.toString() ?? '');
 
     String selectedCategory = productData['category'] ?? '';
     String selectedUnit = productData['unit'] ?? 'Pic';
@@ -1566,6 +1583,31 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         }
                       ),
                       const SizedBox(height: 16),
+                      // Admin Commission & Delivery Fee (Only for Admin/Super Admin)
+                      if (auth.hasAdminAccess) ...[
+                        TextFormField(
+                          controller: adminProfitPercentageCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Admin Profit Sharing (%) [Admin Only]',
+                            border: OutlineInputBorder(),
+                            suffixText: '%',
+                            helperText: 'Leave empty for 0% (Seller gets full profit)',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: deliveryFeeOverrideCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Delivery Fee Override (₹) [Admin Only]',
+                            border: OutlineInputBorder(),
+                            prefixText: '₹',
+                            helperText: 'Leave empty for default delivery fee',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                       OutlinedButton.icon(
                         onPressed: () => pickImages(setState),
                         icon: const Icon(Icons.image),
@@ -1635,6 +1677,12 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 'mrp': m,
                                 'stock': int.parse(stockCtrl.text),
                                 'isHotDeal': m > sp,
+                                'adminProfitPercentage': adminProfitPercentageCtrl.text.isNotEmpty 
+                                    ? double.tryParse(adminProfitPercentageCtrl.text) 
+                                    : null,
+                                'deliveryFeeOverride': deliveryFeeOverrideCtrl.text.isNotEmpty 
+                                    ? double.tryParse(deliveryFeeOverrideCtrl.text) 
+                                    : null,
                                 'updatedAt': FieldValue.serverTimestamp(),
                                 'imageUrls': updatedUrls,
                                 'imageUrl': updatedUrls.isNotEmpty ? updatedUrls.first : null,
