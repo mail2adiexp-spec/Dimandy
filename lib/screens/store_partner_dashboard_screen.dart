@@ -9,6 +9,8 @@ import '../providers/auth_provider.dart';
 import '../models/store_model.dart';
 import '../widgets/shared_orders_tab.dart';
 import '../widgets/shared_products_tab.dart';
+import '../models/payout_model.dart';
+import '../services/payout_service.dart';
 import 'main_navigation_screen.dart';
 
 class StorePartnerDashboardScreen extends StatefulWidget {
@@ -172,6 +174,7 @@ class _FinancialsTabState extends State<_FinancialsTab> {
   String _selectedFilter = 'Today';
   late Stream<QuerySnapshot> _ordersStream;
   late Stream<QuerySnapshot> _purchasesStream;
+  late Stream<List<PayoutModel>> _payoutsStream;
 
   @override
   void initState() {
@@ -213,6 +216,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
           .where('createdAt', isLessThanOrEqualTo: _selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59)));
     }
     _purchasesStream = pQuery.snapshots();
+
+    _payoutsStream = PayoutService().getPayouts(context.read<AuthProvider>().currentUser?.uid ?? '');
   }
 
   void _handleFilterChange(String? value) {
@@ -435,7 +440,7 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             final price = (item['price'] as num?)?.toDouble() ?? 0.0;
             final buyingPrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
             final qty = (item['quantity'] as num?)?.toInt() ?? 1;
-            final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 0.0; // Default to 0% if empty
+            final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0; // Default to 25% if empty
 
             final itemSales = price * qty;
             final itemPurchase = buyingPrice * qty;
@@ -478,7 +483,30 @@ class _FinancialsTabState extends State<_FinancialsTab> {
               }
             }
 
-            return SingleChildScrollView(
+            return StreamBuilder<List<PayoutModel>>(
+              stream: _payoutsStream,
+              builder: (context, payoutSnap) {
+                double totalWithdrawals = 0.0;
+                double totalCommissionPaid = 0.0;
+                
+                if (payoutSnap.hasData) {
+                  for (var payout in payoutSnap.data!) {
+                    if (payout.status == PayoutStatus.approved) {
+                      if (payout.type == PayoutType.withdrawal) {
+                        totalWithdrawals += payout.amount;
+                      } else {
+                        totalCommissionPaid += payout.amount;
+                      }
+                    }
+                  }
+                }
+
+                double rightfulEarning = totalPurchaseCost + netPartnerProfit;
+                // settlementAmount = (What Admin owes for goods + profit) - (What Partner already took in cash) 
+                // - (What Admin already paid Partner in payouts) + (What Partner paid back to Admin in commission)
+                double settlementAmount = (rightfulEarning - totalCashCollected) - totalWithdrawals + totalCommissionPaid;
+
+                return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,6 +606,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                   const SizedBox(height: 80),
                 ],
               ),
+                );
+              },
             );
           },
         );
@@ -661,22 +691,97 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                 if (isAdminOwning) {
                   _showRequestPayoutDialog(context, amount);
                 } else {
-                  showDialog(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      title: const Text('Pay Admin'),
-                      content: Text('Please transfer ₹$displayAmount to the Admin\'s bank account/UPI to clear your dues.\n\nOnline payment gateway integration will be available soon.'),
-                      actions: [
-                        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))
-                      ],
-                    ),
-                  );
+                  _showPayAdminDialog(context, amount.abs());
                 }
               },
               child: Text(buttonText),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _showPayAdminDialog(BuildContext context, double amount) async {
+    final amountController = TextEditingController(text: amount.toStringAsFixed(2));
+    final detailsController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Pay Admin Commission'),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Transfer the commission amount to Admin via UPI/Bank and enter details here.',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: amountController,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount Paid',
+                      prefixText: '₹',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    validator: (v) => (double.tryParse(v ?? '') ?? 0) <= 0 ? 'Enter valid amount' : null,
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: detailsController,
+                    decoration: const InputDecoration(
+                      labelText: 'Payment Details',
+                      hintText: 'UTR No. / Transaction ID / Bank Name',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: 2,
+                    validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (formKey.currentState!.validate()) {
+                  setState(() => isLoading = true);
+                  try {
+                    await PayoutService().requestPayout(
+                      context.read<AuthProvider>().currentUser!.uid,
+                      double.parse(amountController.text),
+                      detailsController.text,
+                      type: PayoutType.commission_transfer,
+                    );
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Payment notification sent to Admin for approval.')),
+                      );
+                    }
+                  } catch (e) {
+                    setState(() => isLoading = false);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+                      );
+                    }
+                  }
+                }
+              },
+              child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Submit'),
+            ),
+          ],
+        ),
       ),
     );
   }

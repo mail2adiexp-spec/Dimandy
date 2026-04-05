@@ -1,12 +1,14 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 enum PayoutStatus { pending, approved, rejected }
+enum PayoutType { withdrawal, commission_transfer }
 
 class PayoutModel {
   final String id;
   final String userId;
   final double amount;
   final PayoutStatus status;
+  final PayoutType type;
   final DateTime requestDate;
   final DateTime? processedDate;
   final String paymentDetails; // Bank info or UPI ID
@@ -17,6 +19,7 @@ class PayoutModel {
     required this.userId,
     required this.amount,
     required this.status,
+    this.type = PayoutType.withdrawal,
     required this.requestDate,
     this.processedDate,
     required this.paymentDetails,
@@ -28,6 +31,7 @@ class PayoutModel {
       'userId': userId,
       'amount': amount,
       'status': status.name,
+      'type': type.name,
       'requestDate': Timestamp.fromDate(requestDate),
       'processedDate': processedDate != null ? Timestamp.fromDate(processedDate!) : null,
       'paymentDetails': paymentDetails,
@@ -43,6 +47,10 @@ class PayoutModel {
       status: PayoutStatus.values.firstWhere(
         (e) => e.name == map['status'],
         orElse: () => PayoutStatus.pending,
+      ),
+      type: PayoutType.values.firstWhere(
+        (e) => e.name == map['type'] as String?,
+        orElse: () => PayoutType.withdrawal,
       ),
       requestDate: (map['requestDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
       processedDate: (map['processedDate'] as Timestamp?)?.toDate(),

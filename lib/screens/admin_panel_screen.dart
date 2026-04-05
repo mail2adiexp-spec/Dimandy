@@ -64,6 +64,7 @@ class AdminPanelScreen extends StatefulWidget {
 class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerProviderStateMixin {
   String _searchQuery = '';
   String _filterStatus = 'all'; // all, pending, approved, rejected
+  String _selectedTimeRange = 'today'; // today, yesterday, 7day, 15day, all (Add more as needed)
   
   // Search and Filter State
   String _productSearchQuery = '';
@@ -322,7 +323,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
+                        color: Colors.black.withOpacity(0.1),
                         blurRadius: 10,
                         offset: const Offset(0, 2),
                       ),
@@ -366,7 +367,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               color: Theme.of(context)
                                   .colorScheme
                                   .onPrimary
-                                  .withValues(alpha: 0.2),
+                                  .withOpacity(0.1),
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Row(
@@ -514,7 +515,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         color: Colors.deepPurple.shade900,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 8,
             offset: const Offset(2, 0),
           ),
@@ -886,7 +887,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               margin: const EdgeInsets.only(bottom: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: isReplied ? BorderSide(color: Colors.green.withValues(alpha: 0.3), width: 1) : BorderSide.none,
+                side: isReplied ? BorderSide(color: Colors.green.withOpacity(0.1), width: 1) : BorderSide.none,
               ),
               child: ExpansionTile(
                 leading: CircleAvatar(
@@ -1271,7 +1272,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         vertical: 8,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
+                        color: statusColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
@@ -1334,14 +1335,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               width: 150,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.blue.withValues(alpha: 0.7), Colors.blue],
+                  colors: [Colors.blue.withOpacity(0.1), Colors.blue],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.blue.withValues(alpha: 0.4),
+                    color: Colors.blue.withOpacity(0.1),
                     offset: const Offset(2, 2),
                     blurRadius: 8,
                   ),
@@ -1412,14 +1413,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
               width: 150,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  colors: [Colors.green.withValues(alpha: 0.7), Colors.green],
+                  colors: [Colors.green.withOpacity(0.1), Colors.green],
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 ),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.green.withValues(alpha: 0.4),
+                    color: Colors.green.withOpacity(0.1),
                     offset: const Offset(2, 2),
                     blurRadius: 8,
                   ),
@@ -1461,13 +1462,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }) {
     return Card(
       elevation: 4,
-      shadowColor: color.withValues(alpha: 0.3),
+      shadowColor: color.withOpacity(0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            colors: [color.withOpacity(0.8), color.withOpacity(0.5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -2722,7 +2723,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 margin: const EdgeInsets.all(12),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.amber.withValues(alpha: 0.15),
+                  color: Colors.amber.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.amber.shade400),
                 ),
@@ -3677,10 +3678,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     child: ListTile(
                       leading: CircleAvatar(
                         backgroundColor: payout.status == PayoutStatus.pending
-                            ? Colors.orange.withValues(alpha: 0.2)
+                            ? Colors.orange.withOpacity(0.1)
                             : payout.status == PayoutStatus.approved
-                                ? Colors.green.withValues(alpha: 0.2)
-                                : Colors.red.withValues(alpha: 0.2),
+                                ? Colors.green.withOpacity(0.1)
+                                : Colors.red.withOpacity(0.1),
                         child: Icon(
                           payout.status == PayoutStatus.pending
                               ? Icons.pending
@@ -3694,9 +3695,31 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                   : Colors.red,
                         ),
                       ),
-                      title: Text(
-                        '₹${payout.amount.toStringAsFixed(2)}',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      title: Row(
+                        children: [
+                          Text(
+                            '₹${payout.amount.toStringAsFixed(2)}',
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: payout.type == PayoutType.commission_transfer 
+                                  ? Colors.blue.withOpacity(0.1) 
+                                  : Colors.purple.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              payout.type == PayoutType.commission_transfer ? 'COMMISSION' : 'WITHDRAWAL',
+                              style: TextStyle(
+                                fontSize: 10, 
+                                color: payout.type == PayoutType.commission_transfer ? Colors.blue : Colors.purple, 
+                                fontWeight: FontWeight.bold
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3775,7 +3798,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         status.toUpperCase(),
         style: TextStyle(color: color, fontSize: 12),
       ),
-      backgroundColor: color.withValues(alpha: 0.1),
+      backgroundColor: color.withOpacity(0.1),
     );
   }
 
@@ -4257,9 +4280,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                     margin: const EdgeInsets.only(top: 4),
                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                     decoration: BoxDecoration(
-                                      color: Colors.blue.withValues(alpha: 0.1),
+                                      color: Colors.blue.withOpacity(0.1),
                                       borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: Colors.blue.withValues(alpha: 0.5)),
+                                      border: Border.all(color: Colors.blue.withOpacity(0.1)),
                                     ),
                                     child: const Text(
                                       'Store Manager',
@@ -5301,7 +5324,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.2),
+            color: Colors.white.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: Colors.white),
@@ -6448,7 +6471,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 margin: const EdgeInsets.only(bottom: 12),
                                 child: ListTile(
                                   leading: CircleAvatar(
-                                    backgroundColor: statusColor.withValues(alpha: 0.2),
+                                    backgroundColor: statusColor.withOpacity(0.1),
                                     child: Icon(Icons.shopping_bag, color: statusColor),
                                   ),
                                   title: Text('Order #${orderId.substring(0, 8)}'),
@@ -6482,7 +6505,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                           vertical: 2,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: statusColor.withValues(alpha: 0.2),
+                                          color: statusColor.withOpacity(0.1),
                                           borderRadius: BorderRadius.circular(12),
                                         ),
                                         child: Text(
@@ -6739,7 +6762,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                           if (!isListed)
                             Container(
                               decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.5),
+                                color: Colors.black.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: const Center(
@@ -7816,133 +7839,233 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final isStateAdmin = auth.isStateAdmin;
     final assignedState = auth.currentUser?.assignedState;
 
-    final now = DateTime.now();
-    final todayStart = DateTime(now.year, now.month, now.day);
-    final todayEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
-    final startTs = Timestamp.fromDate(todayStart);
-    final endTs = Timestamp.fromDate(todayEnd);
+    final range = _getRangeTimestamps(_selectedTimeRange);
+    final startTs = range['start'] as Timestamp?;
+    final endTs = range['end'] as Timestamp?;
+
+    final isMobileView = MediaQuery.of(context).size.width < 700;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.deepPurple.shade50.withValues(alpha: 0.5),
+        color: Colors.deepPurple.shade50.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.deepPurple.shade100),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Row(
-            children: [
-              Icon(Icons.today, color: Colors.deepPurple.shade700, size: 20),
-              const SizedBox(width: 8),
-              Text(
-                "Today's Overview",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.deepPurple.shade900,
+          if (isMobileView)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.today, color: Colors.deepPurple.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _selectedTimeRange == 'all' ? "Overall Overview" : 
+                        _selectedTimeRange == 'today' ? "Today's Overview" :
+                        _selectedTimeRange == 'yesterday' ? "Yesterday's Overview" :
+                        "Last ${_selectedTimeRange.replaceAll('day', '')} Days Overview",
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.deepPurple.shade900,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: _buildTimeRangeFilter(),
+                ),
+              ],
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.today, color: Colors.deepPurple.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      _selectedTimeRange == 'all' ? "Overall Overview" : 
+                      _selectedTimeRange == 'today' ? "Today's Overview" :
+                      _selectedTimeRange == 'yesterday' ? "Yesterday's Overview" :
+                      "Last ${_selectedTimeRange.replaceAll('day', '')} Days Overview",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.deepPurple.shade900,
+                      ),
+                    ),
+                  ],
+                ),
+                _buildTimeRangeFilter(),
+              ],
+            ),
+          const SizedBox(height: 16),
+          GridView.count(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            crossAxisCount: isMobileView ? 2 : 4,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: isMobileView ? 1.8 : 2.5,
+            children: [
+              _buildFilteredStatItem(
+                label: "Orders",
+                icon: Icons.shopping_bag,
+                color: Colors.blue,
+                collection: 'orders',
+                dateField: 'orderDate',
+                startTs: startTs,
+                endTs: endTs,
+                assignedState: isStateAdmin ? assignedState : null,
+              ),
+              _buildFilteredStatItem(
+                label: "Bookings",
+                icon: Icons.event_available,
+                color: Colors.teal,
+                collection: 'bookings',
+                dateField: 'createdAt',
+                startTs: startTs,
+                endTs: endTs,
+                assignedState: isStateAdmin ? assignedState : null,
+              ),
+              _buildTodayRevenueItem(
+                startTs: startTs,
+                endTs: endTs,
+                isStateAdmin: isStateAdmin,
+                assignedState: assignedState,
+              ),
+              _buildTodayProfitItem(
+                label: "Gross Profit",
+                startTs: startTs,
+                endTs: endTs,
+                isStateAdmin: isStateAdmin,
+                assignedState: assignedState,
+                isNetProfit: false,
+              ),
+              _buildTodayProfitItem(
+                label: "Net Profit",
+                startTs: startTs,
+                endTs: endTs,
+                isStateAdmin: isStateAdmin,
+                assignedState: assignedState,
+                isNetProfit: true,
+              ),
+              _buildTodayDeliveryCostItem(
+                startTs: startTs,
+                endTs: endTs,
+                isStateAdmin: isStateAdmin,
+                assignedState: assignedState,
+              ),
+              _buildTodayExpenseItem(
+                startTs: startTs,
+                endTs: endTs,
+                isStateAdmin: isStateAdmin,
+                assignedState: assignedState,
+              ),
+              _buildFilteredStatItem(
+                label: "Cancelled",
+                icon: Icons.cancel,
+                color: Colors.red,
+                collection: 'orders',
+                dateField: 'orderDate',
+                startTs: startTs,
+                endTs: endTs,
+                assignedState: isStateAdmin ? assignedState : null,
+                additionalStatus: 'cancelled',
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final isMobile = constraints.maxWidth < 600;
-              return GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: isMobile ? 2 : 4,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: isMobile ? 1.8 : 2.5,
-                children: [
-                  _buildTodayStatItem(
-                    label: "Today's Orders",
-                    icon: Icons.shopping_bag,
-                    color: Colors.blue,
-                    query: FirebaseFirestore.instance.collection('orders')
-                        .where('orderDate', isGreaterThanOrEqualTo: startTs)
-                        .where('orderDate', isLessThanOrEqualTo: endTs),
-                    assignedState: isStateAdmin ? assignedState : null,
-                  ),
-                  _buildTodayStatItem(
-                    label: "Today's Bookings",
-                    icon: Icons.event_available,
-                    color: Colors.teal,
-                    query: FirebaseFirestore.instance.collection('bookings')
-                        .where('createdAt', isGreaterThanOrEqualTo: startTs)
-                        .where('createdAt', isLessThanOrEqualTo: endTs),
-                    assignedState: isStateAdmin ? assignedState : null,
-                  ),
-                  _buildTodayRevenueItem(
-                    startTs: startTs,
-                    endTs: endTs,
-                    isStateAdmin: isStateAdmin,
-                    assignedState: assignedState,
-                  ),
-                  _buildTodayProfitItem(
-                    label: "Today's Gross Profit",
-                    startTs: startTs,
-                    endTs: endTs,
-                    isStateAdmin: isStateAdmin,
-                    assignedState: assignedState,
-                    isNetProfit: false,
-                  ),
-                  _buildTodayProfitItem(
-                    label: "Today's Net Profit",
-                    startTs: startTs,
-                    endTs: endTs,
-                    isStateAdmin: isStateAdmin,
-                    assignedState: assignedState,
-                    isNetProfit: true,
-                  ),
-                  _buildTodayDeliveryCostItem(
-                    startTs: startTs,
-                    endTs: endTs,
-                    isStateAdmin: isStateAdmin,
-                    assignedState: assignedState,
-                  ),
-                  _buildTodayExpenseItem(
-                    startTs: startTs,
-                    endTs: endTs,
-                    isStateAdmin: isStateAdmin,
-                    assignedState: assignedState,
-                  ),
-                  _buildTodayStatItem(
-                    label: "Today's Cancelled",
-                    icon: Icons.cancel,
-                    color: Colors.red,
-                    query: FirebaseFirestore.instance.collection('orders')
-                        .where('orderDate', isGreaterThanOrEqualTo: startTs)
-                        .where('orderDate', isLessThanOrEqualTo: endTs)
-                        .where('status', isEqualTo: 'cancelled'),
-                    assignedState: isStateAdmin ? assignedState : null,
-                  ),
-                ],
-              );
-            },
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTodayStatItem({
+  Map<String, Timestamp?> _getRangeTimestamps(String range) {
+    if (range == 'all') return {'start': null, 'end': null};
+    
+    final now = DateTime.now();
+    DateTime start = DateTime(now.year, now.month, now.day);
+    DateTime end = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    if (range == 'yesterday') {
+      start = start.subtract(const Duration(days: 1));
+      end = DateTime(start.year, start.month, start.day, 23, 59, 59);
+    } else if (range.endsWith('day')) {
+      final days = int.tryParse(range.replaceAll('day', '')) ?? 1;
+      start = start.subtract(Duration(days: days - 1));
+    }
+
+    return {
+      'start': Timestamp.fromDate(start),
+      'end': Timestamp.fromDate(end),
+    };
+  }
+
+  Widget _buildTimeRangeFilter() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.deepPurple.shade100),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedTimeRange,
+          onChanged: (val) => setState(() => _selectedTimeRange = val!),
+          items: const [
+            DropdownMenuItem(value: 'today', child: Text('Today', style: TextStyle(fontSize: 12))),
+            DropdownMenuItem(value: 'yesterday', child: Text('Yesterday', style: TextStyle(fontSize: 12))),
+            DropdownMenuItem(value: '7day', child: Text('Last 7 Days', style: TextStyle(fontSize: 12))),
+            DropdownMenuItem(value: '15day', child: Text('Last 15 Days', style: TextStyle(fontSize: 12))),
+            DropdownMenuItem(value: '30day', child: Text('Last 30 Days', style: TextStyle(fontSize: 12))),
+            DropdownMenuItem(value: 'all', child: Text('All Time', style: TextStyle(fontSize: 12))),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilteredStatItem({
     required String label,
     required IconData icon,
     required Color color,
-    required Query query,
+    required String collection,
+    required String dateField,
+    Timestamp? startTs,
+    Timestamp? endTs,
     String? assignedState,
+    String? additionalStatus,
   }) {
-    Query filteredQuery = query;
+    Query query = FirebaseFirestore.instance.collection(collection);
+    
+    if (startTs != null) {
+      query = query.where(dateField, isGreaterThanOrEqualTo: startTs);
+    }
+    if (endTs != null) {
+      query = query.where(dateField, isLessThanOrEqualTo: endTs);
+    }
     if (assignedState != null) {
-      filteredQuery = filteredQuery.where('state', isEqualTo: assignedState);
+      query = query.where('state', isEqualTo: assignedState);
+    }
+    if (additionalStatus != null) {
+       query = query.where('status', isEqualTo: additionalStatus);
     }
     
     return StreamBuilder<QuerySnapshot>(
-      stream: filteredQuery.snapshots(),
+      stream: query.snapshots(),
       builder: (context, snapshot) {
         String value = '0';
         if (snapshot.hasData) {
@@ -7960,21 +8083,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildTodayRevenueItem({
-    required Timestamp startTs,
-    required Timestamp endTs,
+    Timestamp? startTs,
+    Timestamp? endTs,
     required bool isStateAdmin,
     required String? assignedState,
   }) {
-    Query orderQuery = FirebaseFirestore.instance.collection('orders')
-        .where('orderDate', isGreaterThanOrEqualTo: startTs)
-        .where('orderDate', isLessThanOrEqualTo: endTs);
+    Query orderQuery = FirebaseFirestore.instance.collection('orders');
+    if (startTs != null) orderQuery = orderQuery.where('orderDate', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) orderQuery = orderQuery.where('orderDate', isLessThanOrEqualTo: endTs);
+
     if (isStateAdmin && assignedState != null) {
       orderQuery = orderQuery.where('state', isEqualTo: assignedState);
     }
 
-    Query bookingQuery = FirebaseFirestore.instance.collection('bookings')
-        .where('createdAt', isGreaterThanOrEqualTo: startTs)
-        .where('createdAt', isLessThanOrEqualTo: endTs);
+    Query bookingQuery = FirebaseFirestore.instance.collection('bookings');
+    if (startTs != null) bookingQuery = bookingQuery.where('createdAt', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) bookingQuery = bookingQuery.where('createdAt', isLessThanOrEqualTo: endTs);
+
     if (isStateAdmin && assignedState != null) {
       bookingQuery = bookingQuery.where('state', isEqualTo: assignedState);
     }
@@ -7988,12 +8113,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             double revenue = 0;
             if (orderSnap.hasData) {
               for (var doc in orderSnap.data!.docs) {
-                revenue += (doc.data() as Map<String, dynamic>)['totalAmount']?.toDouble() ?? 0.0;
+                final data = doc.data() as Map<String, dynamic>;
+                final status = data['status'] as String? ?? 'pending';
+                // Only include delivered orders in revenue
+                if (status == 'delivered') {
+                  revenue += (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                }
               }
             }
             if (bookingSnap.hasData) {
               for (var doc in bookingSnap.data!.docs) {
-                revenue += (doc.data() as Map<String, dynamic>)['totalCost']?.toDouble() ?? 0.0;
+                final data = doc.data() as Map<String, dynamic>;
+                final status = data['status'] as String? ?? 'pending';
+                // Only include completed bookings
+                if (status == 'completed') {
+                  revenue += (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                }
               }
             }
 
@@ -8024,7 +8159,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
+            color: Colors.black.withOpacity(0.1),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -8035,7 +8170,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.1),
+              color: color.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 18),
@@ -8086,29 +8221,32 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   Widget _buildTodayProfitItem({
     required String label,
-    required Timestamp startTs,
-    required Timestamp endTs,
+    Timestamp? startTs,
+    Timestamp? endTs,
     required bool isStateAdmin,
     required String? assignedState,
     required bool isNetProfit,
   }) {
-    Query orderQuery = FirebaseFirestore.instance.collection('orders')
-        .where('orderDate', isGreaterThanOrEqualTo: startTs)
-        .where('orderDate', isLessThanOrEqualTo: endTs);
+    Query orderQuery = FirebaseFirestore.instance.collection('orders');
+    if (startTs != null) orderQuery = orderQuery.where('orderDate', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) orderQuery = orderQuery.where('orderDate', isLessThanOrEqualTo: endTs);
+
     if (isStateAdmin && assignedState != null) {
       orderQuery = orderQuery.where('state', isEqualTo: assignedState);
     }
 
-    Query bookingQuery = FirebaseFirestore.instance.collection('bookings')
-        .where('createdAt', isGreaterThanOrEqualTo: startTs)
-        .where('createdAt', isLessThanOrEqualTo: endTs);
+    Query bookingQuery = FirebaseFirestore.instance.collection('bookings');
+    if (startTs != null) bookingQuery = bookingQuery.where('createdAt', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) bookingQuery = bookingQuery.where('createdAt', isLessThanOrEqualTo: endTs);
+
     if (isStateAdmin && assignedState != null) {
       bookingQuery = bookingQuery.where('state', isEqualTo: assignedState);
     }
 
-    Query expenseQuery = FirebaseFirestore.instance.collection('expenses')
-        .where('createdAt', isGreaterThanOrEqualTo: startTs)
-        .where('createdAt', isLessThanOrEqualTo: endTs);
+    Query expenseQuery = FirebaseFirestore.instance.collection('expenses');
+    if (startTs != null) expenseQuery = expenseQuery.where('createdAt', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) expenseQuery = expenseQuery.where('createdAt', isLessThanOrEqualTo: endTs);
+
     if (isStateAdmin && assignedState != null) {
       expenseQuery = expenseQuery.where('state', isEqualTo: assignedState);
     }
@@ -8140,7 +8278,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 if (orderSnap.hasData) {
                   for (var doc in orderSnap.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    if (data['status'] == 'cancelled') continue;
+                    if (data['status'] != 'delivered') continue;
                     
                     final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                     deliveryCosts += dFee;
@@ -8176,7 +8314,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 if (bookingSnap.hasData) {
                   for (var doc in bookingSnap.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    if (data['status'] == 'cancelled') continue;
+                    if (data['status'] != 'completed') continue;
                     
                     double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
                     double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
@@ -8218,13 +8356,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }) {
     return Card(
       elevation: 4,
-      shadowColor: color.withValues(alpha: 0.3),
+      shadowColor: color.withOpacity(0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            colors: [color.withOpacity(0.8), color.withOpacity(0.5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -8260,7 +8398,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             if (orderSnap.hasData) {
                               for (var doc in orderSnap.data!.docs) {
                                 final data = doc.data() as Map<String, dynamic>;
-                                if (data['status'] == 'cancelled') continue;
+                                if (data['status'] != 'delivered') continue;
                                 
                                 final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                                 totalDelivery += dFee;
@@ -8295,7 +8433,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             if (bookingSnap.hasData) {
                               for (var doc in bookingSnap.data!.docs) {
                                 final data = doc.data() as Map<String, dynamic>;
-                                if (data['status'] == 'cancelled') continue;
+                                if (data['status'] != 'delivered') continue;
                                 double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
                                 double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
                                 totalProfit += comm;
@@ -8361,14 +8499,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildTodayDeliveryCostItem({
-    required Timestamp startTs,
-    required Timestamp endTs,
+    Timestamp? startTs,
+    Timestamp? endTs,
     required bool isStateAdmin,
     required String? assignedState,
   }) {
-    Query orderQuery = FirebaseFirestore.instance.collection('orders')
-        .where('orderDate', isGreaterThanOrEqualTo: startTs)
-        .where('orderDate', isLessThanOrEqualTo: endTs);
+    Query orderQuery = FirebaseFirestore.instance.collection('orders');
+    if (startTs != null) orderQuery = orderQuery.where('orderDate', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) orderQuery = orderQuery.where('orderDate', isLessThanOrEqualTo: endTs);
+    
     if (isStateAdmin && assignedState != null) {
       orderQuery = orderQuery.where('state', isEqualTo: assignedState);
     }
@@ -8380,7 +8519,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         if (snapshot.hasData) {
           for (var doc in snapshot.data!.docs) {
              final data = doc.data() as Map<String, dynamic>;
-             if (data['status'] == 'cancelled') continue;
+             if (data['status'] != 'delivered') continue;
              cost += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
           }
         }
@@ -8396,14 +8535,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildTodayExpenseItem({
-    required Timestamp startTs,
-    required Timestamp endTs,
+    Timestamp? startTs,
+    Timestamp? endTs,
     required bool isStateAdmin,
     required String? assignedState,
   }) {
-    Query expenseQuery = FirebaseFirestore.instance.collection('expenses')
-        .where('createdAt', isGreaterThanOrEqualTo: startTs)
-        .where('createdAt', isLessThanOrEqualTo: endTs);
+    Query expenseQuery = FirebaseFirestore.instance.collection('expenses');
+    if (startTs != null) expenseQuery = expenseQuery.where('createdAt', isGreaterThanOrEqualTo: startTs);
+    if (endTs != null) expenseQuery = expenseQuery.where('createdAt', isLessThanOrEqualTo: endTs);
+    
     if (isStateAdmin && assignedState != null) {
       expenseQuery = expenseQuery.where('state', isEqualTo: assignedState);
     }
@@ -8436,13 +8576,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }) {
     return Card(
       elevation: 4,
-      shadowColor: color.withValues(alpha: 0.3),
+      shadowColor: color.withOpacity(0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            colors: [color.withOpacity(0.8), color.withOpacity(0.5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
@@ -8466,7 +8606,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     if (snapshot.hasData) {
                       for (var doc in snapshot.data!.docs) {
                          final data = doc.data() as Map<String, dynamic>;
-                         if (data['status'] == 'cancelled') continue;
+                         if (data['status'] != 'delivered') continue;
                          total += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                       }
                     }
@@ -8518,13 +8658,13 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }) {
     return Card(
       elevation: 4,
-      shadowColor: color.withValues(alpha: 0.3),
+      shadowColor: color.withOpacity(0.3),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [color.withValues(alpha: 0.8), color.withValues(alpha: 0.5)],
+            colors: [color.withOpacity(0.8), color.withOpacity(0.5)],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
