@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class OrderModel {
   final String id;
   final String userId;
+  final String? userName; // Added
   final List<OrderItem> items;
   final double totalAmount;
   final String deliveryAddress;
@@ -18,6 +19,7 @@ class OrderModel {
   final String? deliveryPartnerName; // Restored
   final String? deliveryPincode; // Restored
   final double deliveryFee; // Restored
+  final double partnerPayout; // New: What Admin pays to the partner
   final String? paymentMethod; // Restored
   final String? paymentProofUrl; // Restored
   final DateTime? paymentProofUploadedAt; // Restored
@@ -30,6 +32,7 @@ class OrderModel {
   OrderModel({
     required this.id,
     required this.userId,
+    this.userName, // Added
     required this.items,
     required this.totalAmount,
     required this.deliveryAddress,
@@ -44,6 +47,7 @@ class OrderModel {
     this.deliveryPartnerName,
     this.deliveryPincode,
     this.deliveryFee = 0.0,
+    this.partnerPayout = 0.0,
     this.paymentMethod,
     this.paymentProofUrl,
     this.paymentProofUploadedAt,
@@ -74,6 +78,7 @@ class OrderModel {
     return OrderModel(
       id: documentId,
       userId: map['userId'] ?? '',
+      userName: map['userName'], // Added
       items:
           (map['items'] as List<dynamic>?)
               ?.map((item) => OrderItem.fromMap(item))
@@ -99,7 +104,8 @@ class OrderModel {
       deliveryPartnerId: map['deliveryPartnerId'],
       deliveryPartnerName: map['deliveryPartnerName'],
       deliveryPincode: map['deliveryPincode'],
-      deliveryFee: (map['deliveryFee'] as num?)?.toDouble() ?? 0.0,
+      deliveryFee: (map['deliveryFee'] ?? 0).toDouble(),
+      partnerPayout: (map['partnerPayout'] ?? 0).toDouble(),
       paymentMethod: map['paymentMethod'],
       paymentProofUrl: map['paymentProofUrl'],
       paymentProofUploadedAt: map['paymentProofUploadedAt'] != null
@@ -118,6 +124,7 @@ class OrderModel {
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,
+      'userName': userName, // Added
       'items': items.map((item) => item.toMap()).toList(),
       'totalAmount': totalAmount,
       'deliveryAddress': deliveryAddress,
@@ -134,6 +141,7 @@ class OrderModel {
       'deliveryPartnerName': deliveryPartnerName,
       'deliveryPincode': deliveryPincode,
       'deliveryFee': deliveryFee,
+      'partnerPayout': partnerPayout,
       'paymentMethod': paymentMethod,
       'paymentProofUrl': paymentProofUrl,
       'paymentProofUploadedAt': paymentProofUploadedAt?.toIso8601String(),

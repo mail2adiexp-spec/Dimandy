@@ -340,26 +340,39 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             fontWeight: FontWeight.w600,
                           ),
                         ),
-                          IconButton(
-                            icon: const Icon(Icons.add, size: 16),
-                            padding: const EdgeInsets.all(4),
-                            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                            onPressed: () {
-                              // If stock is limited, don't allow counter to exceed stock
-                              if (_quantity < widget.product.stock) {
-                                setState(() => _quantity++);
-                              } else {
-                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Only ${widget.product.stock} items available in stock'),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 1),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
+                        IconButton(
+                          icon: const Icon(Icons.add, size: 16),
+                          padding: const EdgeInsets.all(4),
+                          constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                          onPressed: () {
+                            // Enforce Maximum Quantity if set (> 0)
+                            if (widget.product.maximumQuantity > 0 && _quantity >= widget.product.maximumQuantity) {
+                               ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                               ScaffoldMessenger.of(context).showSnackBar(
+                                 SnackBar(
+                                   content: Text('Maximum quantity is ${widget.product.maximumQuantity}'),
+                                   backgroundColor: Colors.orange,
+                                   duration: const Duration(seconds: 1),
+                                 ),
+                               );
+                               return;
+                            }
+                            
+                            // If stock is limited, don't allow counter to exceed stock
+                            if (_quantity < widget.product.stock) {
+                              setState(() => _quantity++);
+                            } else {
+                              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Only ${widget.product.stock} items available in stock'),
+                                  backgroundColor: Colors.red,
+                                  duration: const Duration(seconds: 1),
+                                ),
+                              );
+                            }
+                          },
+                        ),
                       ],
                     ),
                   ),

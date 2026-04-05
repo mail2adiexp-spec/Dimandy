@@ -82,7 +82,9 @@ class InvoiceService {
               pw.Text('DELIVER TO:', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
               pw.SizedBox(height: 4),
               pw.Text(
-                (customerName != null && customerName.isNotEmpty) ? customerName : order.userId, 
+                (customerName != null && customerName.isNotEmpty) 
+                  ? customerName 
+                  : (order.userName ?? order.userId), 
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 16) // Increased size
               ),
               pw.Text(order.deliveryAddress, style: pw.TextStyle(fontSize: 14)),
@@ -117,7 +119,7 @@ class InvoiceService {
                        pw.SizedBox(height: 4),
                       pw.Text('AMOUNT TO COLLECT', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
                       pw.Text(
-                        currencyFormat.format(order.totalAmount), 
+                        currencyFormat.format(order.totalAmount + order.deliveryFee), 
                         style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)
                       ),
                     ],
@@ -204,7 +206,9 @@ class InvoiceService {
               pw.Text('BILL TO:', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.grey700)),
               pw.SizedBox(height: 4),
               pw.Text(
-                (customerName != null && customerName.isNotEmpty) ? customerName : order.userId, 
+                (customerName != null && customerName.isNotEmpty) 
+                  ? customerName 
+                  : (order.userName ?? order.userId), 
                 style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)
               ), 
               pw.Text(order.deliveryAddress),
@@ -264,10 +268,18 @@ class InvoiceService {
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              _buildSummaryRow('Subtotal', currencyFormat.format(subtotal)),
-              _buildSummaryRow('Delivery', 'FREE', isGreen: true),
+              _buildSummaryRow('Subtotal', currencyFormat.format(order.totalAmount)),
+              _buildSummaryRow(
+                'Delivery', 
+                order.deliveryFee > 0 ? currencyFormat.format(order.deliveryFee) : 'FREE',
+                isGreen: order.deliveryFee == 0
+              ),
               pw.Divider(),
-              _buildSummaryRow('Grand Total', currencyFormat.format(subtotal), isBold: true),
+              _buildSummaryRow(
+                'Grand Total', 
+                currencyFormat.format(order.totalAmount + order.deliveryFee), 
+                isBold: true
+              ),
             ],
           ),
         ),

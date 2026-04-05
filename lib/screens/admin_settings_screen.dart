@@ -20,9 +20,12 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _upiIdController = TextEditingController();
   final _deliveryFeePercentageController = TextEditingController();
   final _deliveryFeeMaxCapController = TextEditingController(); // This is correctly defined
+  final _freeDeliveryThresholdController = TextEditingController(); // New
+  final _partnerDeliveryRateController = TextEditingController(); // New
   final _servicePlatformFeeController = TextEditingController();
   final _announcementController = TextEditingController();
   final _contactPhoneController = TextEditingController(); // New
+  Map<String, double> _pincodeOverrides = {}; // New
   bool _isAnnouncementEnabled = false;
   bool _isLoading = true;
   bool _isUploading = false;
@@ -50,6 +53,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _upiIdController.text = _settings?.upiId ?? '';
           _deliveryFeePercentageController.text = _settings?.deliveryFeePercentage.toString() ?? '0.0';
           _deliveryFeeMaxCapController.text = _settings?.deliveryFeeMaxCap.toString() ?? '0.0';
+          _freeDeliveryThresholdController.text = _settings?.freeDeliveryThreshold.toString() ?? '0.0';
+          _partnerDeliveryRateController.text = _settings?.partnerDeliveryRate.toString() ?? '0.0';
+          _pincodeOverrides = Map<String, double>.from(_settings?.pincodeOverrides ?? {});
           _servicePlatformFeeController.text = _settings?.servicePlatformFeePercentage.toString() ?? '0.0';
           _announcementController.text = _settings?.announcementText ?? '';
           _isAnnouncementEnabled = _settings?.isAnnouncementEnabled ?? false;
@@ -135,6 +141,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         'upiId': _upiIdController.text.trim(),
         'deliveryFeePercentage': double.tryParse(_deliveryFeePercentageController.text.trim()) ?? 0.0,
         'deliveryFeeMaxCap': double.tryParse(_deliveryFeeMaxCapController.text.trim()) ?? 0.0,
+        'freeDeliveryThreshold': double.tryParse(_freeDeliveryThresholdController.text.trim()) ?? 0.0,
+        'partnerDeliveryRate': double.tryParse(_partnerDeliveryRateController.text.trim()) ?? 0.0,
+        'pincodeOverrides': _pincodeOverrides,
         'servicePlatformFeePercentage': double.tryParse(_servicePlatformFeeController.text.trim()) ?? 0.0,
         'announcementText': _announcementController.text.trim(),
         'isAnnouncementEnabled': _isAnnouncementEnabled,
@@ -246,9 +255,9 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           ),
           const SizedBox(height: 24),
 
-          // NEW: Delivery Partner Earnings (Moved here)
+          // PART 1: Customer Delivery Fees
           Card(
-             color: Colors.orange.shade50,
+             color: Colors.blue.shade50,
              child: Padding(
                padding: const EdgeInsets.all(16),
                child: Column(
@@ -256,37 +265,37 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                  children: [
                    Row(
                      children: [
-                       Icon(Icons.delivery_dining, color: Colors.orange.shade800),
+                       Icon(Icons.person_outline, color: Colors.blue.shade800),
                        const SizedBox(width: 8),
                        Text(
-                         'Delivery Partner Earnings',
+                         'Customer Delivery Fees',
                          style: TextStyle(
                            fontSize: 18,
                            fontWeight: FontWeight.bold,
-                           color: Colors.orange.shade900,
+                           color: Colors.blue.shade900,
                          ),
                        ),
                      ],
                    ),
                    const SizedBox(height: 8),
                    Text(
-                     'Calculated internally, Customer gets FREE delivery.',
+                     'Manage how much the customer is charged for delivery.',
                      style: TextStyle(
                        fontSize: 12, 
-                       color: Colors.orange.shade800,
-                       fontStyle: FontStyle.italic,
+                       color: Colors.blue.shade800,
                      ),
                    ),
                    const SizedBox(height: 16),
                    
+                   // Percentage and Max Cap
                    Row(
                      children: [
                        Expanded(
                          child: TextField(
                            controller: _deliveryFeePercentageController,
                            keyboardType: TextInputType.number,
-                           decoration: InputDecoration(
-                             labelText: 'Fee Percentage (%)',
+                           decoration: const InputDecoration(
+                             labelText: 'Customer Fee (%)',
                              hintText: 'e.g. 5',
                              filled: true,
                              fillColor: Colors.white,
@@ -301,8 +310,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                          child: TextField(
                            controller: _deliveryFeeMaxCapController,
                            keyboardType: TextInputType.number,
-                           decoration: InputDecoration(
-                             labelText: 'Max Cap (₹)',
+                           decoration: const InputDecoration(
+                             labelText: 'Max Fee Cap (₹)',
                              hintText: 'e.g. 40',
                              filled: true,
                              fillColor: Colors.white,
@@ -313,10 +322,113 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                        ),
                      ],
                    ),
+                   const SizedBox(height: 16),
+                   
+                   // Free Threshold
+                   TextField(
+                     controller: _freeDeliveryThresholdController,
+                     keyboardType: TextInputType.number,
+                     decoration: const InputDecoration(
+                       labelText: 'Free Delivery on Orders Above (₹)',
+                       hintText: 'e.g. 500 (Set 0 for No Free Delivery)',
+                       filled: true,
+                       fillColor: Colors.white,
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.shopping_bag),
+                     ),
+                   ),
+                   const SizedBox(height: 24),
+
+                   // Pincode Overrides
+                   Text(
+                     'Pincode Specific Fees (Customer)',
+                     style: TextStyle(
+                       fontWeight: FontWeight.bold,
+                       color: Colors.blue.shade900,
+                     ),
+                   ),
+                   const SizedBox(height: 8),
+                   ..._pincodeOverrides.entries.map((entry) => ListTile(
+                     dense: true,
+                     title: Text('Pincode: ${entry.key}'),
+                     trailing: Row(
+                       mainAxisSize: MainAxisSize.min,
+                       children: [
+                         Text('₹${entry.value.toStringAsFixed(0)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                         IconButton(
+                           icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+                           onPressed: () => setState(() => _pincodeOverrides.remove(entry.key)),
+                         ),
+                       ],
+                     ),
+                   )),
+                   TextButton.icon(
+                     onPressed: _showAddPincodeDialog,
+                     icon: const Icon(Icons.add_location_alt),
+                     label: const Text('Add Pincode Override'),
+                     style: TextButton.styleFrom(foregroundColor: Colors.blue.shade900),
+                   ),
                  ],
                ),
              ),
           ),
+          const SizedBox(height: 24),
+
+          // PART 2: Delivery Partner Payout Settings
+          Card(
+             color: Colors.orange.shade50,
+             child: Padding(
+               padding: const EdgeInsets.all(16),
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                   Row(
+                     children: [
+                       Icon(Icons.delivery_dining, color: Colors.orange.shade800),
+                       const SizedBox(width: 8),
+                       Text(
+                         'Delivery Partner Payout',
+                         style: TextStyle(
+                           fontSize: 18,
+                           fontWeight: FontWeight.bold,
+                           color: Colors.orange.shade900,
+                         ),
+                       ),
+                     ],
+                   ),
+                   const SizedBox(height: 8),
+                   Text(
+                     'Set the amount paid to the delivery partner for each order.',
+                     style: TextStyle(
+                       fontSize: 12, 
+                       color: Colors.orange.shade800,
+                     ),
+                   ),
+                   const SizedBox(height: 16),
+
+                   TextField(
+                     controller: _partnerDeliveryRateController,
+                     keyboardType: TextInputType.number,
+                     decoration: const InputDecoration(
+                       labelText: 'Partner Commission Rate (₹)',
+                       hintText: 'Payable to Delivery Boy per Order',
+                       filled: true,
+                       fillColor: Colors.white,
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.motorcycle),
+                       suffixText: '₹/Order',
+                     ),
+                   ),
+                   const SizedBox(height: 8),
+                   Text(
+                     'This is the fixed cost subtracted from Gross Profit for each order.',
+                     style: TextStyle(fontSize: 11, color: Colors.orange.shade700, fontStyle: FontStyle.italic),
+                   ),
+                 ],
+               ),
+             ),
+          ),
+          const SizedBox(height: 24),
 
           // Announcement/Marquee Settings
           Card(
@@ -575,9 +687,51 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     _upiIdController.dispose();
     _deliveryFeePercentageController.dispose();
     _deliveryFeeMaxCapController.dispose();
+    _freeDeliveryThresholdController.dispose(); // New
+    _partnerDeliveryRateController.dispose(); // New
     _servicePlatformFeeController.dispose();
     _announcementController.dispose();
     _contactPhoneController.dispose(); // New
     super.dispose();
+  }
+
+  void _showAddPincodeDialog() {
+    final pinController = TextEditingController();
+    final feeController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add Pincode Override'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: pinController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Pincode', hintText: 'e.g. 700001'),
+            ),
+            TextField(
+              controller: feeController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Delivery Fee (₹)', hintText: '0 for FREE'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          ElevatedButton(
+            onPressed: () {
+              if (pinController.text.isNotEmpty) {
+                setState(() {
+                  _pincodeOverrides[pinController.text.trim()] = double.tryParse(feeController.text.trim()) ?? 0.0;
+                });
+                Navigator.pop(ctx);
+              }
+            },
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
   }
 }

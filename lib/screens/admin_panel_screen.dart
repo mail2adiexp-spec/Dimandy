@@ -8275,13 +8275,17 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 double deliveryCosts = 0;
                 double otherExpensesAmount = 0;
                 
-                if (orderSnap.hasData) {
+                if (orderSnap.hasData && orderSnap.data != null) {
                   for (var doc in orderSnap.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    if (data['status'] != 'delivered') continue;
+                    final status = (data['status'] as String? ?? '').toLowerCase();
+                    if (status != 'delivered') continue;
                     
                     final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                     deliveryCosts += dFee;
+
+                    // Gross Revenue includes Delivery Fee
+                    profit += dFee;
 
                     final items = data['items'] as List<dynamic>? ?? [];
                     for (var item in items) {
@@ -8311,10 +8315,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   }
                 }
                 
-                if (bookingSnap.hasData) {
+                if (bookingSnap.hasData && bookingSnap.data != null) {
                   for (var doc in bookingSnap.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
-                    if (data['status'] != 'completed') continue;
+                    final status = (data['status'] as String? ?? '').toLowerCase();
+                    if (status != 'completed' && status != 'delivered') continue;
                     
                     double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
                     double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
@@ -8322,7 +8327,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   }
                 }
 
-                if (expenseSnap.hasData) {
+                if (expenseSnap.hasData && expenseSnap.data != null) {
                    for (var doc in expenseSnap.data!.docs) {
                       final data = doc.data() as Map<String, dynamic>;
                       otherExpensesAmount += (data['amount'] as num?)?.toDouble() ?? 0.0;
@@ -8391,99 +8396,106 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
                             }
 
-                            double totalProfit = 0;
-                            double totalDelivery = 0;
-                            double totalExpenses = 0;
+                              double totalProfitValue = 0;
+                              double totalPayoutsValue = 0;
+                              double totalExpensesValue = 0;
 
-                            if (orderSnap.hasData) {
-                              for (var doc in orderSnap.data!.docs) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                if (data['status'] != 'delivered') continue;
-                                
-                                final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
-                                totalDelivery += dFee;
+                              if (orderSnap.hasData && orderSnap.data != null) {
+                                for (var doc in orderSnap.data!.docs) {
+                                  final data = doc.data() as Map<String, dynamic>;
+                                  final status = (data['status'] as String? ?? '').toLowerCase();
+                                  if (status != 'delivered') continue;
+                                  
+                                  final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                                  final payout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
+                                  
+                                  // Fallback: If partnerPayout is 0 but dFee exists, assume full payout
+                                  totalPayoutsValue += (payout > 0) ? payout : dFee;
+                                  
+                                  // Gross Revenue includes Delivery Fee
+                                  totalProfitValue += dFee;
 
-                                final items = data['items'] as List<dynamic>? ?? [];
-                                for (var item in items) {
-                                  final price = (item['price'] as num?)?.toDouble() ?? 0.0;
-                                  final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
-                                  final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
-                                  final itemRevenue = price * quantity;
-                                  
-                                  final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
-                                  final isPlatformItem = metadata['isPlatformOwned'] == true || 
-                                                       item['sellerId'] == 'admin' || 
-                                                       data['storeId'] == 'admin' ||
-                                                       basePrice > 0;
-                                  
-                                  if (isPlatformItem) {
-                                    totalProfit += (itemRevenue - (basePrice * quantity));
-                                  } else {
-                                    // For Store Partners: 25% of Margin (Price - Cost)
-                                    if (basePrice > 0) {
-                                      totalProfit += (itemRevenue - (basePrice * quantity)) * 0.25;
+                                  final items = data['items'] as List<dynamic>? ?? [];
+                                  for (var item in items) {
+                                    final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                                    final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
+                                    final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+                                    final itemRevenue = price * quantity;
+                                    
+                                    final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
+                                    final isPlatformItem = metadata['isPlatformOwned'] == true || 
+                                                         item['sellerId'] == 'admin' || 
+                                                         data['storeId'] == 'admin' ||
+                                                         basePrice > 0;
+                                    
+                                    if (isPlatformItem) {
+                                      totalProfitValue += (itemRevenue - (basePrice * quantity));
                                     } else {
-                                      totalProfit += (itemRevenue * 0.2);
+                                      if (basePrice > 0) {
+                                        totalProfitValue += (itemRevenue - (basePrice * quantity)) * 0.25;
+                                      } else {
+                                        totalProfitValue += (itemRevenue * 0.2);
+                                      }
                                     }
                                   }
                                 }
                               }
-                            }
 
-                            if (bookingSnap.hasData) {
-                              for (var doc in bookingSnap.data!.docs) {
-                                final data = doc.data() as Map<String, dynamic>;
-                                if (data['status'] != 'delivered') continue;
-                                double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
-                                double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
-                                totalProfit += comm;
-                              }
-                            }
-
-                            if (expenseSnap.hasData) {
-                               for (var doc in expenseSnap.data!.docs) {
+                              if (bookingSnap.hasData && bookingSnap.data != null) {
+                                for (var doc in bookingSnap.data!.docs) {
                                   final data = doc.data() as Map<String, dynamic>;
-                                  totalExpenses += (data['amount'] as num?)?.toDouble() ?? 0.0;
-                               }
-                            }
+                                  final status = (data['status'] as String? ?? '').toLowerCase();
+                                  if (status != 'delivered' && status != 'completed') continue;
+                                  double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                                  double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
+                                  totalProfitValue += comm;
+                                }
+                              }
 
-                            if (isNetProfit) {
-                              totalProfit = totalProfit - totalDelivery - totalExpenses;
-                            }
+                              if (expenseSnap.hasData && expenseSnap.data != null) {
+                                 for (var doc in expenseSnap.data!.docs) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    totalExpensesValue += (data['amount'] as num?)?.toDouble() ?? 0.0;
+                                 }
+                              }
 
-                            return Center(
-                              child: SingleChildScrollView(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    FittedBox(
-                                      fit: BoxFit.scaleDown,
-                                      child: Text(
-                                        '₹${totalProfit.toStringAsFixed(0)}',
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 24,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      title,
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            );
+                              if (isNetProfit) {
+                                totalProfitValue = totalProfitValue - totalPayoutsValue - totalExpensesValue;
+                              }
+
+                             return Center(
+                               child: SingleChildScrollView(
+                                 child: Column(
+                                   mainAxisAlignment: MainAxisAlignment.center,
+                                   mainAxisSize: MainAxisSize.min,
+                                   children: [
+                                     FittedBox(
+                                       fit: BoxFit.scaleDown,
+                                       child: Text(
+                                         '₹${totalProfitValue.toStringAsFixed(0)}',
+                                         style: const TextStyle(
+                                           color: Colors.white,
+                                           fontSize: 24,
+                                           fontWeight: FontWeight.bold,
+                                         ),
+                                       ),
+                                     ),
+                                     const SizedBox(height: 4),
+                                     Text(
+                                       title,
+                                       style: const TextStyle(
+                                         color: Colors.white,
+                                         fontSize: 12,
+                                         fontWeight: FontWeight.w600,
+                                       ),
+                                       textAlign: TextAlign.center,
+                                       maxLines: 2,
+                                       overflow: TextOverflow.ellipsis,
+                                     ),
+                                   ],
+                                 ),
+                               ),
+                             );
                           },
                         );
                       },

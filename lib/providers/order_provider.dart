@@ -68,7 +68,9 @@ class OrderProvider extends ChangeNotifier {
     required String phoneNumber,
     required String state,
     required String paymentMethod,
-    double? deliveryFee, // New: Accept explicit delivery fee
+    double? deliveryFee, 
+    double? partnerPayout, // New: Accept explicit partner payout
+    String? userName, // Added
   }) async {
     final userId = authProvider.currentUser?.uid;
     if (userId == null) {
@@ -90,6 +92,7 @@ class OrderProvider extends ChangeNotifier {
 
       // Fetch App Settings for Delivery Fee Calculation (if not explicitly provided)
       double calculatedDeliveryFee = deliveryFee ?? 0.0;
+      double calculatedPartnerPayout = partnerPayout ?? 0.0; // Capturing payout
       
       if (deliveryFee == null) {
         try {
@@ -99,17 +102,11 @@ class OrderProvider extends ChangeNotifier {
             if (data != null) {
               final percentage = (data['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0;
               final maxCap = (data['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0;
+              calculatedPartnerPayout = (data['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0; // Fallback
               
               if (percentage > 0) {
                 final calculatedFee = totalAmount * (percentage / 100);
                 calculatedDeliveryFee = maxCap > 0 && calculatedFee > maxCap ? maxCap : calculatedFee;
-              }
-              
-              // Add product overrides even in auto-calculation fallback
-              double overrides = 0.0;
-              for (var item in items) {
-                // We need to fetch product data to get the override if not in OrderItem
-                // But usually, the caller should pass the pre-calculated fee.
               }
             }
           }
@@ -121,6 +118,7 @@ class OrderProvider extends ChangeNotifier {
 
       final orderData = {
         'userId': userId,
+        'userName': userName ?? authProvider.currentUser?.name, // Use passed name or profile name
         'items': items.map((item) => item.toMap()).toList(),
         'totalAmount': totalAmount,
         'deliveryAddress': deliveryAddress,
@@ -131,7 +129,8 @@ class OrderProvider extends ChangeNotifier {
         'status': 'pending',
         'statusHistory': {'pending': DateTime.now().toIso8601String()},
         'deliveryPincode': deliveryPincode,
-        'deliveryFee': calculatedDeliveryFee, // Save calculated fee
+        'deliveryFee': calculatedDeliveryFee, 
+        'partnerPayout': calculatedPartnerPayout, // Saving partner payout
       };
       
       // =======================================================================

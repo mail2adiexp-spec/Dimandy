@@ -6,6 +6,9 @@ class AppSettingsModel {
   final String? upiId;
   final double deliveryFeePercentage;
   final double deliveryFeeMaxCap;
+  final double freeDeliveryThreshold; // New: Above this amount, delivery is free
+  final double partnerDeliveryRate; // New: What Admin pays the partner per delivery
+  final Map<String, double> pincodeOverrides; // New: Specific fees for pincodes
   final double sellerPlatformFeePercentage;
   final double servicePlatformFeePercentage;
   final String? announcementText;
@@ -20,6 +23,9 @@ class AppSettingsModel {
     this.upiId,
     this.deliveryFeePercentage = 0.0,
     this.deliveryFeeMaxCap = 0.0,
+    this.freeDeliveryThreshold = 0.0,
+    this.partnerDeliveryRate = 0.0,
+    this.pincodeOverrides = const {},
     this.sellerPlatformFeePercentage = 0.0,
     this.servicePlatformFeePercentage = 0.0,
     this.announcementText,
@@ -44,6 +50,11 @@ class AppSettingsModel {
       upiId: map['upiId'] as String?,
       deliveryFeePercentage: (map['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0,
       deliveryFeeMaxCap: (map['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0,
+      freeDeliveryThreshold: (map['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0,
+      partnerDeliveryRate: (map['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0,
+      pincodeOverrides: (map['pincodeOverrides'] as Map<String, dynamic>?)?.map(
+        (key, value) => MapEntry(key, (value as num).toDouble())
+      ) ?? {},
       sellerPlatformFeePercentage: (map['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 0.0,
       servicePlatformFeePercentage: (map['servicePlatformFeePercentage'] as num?)?.toDouble() ?? 0.0,
       announcementText: map['announcementText'] as String?,
@@ -60,6 +71,9 @@ class AppSettingsModel {
       'upiId': upiId,
       'deliveryFeePercentage': deliveryFeePercentage,
       'deliveryFeeMaxCap': deliveryFeeMaxCap,
+      'freeDeliveryThreshold': freeDeliveryThreshold,
+      'partnerDeliveryRate': partnerDeliveryRate,
+      'pincodeOverrides': pincodeOverrides,
       'sellerPlatformFeePercentage': sellerPlatformFeePercentage,
       'servicePlatformFeePercentage': servicePlatformFeePercentage,
       'announcementText': announcementText,
@@ -76,6 +90,9 @@ class AppSettingsModel {
     String? upiId,
     double? deliveryFeePercentage,
     double? deliveryFeeMaxCap,
+    double? freeDeliveryThreshold,
+    double? partnerDeliveryRate,
+    Map<String, double>? pincodeOverrides,
     double? sellerPlatformFeePercentage,
     double? servicePlatformFeePercentage,
     String? announcementText,
@@ -90,6 +107,9 @@ class AppSettingsModel {
       upiId: upiId ?? this.upiId,
       deliveryFeePercentage: deliveryFeePercentage ?? this.deliveryFeePercentage,
       deliveryFeeMaxCap: deliveryFeeMaxCap ?? this.deliveryFeeMaxCap,
+      freeDeliveryThreshold: freeDeliveryThreshold ?? this.freeDeliveryThreshold,
+      partnerDeliveryRate: partnerDeliveryRate ?? this.partnerDeliveryRate,
+      pincodeOverrides: pincodeOverrides ?? this.pincodeOverrides,
       sellerPlatformFeePercentage: sellerPlatformFeePercentage ?? this.sellerPlatformFeePercentage,
       servicePlatformFeePercentage: servicePlatformFeePercentage ?? this.servicePlatformFeePercentage,
       announcementText: announcementText ?? this.announcementText,

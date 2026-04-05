@@ -663,7 +663,7 @@ class _SharedOrdersTabState extends State<SharedOrdersTab> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildInfoRow(Icons.person_outline, 'User ID', userId),
+                                _buildInfoRow(Icons.person_outline, 'Customer', data['userName'] ?? userId),
                                 const SizedBox(height: 8),
                                 _buildInfoRow(Icons.inventory_2_outlined, 'Items', '$itemCount items'),
                                 if (data['deliveryPartnerName'] != null) ...[

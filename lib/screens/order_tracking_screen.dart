@@ -49,7 +49,7 @@ class OrderTrackingScreen extends StatelessWidget {
       icon: const Icon(Icons.print),
       onSelected: (value) async {
         try {
-          String? customerName = 'Customer'; // In a real app, fetch name or phone
+          final customerName = order.userName ?? 'Customer'; // Using the saved name
           if (value == 'invoice') {
             await InvoiceService.generateInvoice(order, customerName: customerName);
           } else if (value == 'label') {
@@ -445,6 +445,12 @@ class OrderTrackingScreen extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (order.userName != null)
+                        Text(
+                          order.userName!,
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      if (order.userName != null) const SizedBox(height: 4),
                       Text(
                         order.deliveryAddress,
                         style: const TextStyle(fontSize: 14, height: 1.5),

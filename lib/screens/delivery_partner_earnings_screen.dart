@@ -63,7 +63,7 @@ class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsS
         if (existingOrderIds.contains(orderId)) continue;
 
         final data = doc.data() as Map<String, dynamic>;
-        final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        final fee = (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
 
         if (fee > 0) {
           await TransactionService().recordTransaction(
@@ -144,7 +144,8 @@ class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsS
                       double total = 0;
                       if (snapshot.hasData) {
                         for (var doc in snapshot.data!.docs) {
-                          total += (doc.data() as Map<String, dynamic>)['deliveryFee'] ?? 0.0;
+                          final data = doc.data() as Map<String, dynamic>;
+                          total += (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                         }
                       }
                       return _buildSummaryCard(
@@ -211,7 +212,7 @@ class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsS
                   itemBuilder: (context, index) {
                     final data = deliveries[index].data() as Map<String, dynamic>;
                     final orderId = deliveries[index].id;
-                    final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                    final fee = (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                     final customer = data['userName'] ?? 'Customer';
                     final date = (data['deliveredAt'] as Timestamp?)?.toDate();
 

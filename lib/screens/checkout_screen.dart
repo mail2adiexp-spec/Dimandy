@@ -34,6 +34,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   double _deliveryFee = 0.0;
   double _deliveryFeePercentage = 0.0;
   double _deliveryFeeMaxCap = 0.0;
+  double _freeDeliveryThreshold = 0.0;
+  double _partnerDeliveryRate = 0.0;
+  Map<String, double> _pincodeOverrides = {};
+  double _partnerPayout = 0.0;
 
   @override
   void initState() {
@@ -73,6 +77,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           setState(() {
             _deliveryFeePercentage = (data['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0;
             _deliveryFeeMaxCap = (data['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0;
+            _freeDeliveryThreshold = (data['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0;
+            _partnerDeliveryRate = (data['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0;
+            _pincodeOverrides = (data['pincodeOverrides'] as Map<String, dynamic>?)?.map(
+              (key, value) => MapEntry(key, (value as num).toDouble())
+            ) ?? {};
           });
         }
       }
@@ -141,18 +150,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                               debugPrint('Error calculating remaining amount: $e');
                             }
                             
-                            // Calculate Delivery Fee: (Global % of Total) + (Sum of per-product overrides)
+                            // Calculate Delivery Fee: 
+                            // 1. Pincode Override (Highest Priority)
+                            // 2. Free Above Threshold
+                            // 3. Global % Capped at Max
+                            // 4. PLUS any product-specific overrides
+                            
                             double totalProductOverrides = 0.0;
                             for (var item in cart.items) {
                               totalProductOverrides += (item.product.deliveryFeeOverride ?? 0.0) * item.quantity;
                             }
 
-                            final calculatedGlobalFee = cart.totalAmount * (_deliveryFeePercentage / 100);
-                            final cappedGlobalFee = _deliveryFeeMaxCap > 0 && calculatedGlobalFee > _deliveryFeeMaxCap 
-                                ? _deliveryFeeMaxCap 
-                                : calculatedGlobalFee;
+                            double baseFee = 0.0;
+                            final currentPincode = _postalCodeController.text.trim();
                             
-                            _deliveryFee = cappedGlobalFee + totalProductOverrides;
+                            if (currentPincode.isNotEmpty && _pincodeOverrides.containsKey(currentPincode)) {
+                               baseFee = _pincodeOverrides[currentPincode]!;
+                            } else if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
+                               baseFee = 0.0;
+                            } else {
+                               final calculatedGlobal = cart.totalAmount * (_deliveryFeePercentage / 100);
+                               baseFee = _deliveryFeeMaxCap > 0 && calculatedGlobal > _deliveryFeeMaxCap 
+                                   ? _deliveryFeeMaxCap 
+                                   : calculatedGlobal;
+                            }
+                            
+                            _deliveryFee = baseFee + totalProductOverrides;
+                            _partnerPayout = _partnerDeliveryRate; // Current rate
                             
                             final grandTotal = cart.totalAmount + _deliveryFee;
 
@@ -168,12 +192,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                     ),
                                   ],
                                 ),
-                                if (_deliveryFeePercentage > 0) ...[
+                                if (_deliveryFee > 0) ...[
                                   const SizedBox(height: 8),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
-                                      Text('Delivery Fee (${_deliveryFeePercentage}%)'),
+                                      const Text('Delivery Fee'),
                                       Text(
                                         formatINR(_deliveryFee),
                                         style: const TextStyle(fontWeight: FontWeight.w500),
@@ -601,7 +625,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     try {
       final fullAddress =
-          '${_addressController.text}, ${_cityController.text}, ${_selectedState!}, ${_postalCodeController.text}';
+          '${_nameController.text}, ${_addressController.text}, ${_cityController.text}, ${_selectedState!}, ${_postalCodeController.text}';
 
       // Check current stock from database before placing order
       for (var cartItem in cart.items) {
@@ -700,7 +724,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         phoneNumber: _phoneController.text,
         state: _selectedState!,
         paymentMethod: _selectedPaymentMethod,
-        deliveryFee: _deliveryFee, // Pass explicitly calculated delivery fee (Global + Overrides)
+        deliveryFee: _deliveryFee, 
+        partnerPayout: _partnerPayout, // Saving the payout
+        userName: _nameController.text.trim(), // Passing the entered name
       );
 
       debugPrint('Checkout: Order ID received: $orderId');

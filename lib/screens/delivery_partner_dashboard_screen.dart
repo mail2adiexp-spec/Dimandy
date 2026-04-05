@@ -446,7 +446,7 @@ class _DeliveryPartnerDashboardScreenState
                   ),
                 ),
                 Text(
-                  '₹${order.totalAmount.toStringAsFixed(0)}',
+                  '₹${(order.totalAmount + order.deliveryFee).toStringAsFixed(0)}',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
@@ -999,7 +999,7 @@ class _DeliveryPartnerDashboardScreenState
             _buildDetailRow(
               Icons.currency_rupee,
               'Total',
-              '₹${order.totalAmount.toStringAsFixed(2)}',
+              '₹${(order.totalAmount + order.deliveryFee).toStringAsFixed(2)}',
             ),
             const SizedBox(height: 8),
             _buildDetailRow(
@@ -1321,7 +1321,7 @@ class _DeliveryPartnerDashboardScreenState
                     children: [
                        const Text('Verify if you have received the payment from customer.', style: TextStyle(color: Colors.grey, fontSize: 13)),
                        const SizedBox(height: 16),
-                      Text('Amount to Collect: ₹${order.totalAmount.toStringAsFixed(2)}', 
+                      Text('Amount to Collect: ₹${(order.totalAmount + order.deliveryFee).toStringAsFixed(2)}', 
                            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green)),
                       const SizedBox(height: 12),
                       const Divider(),
@@ -1468,15 +1468,15 @@ class _DeliveryPartnerDashboardScreenState
           
           // Record transaction for delivery partner earnings
           try {
-            final deliveryFee = (latestData?['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+            final payout = (latestData?['partnerPayout'] as num?)?.toDouble() ?? (latestData?['deliveryFee'] as num?)?.toDouble() ?? 0.0;
             final partnerId = latestData?['deliveryPartnerId'] as String?;
             
-            if (deliveryFee > 0 && partnerId != null) {
+            if (payout > 0 && partnerId != null) {
               await TransactionService().recordTransaction(
                 TransactionModel(
                   id: '', // Firestore will generate
                   userId: partnerId,
-                  amount: deliveryFee,
+                  amount: payout,
                   type: TransactionType.credit,
                   description: 'Delivery Partner Fee: #${orderId.substring(0, 8)}',
                   status: TransactionStatus.completed,
@@ -1489,7 +1489,7 @@ class _DeliveryPartnerDashboardScreenState
                   createdAt: DateTime.now(),
                 ),
               );
-              debugPrint('Transaction recorded for partner: $partnerId, amount: $deliveryFee');
+              debugPrint('Transaction recorded for partner: $partnerId, amount: $payout');
             }
           } catch (te) {
             debugPrint('Error recording earning transaction: $te');
@@ -1774,7 +1774,7 @@ class _DeliveryPartnerDashboardScreenState
                   cashToDeposit += amount;
                 }
                 
-                totalEarnings += (data['deliveryFee'] as num?)?.toDouble() ?? 0;
+                totalEarnings += (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0;
               }
 
               final successRate = totalCount > 0 
@@ -2014,7 +2014,7 @@ class _DeliveryPartnerDashboardScreenState
                     final orderId = doc.id;
                     final customerName = data['userName'] ?? 'Customer';
                     final status = data['deliveryStatus'] ?? 'assigned';
-                    final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
+                    final payout = (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0;
 
                     Color statusColor;
                     switch (status.toLowerCase()) {
@@ -2043,7 +2043,7 @@ class _DeliveryPartnerDashboardScreenState
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            '₹${deliveryFee.toStringAsFixed(0)}',
+                            '₹${payout.toStringAsFixed(0)}',
                             style: const TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 14,

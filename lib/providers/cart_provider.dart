@@ -121,8 +121,25 @@ class CartProvider extends ChangeNotifier {
         if (remoteStock <= 0) {
           throw Exception('Product is out of stock');
         }
+
+        // --- ENFORCE MAXIMUM QUANTITY ---
+        if (product.maximumQuantity > 0) {
+           // Calculate total quantity of THIS BASE PRODUCT already in cart (including variants)
+           int totalBaseQtyInCart = 0;
+           for (var item in _items.values) {
+              final itemBaseId = getBaseProductId(item.product.id);
+              if (itemBaseId == baseProductId) {
+                 totalBaseQtyInCart += item.quantity;
+              }
+           }
+           
+           if (totalBaseQtyInCart + quantityToAdd > product.maximumQuantity) {
+              throw Exception('You can only purchase a maximum of ${product.maximumQuantity} units of this item');
+           }
+        }
+        // --------------------------------
         
-        // Calculate total quantity of THIS BASE PRODUCT already in cart (including all variants)
+        // Calculate total quantity for STOCK check
         int totalBaseQtyInCart = 0;
         for (var item in _items.values) {
            final itemBaseId = getBaseProductId(item.product.id);
@@ -138,7 +155,7 @@ class CartProvider extends ChangeNotifier {
         _addingMutex[baseProductId] = false;
       } catch (e) {
          _addingMutex[baseProductId] = false;
-         if (e.toString().contains('stock')) {
+         if (e.toString().contains('stock') || e.toString().contains('maximum')) {
            throw Exception(e.toString().replaceAll('Exception: ', ''));
          }
          // If it's just a 'not found' or network error, we might still want to allow adding if local stock > 0

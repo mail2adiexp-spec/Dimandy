@@ -459,9 +459,10 @@ class _FinancialsTabState extends State<_FinancialsTab> {
           final paymentMethod = data['paymentMethod'] as String? ?? '';
           final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
           final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
           
           if (paymentMethod != 'online' && collectedMethod != 'qr') {
-            totalCashCollected += totalAmount;
+            totalCashCollected += (totalAmount + dFee);
           }
         }
 
@@ -1302,16 +1303,18 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
         
         if (status == 'delivered') {
           final paymentMethod = data['paymentMethod'] as String? ?? '';
-          final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+          final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+          final fullTotal = totalAmount + dFee;
           final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
           
           if (paymentMethod == 'online') {
-            prepaid += total;
+            prepaid += fullTotal;
           } else {
             if (collectedMethod == 'qr') {
-              qr += total;
+              qr += fullTotal;
             } else {
-              cash += total;
+              cash += fullTotal;
             }
           }
         }
@@ -1437,16 +1440,18 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
       if (data['status'] == 'delivered') {
         delivered++;
         final paymentMethod = data['paymentMethod'] as String? ?? '';
-        final total = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+        final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        final fullTotal = totalAmount + dFee;
         final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
         
         if (paymentMethod == 'online') {
-          prepaid += total;
+          prepaid += fullTotal;
         } else {
           if (collectedMethod == 'qr') {
-            qr += total;
+            qr += fullTotal;
           } else {
-            cash += total;
+            cash += fullTotal;
           }
         }
       }
@@ -1529,7 +1534,7 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
                             ],
                           ),
                         ),
-                        Text('₹${o['totalAmount']}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        Text('₹${((o['totalAmount'] as num?)?.toDouble() ?? 0.0) + ((o['deliveryFee'] as num?)?.toDouble() ?? 0.0)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                       ],
                     ),
                   );
