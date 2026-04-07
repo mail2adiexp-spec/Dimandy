@@ -138,13 +138,14 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                     children: [
                       Icon(
                         widget.role == 'service_provider' ? Icons.handyman :
+                        widget.role == 'store_partner' ? Icons.business_center :
                         Icons.delivery_dining,
                         size: 64,
                         color: Colors.grey[300],
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        'No ${_selectedStatus == 'All' ? '' : _selectedStatus} ${widget.role == 'service_provider' ? 'Service Providers' : 'Delivery Partners'} found',
+                        'No ${_selectedStatus == 'All' ? '' : _selectedStatus} ${widget.role == 'service_provider' ? 'Service Providers' : widget.role == 'store_partner' ? 'Store Partners' : 'Delivery Partners'} found',
                         style: const TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     ],
@@ -206,6 +207,7 @@ class _RoleManagementTabState extends State<RoleManagementTab> {
                               backgroundColor: statusColor.withValues(alpha: 0.1),
                               child: Icon(
                                 widget.role == 'service_provider' ? Icons.handyman :
+                                widget.role == 'store_partner' ? Icons.business_center :
                                 Icons.delivery_dining,
                                 color: statusColor,
                               ),

@@ -33,12 +33,14 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _maxQtyController;
   late TextEditingController _adminProfitPercentageController; // Added
   late TextEditingController _deliveryFeeOverrideController; // Added
+  late TextEditingController _servicePincodesController; // Added
   
   late String _selectedCategory;
   late String _selectedUnit;
   List<String> _existingImageUrls = [];
   List<Uint8List> _newImages = []; // Bytes for web/mobile compatibility
   List<String> _selectedStoreIds = []; // Added for store linking
+  bool _isCustomerChoice = false;
   bool _isLoading = false;
 
   final ImagePicker _picker = ImagePicker();
@@ -67,6 +69,10 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? (widget.productData['imageUrl'] != null ? [widget.productData['imageUrl']] : []));
     _selectedStoreIds = List<String>.from(widget.productData['storeIds'] ?? []); // Init storeIds
+    _isCustomerChoice = widget.productData['isCustomerChoice'] ?? false;
+    _servicePincodesController = TextEditingController(
+      text: (widget.productData['servicePincodes'] as List?)?.join(', ') ?? '',
+    );
   }
 
   @override
@@ -81,6 +87,7 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _maxQtyController.dispose();
     _adminProfitPercentageController.dispose();
     _deliveryFeeOverrideController.dispose();
+    _servicePincodesController.dispose();
     super.dispose();
   }
 
@@ -91,6 +98,10 @@ class _EditProductDialogState extends State<EditProductDialog> {
         final List<Uint8List> imageBytes = [];
         for (var image in images.take(6 - _existingImageUrls.length - _newImages.length)) {
           final bytes = await image.readAsBytes();
+          if (bytes.length > 800 * 1024) {
+             if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image ${image.name} exceeds 800 KB limit.')));
+             continue;
+          }
           imageBytes.add(bytes);
         }
         setState(() {
@@ -166,6 +177,8 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'deliveryFeeOverride': _deliveryFeeOverrideController.text.isNotEmpty 
             ? double.tryParse(_deliveryFeeOverrideController.text) 
             : null,
+        'isCustomerChoice': _isCustomerChoice,
+        'servicePincodes': _servicePincodesController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
@@ -220,7 +233,8 @@ class _EditProductDialogState extends State<EditProductDialog> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Image Management
-                const Text('Images', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text('Size: 512 x 512 pixcell, Max: 800 KB', style: TextStyle(fontSize: 12, color: Colors.grey)),
                 const SizedBox(height: 8),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -375,6 +389,17 @@ class _EditProductDialogState extends State<EditProductDialog> {
                        },
                      ),
                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _servicePincodesController,
+                        decoration: const InputDecoration(
+                          labelText: 'Service Area Pincodes *',
+                          hintText: 'e.g. 742223, 742212',
+                          border: OutlineInputBorder(),
+                          helperText: 'Only customers in these areas can see this product',
+                        ),
+                        validator: (v) => (v?.isEmpty == true) ? 'Area Pincodes required for visibility' : null,
+                      ),
+                      const SizedBox(height: 12),
                     const SizedBox(height: 12),
                     ListenableBuilder(
                       listenable: Listenable.merge([_priceController, _mrpController]),
@@ -590,35 +615,36 @@ class _EditProductDialogState extends State<EditProductDialog> {
                   const SizedBox(height: 16),
                 ],
 
-                Column(
-                  children: [
-                     Consumer<CategoryProvider>(
-                        builder: (context, categoryProvider, child) {
-                          final categories = categoryProvider.categories.map((c) => c.name).toList();
-                          // Ensure selected category exists in the list
-                          if (_selectedCategory.isNotEmpty && !categories.contains(_selectedCategory)) {
-                            categories.add(_selectedCategory);
-                          }
-                          if (categories.isEmpty) {
-                            categories.add('Daily Needs');
-                          }
-                          
-                          return DropdownButtonFormField<String>(
-                            value: categories.contains(_selectedCategory) ? _selectedCategory : categories.first,
-                            isExpanded: true,
-                            items: categories
-                                .toSet() // Remove duplicates just in case
-                                .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                                .toList(),
-                            onChanged: (v) => setState(() => _selectedCategory = v!),
-                            decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
-                            menuMaxHeight: 300,
-                          );
-                        },
-                      ),
-                    // Removed separate Unit dropdown as it is now above in the row
-                  ],
+                Consumer<CategoryProvider>(
+                  builder: (context, categoryProvider, child) {
+                    final categories = categoryProvider.categories.map((c) => c.name).toList();
+                    if (_selectedCategory.isNotEmpty && !categories.contains(_selectedCategory)) {
+                      categories.add(_selectedCategory);
+                    }
+                    if (categories.isEmpty) categories.add('Daily Needs');
+                    
+                    return DropdownButtonFormField<String>(
+                      value: categories.contains(_selectedCategory) ? _selectedCategory : categories.first,
+                      isExpanded: true,
+                      items: categories
+                          .toSet()
+                          .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedCategory = v!),
+                      decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()),
+                      menuMaxHeight: 300,
+                    );
+                  },
                 ),
+                const SizedBox(height: 20),
+                SwitchListTile(
+                  title: const Text('Customer Choice Product'),
+                  subtitle: const Text('Shows in "Customer Choice" home section'),
+                  contentPadding: EdgeInsets.zero,
+                  value: _isCustomerChoice,
+                  onChanged: (v) => setState(() => _isCustomerChoice = v),
+                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),

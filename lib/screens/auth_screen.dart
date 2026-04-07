@@ -146,15 +146,15 @@ class _SignInFormState extends State<_SignInForm> {
           child: Column(
             children: [
               // Toggle between OTP and Email login
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 12,
                 children: [
                   ChoiceChip(
                     label: const Text('Email & Pass'),
                     selected: !_isOtpLogin,
                     onSelected: (_) => setState(() { _isOtpLogin = false; }),
                   ),
-                  const SizedBox(width: 12),
                   ChoiceChip(
                     label: const Text('OTP Login'),
                     selected: _isOtpLogin,
@@ -239,9 +239,12 @@ class _SignInFormState extends State<_SignInForm> {
               ],
 
               const SizedBox(height: 20),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _loading ? null : _submit,
                       child: _loading
@@ -254,8 +257,8 @@ class _SignInFormState extends State<_SignInForm> {
                               : 'Sign In'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: _loading
                           ? null
@@ -554,9 +557,12 @@ class _SignUpFormState extends State<_SignUpForm> {
                     (v != _passCtrl.text) ? 'Passwords do not match' : null,
               ),
               const SizedBox(height: 20),
-              Row(
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
                 children: [
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _loading ? null : _submit,
                       child: _loading
@@ -568,8 +574,8 @@ class _SignUpFormState extends State<_SignUpForm> {
                           : const Text('Sign Up'),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
+                  SizedBox(
+                    width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: _loading
                           ? null

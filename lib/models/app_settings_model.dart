@@ -4,13 +4,13 @@ class AppSettingsModel {
   final String id;
   final String? upiQRCodeUrl;
   final String? upiId;
-  final double deliveryFeePercentage;
-  final double deliveryFeeMaxCap;
+  final double deliveryFee;
   final double freeDeliveryThreshold; // New: Above this amount, delivery is free
   final double partnerDeliveryRate; // New: What Admin pays the partner per delivery
   final Map<String, double> pincodeOverrides; // New: Specific fees for pincodes
   final double sellerPlatformFeePercentage;
   final double servicePlatformFeePercentage;
+  final bool enableProductDeliveryFees;
   final String? announcementText;
   final bool isAnnouncementEnabled;
   final String? contactPhoneNumber; // New Field
@@ -21,13 +21,13 @@ class AppSettingsModel {
     required this.id,
     this.upiQRCodeUrl,
     this.upiId,
-    this.deliveryFeePercentage = 0.0,
-    this.deliveryFeeMaxCap = 0.0,
+    this.deliveryFee = 0.0,
     this.freeDeliveryThreshold = 0.0,
     this.partnerDeliveryRate = 0.0,
     this.pincodeOverrides = const {},
     this.sellerPlatformFeePercentage = 0.0,
     this.servicePlatformFeePercentage = 0.0,
+    this.enableProductDeliveryFees = false,
     this.announcementText,
     this.isAnnouncementEnabled = false,
     this.contactPhoneNumber, // New Field
@@ -48,8 +48,7 @@ class AppSettingsModel {
       id: documentId,
       upiQRCodeUrl: map['upiQRCodeUrl'] as String?,
       upiId: map['upiId'] as String?,
-      deliveryFeePercentage: (map['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0,
-      deliveryFeeMaxCap: (map['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0,
+      deliveryFee: (map['deliveryFee'] as num?)?.toDouble() ?? 0.0,
       freeDeliveryThreshold: (map['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0,
       partnerDeliveryRate: (map['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0,
       pincodeOverrides: (map['pincodeOverrides'] as Map<String, dynamic>?)?.map(
@@ -57,6 +56,7 @@ class AppSettingsModel {
       ) ?? {},
       sellerPlatformFeePercentage: (map['sellerPlatformFeePercentage'] as num?)?.toDouble() ?? 0.0,
       servicePlatformFeePercentage: (map['servicePlatformFeePercentage'] as num?)?.toDouble() ?? 0.0,
+      enableProductDeliveryFees: map['enableProductDeliveryFees'] as bool? ?? false,
       announcementText: map['announcementText'] as String?,
       isAnnouncementEnabled: map['isAnnouncementEnabled'] as bool? ?? false,
       contactPhoneNumber: map['contactPhoneNumber'] as String?, // New Field
@@ -69,13 +69,13 @@ class AppSettingsModel {
     return {
       'upiQRCodeUrl': upiQRCodeUrl,
       'upiId': upiId,
-      'deliveryFeePercentage': deliveryFeePercentage,
-      'deliveryFeeMaxCap': deliveryFeeMaxCap,
+      'deliveryFee': deliveryFee,
       'freeDeliveryThreshold': freeDeliveryThreshold,
       'partnerDeliveryRate': partnerDeliveryRate,
       'pincodeOverrides': pincodeOverrides,
       'sellerPlatformFeePercentage': sellerPlatformFeePercentage,
       'servicePlatformFeePercentage': servicePlatformFeePercentage,
+      'enableProductDeliveryFees': enableProductDeliveryFees,
       'announcementText': announcementText,
       'isAnnouncementEnabled': isAnnouncementEnabled,
       'contactPhoneNumber': contactPhoneNumber, // New Field
@@ -88,13 +88,13 @@ class AppSettingsModel {
     String? id,
     String? upiQRCodeUrl,
     String? upiId,
-    double? deliveryFeePercentage,
-    double? deliveryFeeMaxCap,
+    double? deliveryFee,
     double? freeDeliveryThreshold,
     double? partnerDeliveryRate,
     Map<String, double>? pincodeOverrides,
     double? sellerPlatformFeePercentage,
     double? servicePlatformFeePercentage,
+    bool? enableProductDeliveryFees,
     String? announcementText,
     bool? isAnnouncementEnabled,
     String? contactPhoneNumber, // New Field
@@ -105,13 +105,13 @@ class AppSettingsModel {
       id: id ?? this.id,
       upiQRCodeUrl: upiQRCodeUrl ?? this.upiQRCodeUrl,
       upiId: upiId ?? this.upiId,
-      deliveryFeePercentage: deliveryFeePercentage ?? this.deliveryFeePercentage,
-      deliveryFeeMaxCap: deliveryFeeMaxCap ?? this.deliveryFeeMaxCap,
+      deliveryFee: deliveryFee ?? this.deliveryFee,
       freeDeliveryThreshold: freeDeliveryThreshold ?? this.freeDeliveryThreshold,
       partnerDeliveryRate: partnerDeliveryRate ?? this.partnerDeliveryRate,
       pincodeOverrides: pincodeOverrides ?? this.pincodeOverrides,
       sellerPlatformFeePercentage: sellerPlatformFeePercentage ?? this.sellerPlatformFeePercentage,
       servicePlatformFeePercentage: servicePlatformFeePercentage ?? this.servicePlatformFeePercentage,
+      enableProductDeliveryFees: enableProductDeliveryFees ?? this.enableProductDeliveryFees,
       announcementText: announcementText ?? this.announcementText,
       isAnnouncementEnabled: isAnnouncementEnabled ?? this.isAnnouncementEnabled,
       contactPhoneNumber: contactPhoneNumber ?? this.contactPhoneNumber, // New Field

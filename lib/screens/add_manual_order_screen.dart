@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
@@ -24,8 +25,10 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
 
   List<Map<String, dynamic>> _selectedItems = [];
   List<Product> _searchResults = [];
+  List<Product> _initialProducts = []; // NEW: Cache for initial load
   bool _isSaving = false;
   bool _isSearching = false;
+  Timer? _searchDebounce; // NEW: Debounce timer
 
   @override
   void initState() {
@@ -36,7 +39,44 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
       if (auth.isStateAdmin && auth.currentUser?.assignedState != null) {
         _stateController.text = auth.currentUser!.assignedState!;
       }
+      _loadInitialProducts(); // NEW: Load products on start
     });
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _nameController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _pincodeController.dispose();
+    _stateController.dispose();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialProducts() async {
+    setState(() => _isSearching = true);
+    try {
+      final productProvider = Provider.of<ProductProvider>(context, listen: false);
+      // Fetch latest 50 products initially to show something
+      final results = await FirebaseFirestore.instance
+          .collection('products')
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .get();
+      
+      final products = results.docs.map((doc) => Product.fromMap(doc.id, doc.data())).toList();
+      
+      setState(() {
+        _initialProducts = products;
+        _searchResults = products;
+        _isSearching = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading initial products: $e');
+      setState(() => _isSearching = false);
+    }
   }
 
   double get _totalAmount {
@@ -89,10 +129,18 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
     });
   }
 
+  void _onSearchChanged(String query) {
+    if (_searchDebounce?.isActive ?? false) _searchDebounce!.cancel();
+    
+    _searchDebounce = Timer(const Duration(milliseconds: 500), () {
+      _searchProducts(query);
+    });
+  }
+
   Future<void> _searchProducts(String query) async {
     if (query.trim().isEmpty) {
       setState(() {
-        _searchResults = [];
+        _searchResults = _initialProducts;
         _isSearching = false;
       });
       return;
@@ -102,13 +150,73 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
     try {
       final productProvider = Provider.of<ProductProvider>(context, listen: false);
       final results = await productProvider.searchProductsGlobal(query.trim());
+      
+      // Also try local search on initial products for faster responsiveness
+      final localResults = _initialProducts.where((p) => 
+        p.name.toLowerCase().contains(query.toLowerCase().trim())
+      ).toList();
+
+      // Merge and remove duplicates
+      final Map<String, Product> combined = {};
+      for (var p in localResults) { combined[p.id] = p; }
+      for (var p in results) { combined[p.id] = p; }
+
       setState(() {
-        _searchResults = results;
+        _searchResults = combined.values.toList();
         _isSearching = false;
       });
     } catch (e) {
       debugPrint('Search error: $e');
       setState(() => _isSearching = false);
+    }
+  }
+
+  Future<void> _syncSearchKeywords() async {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    scaffoldMessenger.showSnackBar(
+      const SnackBar(content: Text('Updating search index... please wait ⏳')),
+    );
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final productsSnapshot = await firestore.collection('products').get();
+      
+      final batch = firestore.batch();
+      int count = 0;
+      
+      for (var doc in productsSnapshot.docs) {
+        final data = doc.data();
+        final name = data['name'] as String? ?? '';
+        
+        // Generate keywords using the unified logic
+        final lowerName = name.toLowerCase();
+        final List<String> keywords = [lowerName];
+        // Split by non-alphanumeric characters for better word extraction
+        final List<String> words = lowerName.split(RegExp(r'[^a-z0-9]+')).where((w) => w.isNotEmpty).toList();
+        
+        for (final word in words) {
+          if (!keywords.contains(word)) keywords.add(word);
+          for (int i = 1; i <= word.length; i++) {
+            final prefix = word.substring(0, i);
+            if (!keywords.contains(prefix)) keywords.add(prefix);
+          }
+        }
+        
+        batch.update(doc.reference, {'searchKeywords': keywords});
+        count++;
+      }
+      
+      await batch.commit();
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Success! $count products updated. 🎉'), backgroundColor: Colors.green),
+      );
+      
+      // Reload initial products to reflect changes
+      await _loadInitialProducts();
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red),
+      );
     }
   }
 
@@ -297,10 +405,18 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
                                 prefixIcon: const Icon(Icons.search),
                                 suffixIcon: _isSearching 
                                   ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2)))
-                                  : (_searchController.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() { _searchController.clear(); _searchResults = []; })) : null),
+                                : (_searchController.text.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () => setState(() { _searchController.clear(); _searchResults = _initialProducts; })) : null),
                                 border: const OutlineInputBorder(),
                               ),
-                              onChanged: (val) => _searchProducts(val),
+                              onChanged: _onSearchChanged,
+                            ),
+                            const SizedBox(height: 8),
+                            // NEW: Sync button for fixing old products
+                            TextButton.icon(
+                              onPressed: _syncSearchKeywords,
+                              icon: const Icon(Icons.sync, size: 16),
+                              label: const Text('Update Search (Sync)', style: TextStyle(fontSize: 12)),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), foregroundColor: Colors.blue),
                             ),
                             if (_searchResults.isNotEmpty)
                               Container(

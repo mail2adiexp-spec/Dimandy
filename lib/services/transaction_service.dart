@@ -25,8 +25,8 @@ class TransactionService {
     // without composite indexes or complex filters. 
     // For now, we fetch by userId and client-side filter or use a more specific query if role is provided.
     
-    if (role == 'seller') {
-      // For sellers, we often want to prioritize their revenue (metadata.sellerId)
+    if (role == 'seller' || role == 'store_partner') {
+      // For sellers and store partners, we often want to prioritize their revenue (metadata.sellerId)
       // but also show their payouts (userId).
       // We'll return a stream that combines these or just focuses on the relevant ones.
       return _firestore

@@ -100,14 +100,10 @@ class OrderProvider extends ChangeNotifier {
           if (settingsDoc.exists) {
             final data = settingsDoc.data();
             if (data != null) {
-              final percentage = (data['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0;
-              final maxCap = (data['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0;
+              final flatFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
               calculatedPartnerPayout = (data['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0; // Fallback
               
-              if (percentage > 0) {
-                final calculatedFee = totalAmount * (percentage / 100);
-                calculatedDeliveryFee = maxCap > 0 && calculatedFee > maxCap ? maxCap : calculatedFee;
-              }
+              calculatedDeliveryFee = flatFee;
             }
           }
         } catch (e) {

@@ -31,14 +31,21 @@ class ProductProvider with ChangeNotifier {
     // Fallback: Filter from main products list if section-specific fetch failed/empty
     // (Crucial while Firestore indexes are building to prevent blank sections)
     if (sectionName == '🔥 Trending Now' || sectionName == 'Trending Now') {
-      final trending = _products.where((p) => p.viewCount > 0).toList();
-      trending.sort((a, b) => b.viewCount.compareTo(a.viewCount));
+      final trending = [..._products];
+      trending.sort((a, b) => b.viewCount == a.viewCount 
+        ? (b.createdAt?.compareTo(a.createdAt ?? DateTime.now()) ?? 0)
+        : b.viewCount.compareTo(a.viewCount));
       return trending.take(10).toList();
     } else if (sectionName == 'Hot Deals') {
       return _products.where((p) => p.isHotDeal || (p.mrp > p.price && p.mrp > 0)).take(10).toList();
     } else if (sectionName == 'Customer Choices') {
-      final choices = _products.where((p) => p.salesCount > 0).toList();
-      choices.sort((a, b) => b.salesCount.compareTo(a.salesCount));
+      // Favor manually marked then sales
+      final choices = _products.where((p) => p.isCustomerChoice).toList();
+      if (choices.isEmpty) {
+        final topSales = [..._products];
+        topSales.sort((a, b) => b.salesCount.compareTo(a.salesCount));
+        return topSales.take(10).toList();
+      }
       return choices.take(10).toList();
     } else {
       // Standard category (e.g. Daily Needs, Snacks)
@@ -48,7 +55,7 @@ class ProductProvider with ChangeNotifier {
 
   // Removed startListening since we use manual fetching
 
-  Future<void> fetchProducts({bool refresh = false}) async {
+  Future<void> fetchProducts({bool refresh = false, String? userPincode}) async {
     if (refresh) {
       _lastDocument = null;
       _hasMore = true;
@@ -71,8 +78,13 @@ class ProductProvider with ChangeNotifier {
     try {
       Query query = _firestore
           .collection('products')
-          .orderBy('createdAt', descending: true)
-          .limit(10);
+          .orderBy('createdAt', descending: true);
+
+      if (userPincode != null && userPincode.isNotEmpty) {
+        query = query.where('servicePincodes', arrayContains: userPincode);
+      }
+
+      query = query.limit(10);
 
       if (_lastDocument != null) {
         query = query.startAfterDocument(_lastDocument!);
@@ -109,7 +121,7 @@ class ProductProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchProductsByCategory(String category, {bool refresh = false}) async {
+  Future<void> fetchProductsByCategory(String category, {bool refresh = false, String? userPincode}) async {
     if (refresh) {
       _lastCategoryDocument = null;
       _categoryProducts.clear();
@@ -150,6 +162,10 @@ class ProductProvider with ChangeNotifier {
       } else {
         // Standard Category
         query = query.where('category', isEqualTo: category).orderBy('createdAt', descending: true);
+      }
+      
+      if (userPincode != null && userPincode.isNotEmpty) {
+        query = query.where('servicePincodes', arrayContains: userPincode);
       }
       
       query = query.limit(10);
@@ -200,19 +216,25 @@ class ProductProvider with ChangeNotifier {
   }
 
   // Specialized fetch for Home Screen sections to avoid overwriting categoryProducts
-  Future<void> fetchHomeSection(String sectionName, {int limit = 10}) async {
+  Future<void> fetchHomeSection(String sectionName, {int limit = 10, String? userPincode}) async {
     try {
       Query query = _firestore.collection('products');
       
       if (sectionName == '🔥 Trending Now' || sectionName == 'Trending Now') {
-        query = query.where('viewCount', isGreaterThan: 0).orderBy('viewCount', descending: true);
+        // Show all products sorted by view count, then newest
+        query = query.orderBy('viewCount', descending: true).orderBy('createdAt', descending: true);
       } else if (sectionName == 'Hot Deals') {
         query = query.where('isHotDeal', isEqualTo: true).orderBy('createdAt', descending: true);
       } else if (sectionName == 'Customer Choices') {
-        query = query.where('salesCount', isGreaterThan: 0).orderBy('salesCount', descending: true);
+        // Show manually marked products primarily
+        query = query.where('isCustomerChoice', isEqualTo: true).orderBy('createdAt', descending: true);
       } else {
         // Standard category section (e.g. 'Daily Needs', 'Snacks')
         query = query.where('category', isEqualTo: sectionName).orderBy('createdAt', descending: true);
+      }
+
+      if (userPincode != null && userPincode.isNotEmpty) {
+        query = query.where('servicePincodes', arrayContains: userPincode);
       }
 
       final snapshot = await query.limit(limit).get();
@@ -237,7 +259,8 @@ class ProductProvider with ChangeNotifier {
     keywords.add(lowerName);
     
     // Split by spaces and special characters
-    final List<String> words = lowerName.split(RegExp(r'[\s\-_,.]+')).where((w) => w.isNotEmpty).toList();
+    // Split by non-alphanumeric characters for better word extraction
+    final List<String> words = lowerName.split(RegExp(r'[^a-z0-9]+')).where((w) => w.isNotEmpty).toList();
     
     for (final word in words) {
       // Add each word
@@ -260,11 +283,12 @@ class ProductProvider with ChangeNotifier {
     final String lowerQuery = query.trim().toLowerCase();
     
     try {
-      final snapshot = await _firestore
+      Query q = _firestore
           .collection('products')
           .where('searchKeywords', arrayContains: lowerQuery)
-          .limit(20)
-          .get();
+          .limit(100);
+          
+      final snapshot = await q.get();
           
       return snapshot.docs.map((doc) {
         return Product.fromMap(doc.id, doc.data() as Map<String, dynamic>);
@@ -301,6 +325,8 @@ class ProductProvider with ChangeNotifier {
         minimumQuantity: product.minimumQuantity,
         storeIds: product.storeIds,
         state: product.state,
+        deliveryFeeOverride: product.deliveryFeeOverride,
+        partnerPayoutOverride: product.partnerPayoutOverride,
         searchKeywords: _generateSearchKeywords(product.name),
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
@@ -341,6 +367,8 @@ class ProductProvider with ChangeNotifier {
         minimumQuantity: updatedProduct.minimumQuantity,
         storeIds: updatedProduct.storeIds,
         state: updatedProduct.state,
+        deliveryFeeOverride: updatedProduct.deliveryFeeOverride,
+        partnerPayoutOverride: updatedProduct.partnerPayoutOverride,
         searchKeywords: _generateSearchKeywords(updatedProduct.name),
         createdAt: updatedProduct.createdAt,
         updatedAt: updatedProduct.updatedAt,

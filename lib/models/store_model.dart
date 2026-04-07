@@ -14,6 +14,11 @@ class StoreModel {
   final String? managerEmail;
   final String? managerPhone;
   final String? state; // Added state
+  
+  // Partner Details
+  final String? partnerId;
+  final String? partnerName;
+  final String? partnerPhone;
 
   StoreModel({
     required this.id,
@@ -27,6 +32,10 @@ class StoreModel {
     this.managerEmail,
     this.managerPhone,
     this.state,
+    
+    this.partnerId,
+    this.partnerName,
+    this.partnerPhone,
   });
 
   factory StoreModel.fromFirestore(DocumentSnapshot doc) {
@@ -43,6 +52,9 @@ class StoreModel {
       managerEmail: data['managerEmail'] as String?,
       managerPhone: data['managerPhone'] as String?,
       state: data['state'] as String?,
+      partnerId: data['partnerId'] as String?,
+      partnerName: data['partnerName'] as String?,
+      partnerPhone: data['partnerPhone'] as String?,
     );
   }
 
@@ -59,6 +71,9 @@ class StoreModel {
       'managerEmail': managerEmail,
       'managerPhone': managerPhone,
       'state': state, // Added state
+      'partnerId': partnerId,
+      'partnerName': partnerName,
+      'partnerPhone': partnerPhone,
     };
   }
 }

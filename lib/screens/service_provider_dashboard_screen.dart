@@ -768,6 +768,7 @@ class _ServiceProviderDashboardScreenState extends State<ServiceProviderDashboar
                             userId,
                             amount,
                             details,
+                            userRole: UserRole.serviceProvider,
                           );
                           if (mounted) {
                             Navigator.pop(context);

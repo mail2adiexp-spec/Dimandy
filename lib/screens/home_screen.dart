@@ -19,6 +19,7 @@ import 'account_screen.dart';
 import '../providers/service_category_provider.dart';
 import '../models/service_category_model.dart';
 import 'category_service_providers_screen.dart';
+import 'edit_profile_screen.dart';
 import '../services/recommendation_service.dart';
 import '../widgets/marquee_widget.dart';
 import '../widgets/notifications_dialog.dart';
@@ -74,17 +75,21 @@ class _HomeScreenState extends State<HomeScreen> {
     // Fetch initial home sections after initial build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchInitialSections();
+      _checkProfileCompleteness();
     });
   }
 
   Future<void> _fetchInitialSections() async {
     final productProvider = context.read<ProductProvider>();
+    final auth = context.read<AuthProvider>();
+    final pincode = auth.currentUser?.pincode;
+
     await Future.wait([
-      productProvider.fetchHomeSection('Daily Needs'),
-      productProvider.fetchHomeSection('Snacks'),
-      productProvider.fetchHomeSection('Hot Deals'),
-      productProvider.fetchHomeSection('Customer Choices'),
-      productProvider.fetchHomeSection('🔥 Trending Now'),
+      productProvider.fetchHomeSection('Daily Needs', userPincode: pincode),
+      productProvider.fetchHomeSection('Snacks', userPincode: pincode),
+      productProvider.fetchHomeSection('Hot Deals', userPincode: pincode),
+      productProvider.fetchHomeSection('Customer Choices', userPincode: pincode),
+      productProvider.fetchHomeSection('🔥 Trending Now', userPincode: pincode),
     ]);
   }
 
@@ -111,20 +116,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // Pull-to-refresh handler
   Future<void> _handleRefresh() async {
-    // Reload recommendations (products and categories auto-update via realtime listeners)
-    // Removed recommendations refresh as requested
-    // await _loadRecommendations();
-    
     final productProvider = context.read<ProductProvider>();
+    final auth = context.read<AuthProvider>();
+    final pincode = auth.currentUser?.pincode;
+
     // Reset product pagination
-    await productProvider.fetchProducts(refresh: true);
+    await productProvider.fetchProducts(refresh: true, userPincode: pincode);
     
     // Fetch individual sections to ensure they are populated
     await Future.wait([
-      productProvider.fetchHomeSection('Daily Needs'),
-      productProvider.fetchHomeSection('Snacks'),
-      productProvider.fetchHomeSection('Hot Deals'),
-      productProvider.fetchHomeSection('Customer Choices'),
+      productProvider.fetchHomeSection('Daily Needs', userPincode: pincode),
+      productProvider.fetchHomeSection('Snacks', userPincode: pincode),
+      productProvider.fetchHomeSection('Hot Deals', userPincode: pincode),
+      productProvider.fetchHomeSection('Customer Choices', userPincode: pincode),
     ]);
     
     // Show a success message
@@ -134,6 +138,57 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Text('✅ Refreshed!'),
           duration: Duration(seconds: 1),
           behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _checkProfileCompleteness() async {
+    final auth = context.read<AuthProvider>();
+    final user = auth.currentUser;
+    if (user == null) return;
+
+    // Check if profile is incomplete (OTP users often have default name and null pincode/email)
+    bool isIncomplete = (user.pincode == null || user.pincode!.isEmpty) || 
+                       (user.name == 'Customer' || user.name.isEmpty) ||
+                       (user.email.isEmpty);
+
+    if (isIncomplete) {
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.info_outline, color: Colors.orange),
+              const SizedBox(width: 8),
+              const Text('Update Profile'),
+            ],
+          ),
+          content: const Text(
+            'To show products available in your area, please update your Profile with your Pin Code, Name, and Email.',
+            style: TextStyle(fontSize: 14),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('LATER', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, EditProfileScreen.routeName);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+              child: const Text('UPDATE PROFILE'),
+            ),
+          ],
         ),
       );
     }
@@ -245,7 +300,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onScroll() {
     if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent * 0.9) {
-      context.read<ProductProvider>().fetchProducts();
+      final pincode = context.read<AuthProvider>().currentUser?.pincode;
+      context.read<ProductProvider>().fetchProducts(userPincode: pincode);
     }
   }
 

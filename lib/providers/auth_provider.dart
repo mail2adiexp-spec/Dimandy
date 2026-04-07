@@ -38,6 +38,7 @@ class AppUser {
   final String? assignedState; // For State Admins
   final String? state; // For Customers/Sellers
   final String? pincode; // Added pincode
+  final List<String> servicePincodes; // NEW: For Store Partner area visibility
   final Map<String, dynamic> permissions;
 
   AppUser({
@@ -51,6 +52,7 @@ class AppUser {
     this.assignedState,
     this.state,
     this.pincode,
+    this.servicePincodes = const [],
     this.permissions = const {},
   });
 
@@ -148,6 +150,7 @@ class AuthProvider extends ChangeNotifier {
       String? assignedState;
       String? state;
       String? pincode;
+      List<String> servicePincodes = [];
       Map<String, dynamic> permissions = {};
       String? firestorePhone;
       bool hasAdminRole = false;
@@ -165,6 +168,7 @@ class AuthProvider extends ChangeNotifier {
           state = data['state'] as String?;
           pincode =
               data['pincode'] as String? ?? data['servicePincode'] as String?;
+          servicePincodes = (data['servicePincodes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
           permissions = data['permissions'] as Map<String, dynamic>? ?? {};
           firestorePhone =
               data['phoneNumber'] as String? ?? data['phone'] as String?;
@@ -194,6 +198,7 @@ class AuthProvider extends ChangeNotifier {
         assignedState: assignedState,
         state: state,
         pincode: pincode,
+        servicePincodes: servicePincodes,
         permissions: permissions,
       );
 

@@ -41,8 +41,8 @@ class CartItem {
         sellerId: map['sellerId']?.toString() ?? '',
         name: map['name']?.toString() ?? 'Unknown Item',
         description: map['description']?.toString() ?? '',
-        price: (map['price'] as num?)?.toDouble() ?? 0.0,
-        basePrice: (map['basePrice'] as num?)?.toDouble() ?? 0.0,
+        price: double.parse(((map['price'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)),
+        basePrice: double.parse(((map['basePrice'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)),
         imageUrl: map['imageUrl']?.toString() ?? '',
         stock: (map['stock'] as num?)?.toInt() ?? 0, // Restore stock
         storeIds: List<String>.from(map['storeIds'] ?? []),
@@ -58,6 +58,7 @@ class CartItem {
 class CartProvider extends ChangeNotifier {
   static const _storageKey = 'cart_v1';
   final Map<String, CartItem> _items = {};
+  final Map<String, CartItem> _savedItems = {};
   final Map<String, bool> _addingMutex = {};
 
   CartProvider() {
@@ -66,11 +67,13 @@ class CartProvider extends ChangeNotifier {
   }
 
   List<CartItem> get items => _items.values.toList(growable: false);
+  List<CartItem> get savedItems => _savedItems.values.toList(growable: false);
   int get itemCount =>
       _items.values.fold(0, (sum, item) => sum + item.quantity);
   double get totalAmount =>
       _items.values.fold(0.0, (sum, item) => sum + item.totalPrice);
   bool get isEmpty => _items.isEmpty;
+  bool get hasSavedItems => _savedItems.isNotEmpty;
 
   Future<void> addProduct(Product product, {int quantityToAdd = 1, Map<String, dynamic>? metadata}) async {
     debugPrint('CartProvider: addProduct called for ${product.id}');
@@ -200,23 +203,54 @@ class CartProvider extends ChangeNotifier {
 
   void clear() {
     _items.clear();
+    _savedItems.clear();
     _persistAndNotify();
+  }
+
+  void saveForLater(String productId) {
+    if (!_items.containsKey(productId)) return;
+    _savedItems[productId] = _items.remove(productId)!;
+    _persistAndNotify();
+  }
+
+  void moveToCart(String productId) {
+    if (!_savedItems.containsKey(productId)) return;
+    _items[productId] = _savedItems.remove(productId)!;
+    _persistAndNotify();
+  }
+
+  void removeSaved(String productId) {
+    if (_savedItems.remove(productId) != null) {
+      _persistAndNotify();
+    }
   }
 
   Future<void> _init() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final data = prefs.getString(_storageKey);
-      if (data == null || data.isEmpty) return;
-      final List list = jsonDecode(data) as List;
-      _items
-        ..clear()
-        ..addEntries(
-          list.map((e) {
-            final item = CartItem.fromMap(Map<String, dynamic>.from(e as Map));
-            return MapEntry(item.product.id, item);
-          }),
-        );
+      
+      // Load Cart Items
+      final cartData = prefs.getString(_storageKey);
+      if (cartData != null && cartData.isNotEmpty) {
+        final List list = jsonDecode(cartData) as List;
+        _items.clear();
+        for (var e in list) {
+          final item = CartItem.fromMap(Map<String, dynamic>.from(e as Map));
+          _items[item.product.id] = item;
+        }
+      }
+
+      // Load Saved Items
+      final savedData = prefs.getString('${_storageKey}_saved');
+      if (savedData != null && savedData.isNotEmpty) {
+        final List list = jsonDecode(savedData) as List;
+        _savedItems.clear();
+        for (var e in list) {
+          final item = CartItem.fromMap(Map<String, dynamic>.from(e as Map));
+          _savedItems[item.product.id] = item;
+        }
+      }
+      
       notifyListeners();
     } catch (e) {
       debugPrint('CartProvider: Error loading cart from storage: $e');
@@ -226,8 +260,12 @@ class CartProvider extends ChangeNotifier {
   Future<void> _save() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final list = _items.values.map((e) => e.toMap()).toList();
-      await prefs.setString(_storageKey, jsonEncode(list));
+      
+      final cartList = _items.values.map((e) => e.toMap()).toList();
+      await prefs.setString(_storageKey, jsonEncode(cartList));
+
+      final savedList = _savedItems.values.map((e) => e.toMap()).toList();
+      await prefs.setString('${_storageKey}_saved', jsonEncode(savedList));
     } catch (e) {
       debugPrint('CartProvider: Error saving cart to storage: $e');
     }

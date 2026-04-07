@@ -31,9 +31,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _selectedPaymentMethod = 'COD'; // COD or Online
   bool _isPlacingOrder = false;
   bool _saveAddress = true;
+  bool _enableProductDeliveryFees = false;
   double _deliveryFee = 0.0;
-  double _deliveryFeePercentage = 0.0;
-  double _deliveryFeeMaxCap = 0.0;
+  double _flatDeliveryFee = 0.0;
   double _freeDeliveryThreshold = 0.0;
   double _partnerDeliveryRate = 0.0;
   Map<String, double> _pincodeOverrides = {};
@@ -75,10 +75,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         final data = doc.data();
         if (data != null) {
           setState(() {
-            _deliveryFeePercentage = (data['deliveryFeePercentage'] as num?)?.toDouble() ?? 0.0;
-            _deliveryFeeMaxCap = (data['deliveryFeeMaxCap'] as num?)?.toDouble() ?? 0.0;
+            _flatDeliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
             _freeDeliveryThreshold = (data['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0;
             _partnerDeliveryRate = (data['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0;
+            _enableProductDeliveryFees = data['enableProductDeliveryFees'] as bool? ?? false;
             _pincodeOverrides = (data['pincodeOverrides'] as Map<String, dynamic>?)?.map(
               (key, value) => MapEntry(key, (value as num).toDouble())
             ) ?? {};
@@ -153,30 +153,40 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             // Calculate Delivery Fee: 
                             // 1. Pincode Override (Highest Priority)
                             // 2. Free Above Threshold
-                            // 3. Global % Capped at Max
+                            // 3. Flat Delivery Fee
+                            double baseFee = 0.0;
                             // 4. PLUS any product-specific overrides
                             
                             double totalProductOverrides = 0.0;
-                            for (var item in cart.items) {
-                              totalProductOverrides += (item.product.deliveryFeeOverride ?? 0.0) * item.quantity;
+                            double totalPartnerOverrides = 0.0;
+                            if (_enableProductDeliveryFees) {
+                              for (var item in cart.items) {
+                                totalProductOverrides += (item.product.deliveryFeeOverride ?? 0.0) * item.quantity;
+                                totalPartnerOverrides += (item.product.partnerPayoutOverride ?? 0.0) * item.quantity;
+                              }
                             }
 
-                            double baseFee = 0.0;
                             final currentPincode = _postalCodeController.text.trim();
                             
+                            // 1. Pincode Override (Highest Priority)
                             if (currentPincode.isNotEmpty && _pincodeOverrides.containsKey(currentPincode)) {
-                               baseFee = _pincodeOverrides[currentPincode]!;
-                            } else if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
-                               baseFee = 0.0;
-                            } else {
-                               final calculatedGlobal = cart.totalAmount * (_deliveryFeePercentage / 100);
-                               baseFee = _deliveryFeeMaxCap > 0 && calculatedGlobal > _deliveryFeeMaxCap 
-                                   ? _deliveryFeeMaxCap 
-                                   : calculatedGlobal;
+                               _deliveryFee = _pincodeOverrides[currentPincode]!;
+                               // Only product overrides that are EXTRAS would add here, 
+                               // but user said "Priority", so we stop here.
+                            } 
+                            // 2. Product-Specific Overrides (Second Priority)
+                            else if (_enableProductDeliveryFees && totalProductOverrides > 0) {
+                               _deliveryFee = totalProductOverrides;
                             }
-                            
-                            _deliveryFee = baseFee + totalProductOverrides;
-                            _partnerPayout = _partnerDeliveryRate; // Current rate
+                            // 3. Free Threshold (Bonus priority)
+                            else if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
+                               _deliveryFee = 0.0;
+                            } 
+                            // 4. Default Flat Fee (Lowest Priority)
+                            else {
+                               _deliveryFee = _flatDeliveryFee;
+                            }
+                            _partnerPayout = _partnerDeliveryRate + totalPartnerOverrides; // Base + Extras
                             
                             final grandTotal = cart.totalAmount + _deliveryFee;
 

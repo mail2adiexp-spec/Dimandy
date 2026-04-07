@@ -275,19 +275,22 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                        ],
                      ),
                    ),
-                  if (store.managerName != null)
-                     Row(
-                      children: [
-                        const Icon(Icons.person_outline, size: 18, color: Colors.grey),
-                         const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Manager: ${store.managerName}',
-                             style: const TextStyle(fontSize: 13, color: Colors.black87),
-                          ),
+                    if (store.partnerName != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.handshake_outlined, size: 18, color: Colors.blue),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Partner: ${store.partnerName}',
+                                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.blue),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                    ),
+                      ),
                   const SizedBox(height: 12),
                   const Text(
                     'Operating Pincodes:',
@@ -351,6 +354,9 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
     
     String? selectedManagerId = store?.managerId;
     Map<String, dynamic>? selectedManagerData;
+    
+    String? selectedPartnerId = store?.partnerId;
+    Map<String, dynamic>? selectedPartnerData;
     
     final formKey = GlobalKey<FormState>();
     bool isLoading = false;
@@ -504,6 +510,67 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                         );
                       }
                     ),
+                    const SizedBox(height: 24),
+                    const Text('Assign Store Partner', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.indigo)),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    
+                    // Store Partner Dropdown
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('users')
+                          .where('role', isEqualTo: 'store_partner')
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) {
+                          return Text('Error loading partners: ${snapshot.error}', style: const TextStyle(color: Colors.red));
+                        }
+                        if (snapshot.connectionState == ConnectionState.waiting) {
+                          return const LinearProgressIndicator();
+                        }
+                        
+                        final partnerDocs = snapshot.data?.docs ?? [];
+                        final items = partnerDocs.map((doc) {
+                           final data = doc.data() as Map<String, dynamic>;
+                           final name = data['name'] ?? 'Unknown';
+                           final phone = data['phoneNumber'] ?? data['phone'] ?? '';
+                           
+                           return DropdownMenuItem<String>(
+                             value: doc.id,
+                             child: Text('$name ($phone)', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis),
+                             onTap: () {
+                               selectedPartnerData = data;
+                             },
+                           );
+                         }).toList();
+                         
+                         items.insert(0, const DropdownMenuItem<String>(
+                           value: null,
+                           child: Text('None / Unassign'),
+                         ));
+
+                        final validValues = items.map((e) => e.value).toSet();
+                        if (selectedPartnerId != null && !validValues.contains(selectedPartnerId)) {
+                           selectedPartnerId = null;
+                        }
+
+                        return DropdownButtonFormField<String>(
+                          decoration: const InputDecoration(
+                            labelText: 'Select Store Partner',
+                            border: OutlineInputBorder(),
+                            prefixIcon: Icon(Icons.handshake),
+                          ),
+                          value: selectedPartnerId,
+                          isExpanded: true,
+                          items: items,
+                          onChanged: (value) {
+                             setState(() {
+                               selectedPartnerId = value;
+                             });
+                          },
+                        );
+                      }
+                    ),
                   ],
                 ),
               ),
@@ -541,10 +608,20 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                        storeData['managerName'] = selectedManagerData!['name'];
                        storeData['managerEmail'] = selectedManagerData!['email'];
                        storeData['managerPhone'] = selectedManagerData!['phoneNumber'] ?? selectedManagerData!['phone'];
-                    } else if (selectedManagerId == null) {
-                       storeData['managerName'] = null;
-                       storeData['managerEmail'] = null;
-                       storeData['managerPhone'] = null;
+                      storeData['managerName'] = null;
+                      storeData['managerEmail'] = null;
+                      storeData['managerPhone'] = null;
+                    }
+
+                    // Handle Partner details
+                    if (selectedPartnerId != null && selectedPartnerData != null) {
+                       storeData['partnerId'] = selectedPartnerId;
+                       storeData['partnerName'] = selectedPartnerData!['name'];
+                       storeData['partnerPhone'] = selectedPartnerData!['phoneNumber'] ?? selectedPartnerData!['phone'];
+                    } else if (selectedPartnerId == null) {
+                       storeData['partnerId'] = null;
+                       storeData['partnerName'] = null;
+                       storeData['partnerPhone'] = null;
                     }
 
                     DocumentReference storeRef;
@@ -572,8 +649,22 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
                     if (selectedManagerId != null) {
                         await FirebaseFirestore.instance.collection('users').doc(selectedManagerId).update({
                           'storeId': storeRef.id,
-                          'role': 'store_manager', // Promote/Assign role
+                          'role': 'store_manager',
                         });
+                    }
+
+                    // Update New Partner User Doc
+                    if (selectedPartnerId != null) {
+                        await FirebaseFirestore.instance.collection('users').doc(selectedPartnerId).update({
+                          'storeId': storeRef.id,
+                        });
+                    }
+                    
+                    // Unassign previous partner if changed
+                    if (store != null && store.partnerId != null && store.partnerId != selectedPartnerId) {
+                         await FirebaseFirestore.instance.collection('users').doc(store.partnerId).update({
+                           'storeId': FieldValue.delete(),
+                         });
                     }
 
                     if (mounted) Navigator.pop(context);
@@ -621,6 +712,12 @@ class _ManageStoresTabState extends State<ManageStoresTab> {
          // Unassign manager
          if (store.managerId != null) {
             await FirebaseFirestore.instance.collection('users').doc(store.managerId).update({
+               'storeId': FieldValue.delete(),
+            });
+         }
+         // Unassign partner
+         if (store.partnerId != null) {
+            await FirebaseFirestore.instance.collection('users').doc(store.partnerId).update({
                'storeId': FieldValue.delete(),
             });
          }

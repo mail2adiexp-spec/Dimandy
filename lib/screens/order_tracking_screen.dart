@@ -103,6 +103,10 @@ class OrderTrackingScreen extends StatelessWidget {
                 children: [
                   _buildOrderInfoCard(theme),
                   const SizedBox(height: 24),
+                  if (isAdminOrPartner) ...[
+                    _buildFinancialBreakdownCard(theme),
+                    const SizedBox(height: 24),
+                  ],
                   _buildItemsCard(theme),
                   const SizedBox(height: 24),
                   _buildDeliveryInfoCard(theme),
@@ -138,6 +142,10 @@ class OrderTrackingScreen extends StatelessWidget {
         children: [
           _buildOrderInfoCard(theme),
           const SizedBox(height: 16),
+          if (isAdminOrPartner) ...[
+            _buildFinancialBreakdownCard(theme),
+            const SizedBox(height: 16),
+          ],
           _buildTrackingTimelineCard(theme),
           const SizedBox(height: 16),
           _buildItemsCard(theme),
@@ -745,5 +753,107 @@ class OrderTrackingScreen extends StatelessWidget {
       case 'packed': return Colors.teal;
       default: return Colors.grey;
     }
+  }
+
+  Widget _buildFinancialBreakdownCard(ThemeData theme) {
+    double subtotal = 0;
+    double totalBaseCost = 0;
+    double totalAdminCommission = 0;
+
+    for (var item in order.items) {
+      final itemTotal = item.price * item.quantity;
+      final itemBaseTotal = (item.basePrice ?? 0.0) * item.quantity;
+      final profit = itemTotal - itemBaseTotal;
+      
+      subtotal += itemTotal;
+      totalBaseCost += itemBaseTotal;
+
+      if (profit > 0) {
+        final commPercent = item.adminProfitPercentage ?? 25.0;
+        totalAdminCommission += (profit * (commPercent / 100));
+      }
+    }
+
+    final storePartnerShare = totalBaseCost + (subtotal - totalBaseCost - totalAdminCommission);
+    final deliveryFee = order.deliveryFee;
+    final partnerPayout = order.partnerPayout ?? 0.0;
+    final adminDeliveryProfit = deliveryFee - partnerPayout;
+    final netAdminProfit = totalAdminCommission + adminDeliveryProfit;
+
+    return Card(
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: theme.colorScheme.primary.withOpacity(0.2)),
+      ),
+      color: Colors.white,
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+             Row(
+               children: [
+                 const Icon(Icons.analytics, color: Colors.indigo),
+                 const SizedBox(width: 8),
+                 Text(
+                  'Financial Breakdown',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo[900]),
+                ),
+               ],
+             ),
+            const SizedBox(height: 16),
+            _buildBreakdownRow('Items Subtotal', subtotal),
+            _buildBreakdownRow('Customer Delivery Fee', deliveryFee, isBold: true),
+            const Divider(height: 24),
+            _buildBreakdownRow('TOTAL COLLECTED', order.totalAmount + order.deliveryFee, isBold: true, color: Colors.green[700]),
+            
+            const SizedBox(height: 24),
+            const Text('SETTLEMENT DETAILS (Admin Perspective)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+            const SizedBox(height: 12),
+            _buildBreakdownRow('Store Partner Earning', storePartnerShare, subtitle: 'Includes Base Price + Partner Share of Profit'),
+            _buildBreakdownRow('Delivery Payout', partnerPayout, subtitle: 'Paid to Delivery Partner'),
+            const Divider(height: 24),
+            _buildBreakdownRow('NET ADMIN PROFIT', netAdminProfit, isBold: true, color: Colors.indigo, fontSize: 16),
+            
+            if (partnerPayout > 0 && deliveryFee > 0)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Delivery Margin: ₹${adminDeliveryProfit.toStringAsFixed(2)} (${deliveryFee} collected - ${partnerPayout} paid)',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600], fontStyle: FontStyle.italic),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBreakdownRow(String label, double amount, {bool isBold = false, Color? color, double fontSize = 14, String? subtitle}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(label, style: TextStyle(fontSize: fontSize, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
+              Text(
+                '₹${amount.toStringAsFixed(2)}', 
+                style: TextStyle(
+                  fontSize: fontSize, 
+                  fontWeight: isBold ? FontWeight.bold : FontWeight.bold,
+                  color: color
+                )
+              ),
+            ],
+          ),
+          if (subtitle != null)
+            Text(subtitle, style: TextStyle(fontSize: 10, color: Colors.grey[600])),
+        ],
+      ),
+    );
   }
 }

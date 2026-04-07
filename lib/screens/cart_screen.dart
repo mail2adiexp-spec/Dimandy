@@ -14,158 +14,373 @@ class CartScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Consumer<CartProvider>(
-      builder: (_, cart, __) => Scaffold(
-        appBar: AppBar(title: const Text('Your Cart')),
-        body: cart.isEmpty
-            ? const Center(child: Text('Your shopping cart is empty.'))
-            : ListView.separated(
-                padding: const EdgeInsets.only(
-                  bottom: 100,
-                  left: 12,
-                  right: 12,
-                  top: 12,
-                ),
-                itemCount: cart.items.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
-                itemBuilder: (_, i) {
-                  final item = cart.items[i];
-                  final p = item.product;
-                  final isService = p.category == 'Services' || p.unit == 'service';
-                  return ListTile(
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                      horizontal: 8,
-                    ),
-                    leading: ClipRRect(
-                      borderRadius: BorderRadius.circular(6),
-                      child: Image.network(
-                        p.imageUrl,
-                        width: 56,
-                        height: 56,
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) =>
-                            const Icon(Icons.image_not_supported),
+      builder: (context, cart, _) => Scaffold(
+        backgroundColor: Colors.grey[50],
+        appBar: AppBar(
+          title: const Text('Your Cart', style: TextStyle(fontWeight: FontWeight.bold)),
+          centerTitle: true,
+          elevation: 0,
+          backgroundColor: Colors.white,
+          foregroundColor: Colors.black,
+          actions: [
+            if (!cart.isEmpty)
+              TextButton(
+                onPressed: () => _showClearDialog(context, cart),
+                child: const Text('Clear', style: TextStyle(color: Colors.red)),
+              ),
+          ],
+        ),
+        body: (cart.isEmpty && !cart.hasSavedItems)
+            ? _buildEmptyState(context)
+            : CustomScrollView(
+                slivers: [
+                  // Cart Items Section
+                  if (!cart.items.isEmpty) ...[
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) => _CartItemTile(item: cart.items[i], isSaved: false),
+                        childCount: cart.items.length,
                       ),
                     ),
-                    title: Text(
+                  ],
+
+                  // Saved for Later Section
+                  if (cart.hasSavedItems) ...[
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+                        child: Text('Saved for Later', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                      ),
+                    ),
+                    SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (ctx, i) => _CartItemTile(item: cart.savedItems[i], isSaved: true),
+                        childCount: cart.savedItems.length,
+                      ),
+                    ),
+                  ],
+
+                  const SliverToBoxAdapter(child: SizedBox(height: 120)), // Space for bottom bar
+                ],
+              ),
+        bottomNavigationBar: cart.isEmpty ? null : _buildBottomBar(context, cart),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.shopping_cart_outlined, size: 80, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          const Text('Your cart is empty', style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+            ),
+            child: const Text('Start Shopping'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomBar(BuildContext context, CartProvider cart) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5)),
+        ],
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   Text('Total Amount', style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                   Text(
+                    formatINR(cart.totalAmount),
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.deepPurple),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 50,
+              width: 180,
+              child: ElevatedButton(
+                onPressed: () => _handleCheckout(context, cart),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.deepPurple,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: const Text('Checkout', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleCheckout(BuildContext context, CartProvider cart) {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isLoggedIn) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AuthScreen(redirectRouteName: CheckoutScreen.routeName),
+        ),
+      );
+    } else {
+      Navigator.pushNamed(context, CheckoutScreen.routeName);
+    }
+  }
+
+  void _showClearDialog(BuildContext context, CartProvider cart) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear Cart?'),
+        content: const Text('This will remove all items from your cart.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              cart.clear();
+              Navigator.pop(ctx);
+            },
+            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CartItemTile extends StatelessWidget {
+  final CartItem item;
+  final bool isSaved;
+
+  const _CartItemTile({required this.item, required this.isSaved});
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = context.read<CartProvider>();
+    final p = item.product;
+    final isService = p.category == 'Services' || p.unit == 'service';
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14), // Slightly reduced from 20
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 4)),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Image
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.network(
+                  p.imageUrl,
+                  width: 90, // Slightly bigger image
+                  height: 90,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Container(
+                    width: 80, height: 80, color: Colors.grey[100],
+                    child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Details
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
                       p.name,
-                      maxLines: 1,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16), // Increased from 13
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    subtitle: Text(
-                      '${formatINR(p.price)} x ${item.quantity} = ${formatINR(item.totalPrice)}',
+                    const SizedBox(height: 4),
+                    Text(
+                      formatINR(p.price),
+                      style: const TextStyle(color: Colors.deepPurple, fontWeight: FontWeight.bold, fontSize: 15), // Increased from 13
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (!isService)
-                          IconButton(
-                            icon: const Icon(Icons.remove_circle_outline),
-                            onPressed: () {
-                              if (item.quantity > item.product.minimumQuantity) {
-                                cart.removeOne(p.id);
-                              } else {
-                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Minimum quantity is ${item.product.minimumQuantity}. Use delete to remove.'),
-                                    backgroundColor: Colors.red,
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            },
-                          ),
-                        Text(item.quantity.toString()),
-                        if (!isService)
-                          IconButton(
-                            icon: const Icon(Icons.add_circle_outline),
-                            onPressed: () async {
-                              try {
-                                await cart.addProduct(p);
-                              } catch (e) {
-                                if (context.mounted) {
-                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(e.toString().replaceAll('Exception: ', '')),
-                                      backgroundColor: Colors.red,
-                                      duration: const Duration(seconds: 2),
-                                    ),
-                                  );
-                                }
-                              }
-                            },
-                          ),
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => cart.removeProduct(p.id),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                    const SizedBox(height: 12),
+                    if (!isSaved && !isService)
+                      Center(child: _QuantityCounter(item: item, cart: cart, isService: isService)),
+                  ],
+                ),
               ),
-        bottomNavigationBar: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surface,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
+              // Price (Total)
+              if (!isSaved)
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: Text(
+                  formatINR(item.totalPrice),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 17), // Increased from 14
+                ),
               ),
             ],
           ),
-          child: SafeArea(
-            top: false,
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Total',
-                        style: TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      Text(
-                        formatINR(cart.totalAmount),
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 18,
-                        ),
-                      ),
-                    ],
-                  ),
+          if (isService) ...[
+            const SizedBox(height: 8),
+            const Center(child: Text('Service Booking', style: TextStyle(fontSize: 13, color: Colors.grey))),
+          ],
+          const Divider(height: 20, thickness: 0.8), // Reduced from 24
+          // Action Buttons
+          Row(
+            children: [
+              if (!isSaved)
+                _ActionButton(
+                  icon: Icons.bookmark_border,
+                  label: 'Save for later',
+                  onTap: () => cart.saveForLater(p.id),
                 ),
-                ElevatedButton(
-                  onPressed: cart.isEmpty
-                      ? null
-                      : () {
-                          final auth = context.read<AuthProvider>();
-                          if (!auth.isLoggedIn) {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const AuthScreen(
-                                  redirectRouteName: CheckoutScreen.routeName,
-                                ),
-                              ),
-                            );
-                          } else {
-                            Navigator.pushNamed(
-                              context,
-                              CheckoutScreen.routeName,
-                            );
-                          }
-                        },
-                  child: const Text('Proceed to Checkout'),
+              if (isSaved)
+                _ActionButton(
+                  icon: Icons.shopping_cart_outlined,
+                  label: 'Move to cart',
+                  color: Colors.deepPurple,
+                  onTap: () => cart.moveToCart(p.id),
                 ),
-              ],
-            ),
+              const Spacer(),
+              _ActionButton(
+                icon: Icons.delete_outline,
+                label: 'Remove',
+                color: Colors.red,
+                onTap: () => isSaved ? cart.removeSaved(p.id) : cart.removeProduct(p.id),
+              ),
+            ],
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuantityCounter extends StatelessWidget {
+  final CartItem item;
+  final CartProvider cart;
+  final bool isService;
+
+  const _QuantityCounter({required this.item, required this.cart, required this.isService});
+
+  @override
+  Widget build(BuildContext context) {
+    if (isService) return const Text('Service Booking', style: TextStyle(fontSize: 12, color: Colors.grey));
+
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey[200]!),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _CountBtn(
+            icon: Icons.remove,
+            onTap: () {
+              if (item.quantity > item.product.minimumQuantity) {
+                cart.removeOne(item.product.id);
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Minimum order: ${item.product.minimumQuantity}'))
+                );
+              }
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16), // A bit more room
+            child: Text('${item.quantity}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)), // Increased from default
+          ),
+          _CountBtn(
+            icon: Icons.add,
+            onTap: () async {
+              try {
+                await cart.addProduct(item.product);
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(e.toString().replaceAll('Exception: ', '')), backgroundColor: Colors.red)
+                );
+              }
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CountBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _CountBtn({required this.icon, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.all(6),
+        child: Icon(icon, size: 18, color: Colors.black87),
+      ),
+    );
+  }
+}
+
+class _ActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  const _ActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = Colors.black54,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: color), // Increased from 16
+            const SizedBox(width: 6), // Increased from 4
+            Text(label, style: TextStyle(fontSize: 14, color: color, fontWeight: FontWeight.w500)), // Increased from 12
+          ],
         ),
       ),
     );

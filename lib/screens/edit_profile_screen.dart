@@ -73,6 +73,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       );
 
       if (pickedFile != null) {
+        final sizeInBytes = await pickedFile.length();
+        if (sizeInBytes > 800 * 1024) {
+           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile image exceeds 800 KB limit.')));
+           return;
+        }
         _pickedFileName = pickedFile.name;
         if (kIsWeb) {
           // Web: read as bytes
@@ -281,19 +286,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     Positioned(
                       bottom: 0,
                       right: 0,
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: IconButton(
-                          icon: const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 20,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                              onPressed: _pickImage,
+                            ),
                           ),
-                          onPressed: _pickImage,
-                        ),
+                          const Text('512x512, 800KB', style: TextStyle(fontSize: 8, color: Colors.white, backgroundColor: Colors.black45)),
+                        ],
                       ),
                     ),
                   ],

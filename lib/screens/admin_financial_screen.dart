@@ -20,12 +20,14 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
   List<Map<String, dynamic>> _enhancedTransactions = [];
   
   // 8 Metrics
-  double _storeProfit = 0;
-  double _commission = 0;
-  double _deliveryCost = 0;
   double _totalProfit = 0;
+  double _adminProfit = 0;
+  double _partnerCommissions = 0;
+  double _deliveryCost = 0;
+  double _adminSales = 0;
+  double _partnerSales = 0;
   double _totalPurchase = 0;
-  double _totalSell = 0;
+  double _totalWithdrawals = 0;
 
 
   // Filters
@@ -54,149 +56,126 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
   Future<void> _fetchFinancialData() async {
     setState(() => _isLoading = true);
     try {
-      Query query = FirebaseFirestore.instance
-          .collection('transactions')
-          .orderBy('createdAt', descending: true);
+      // 1. Fetch Orders for Sales/Profit/Commissions
+      Query orderQuery = FirebaseFirestore.instance
+          .collection('orders')
+          .where('status', isEqualTo: 'delivered');
 
       if (_selectedDateRange != null) {
-        query = query
-            .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.start))
-            .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.end.add(const Duration(days: 1))));
-      } else {
-        query = query.limit(500); 
+        orderQuery = orderQuery
+            .where('orderDate', isGreaterThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.start))
+            .where('orderDate', isLessThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59))));
+      }
+      
+      if (_selectedState != null) {
+        orderQuery = orderQuery.where('state', isEqualTo: _selectedState);
       }
 
-      final querySnapshot = await query.get();
+      final orderSnapshot = await orderQuery.get();
 
-      // Initialize totals
-      double storeRevenue = 0;
-      double storePurchaseCost = 0;
-      double serviceComm = 0;
-      double deliveryFeePaid = 0;
-      double totalSalesRevenue = 0;
+      double adminSales = 0;
+      double partnerSales = 0;
+      double adminPurchaseCost = 0;
+      double partnerCommissions = 0;
+      double deliveryFees = 0;
 
+      for (var doc in orderSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        deliveryFees += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        
+        final items = (data['items'] as List<dynamic>?) ?? [];
+        for (var item in items) {
+          final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+          final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+          final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+          final profitShare = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0; // Default to 25% as per business model
+          final sellerId = item['sellerId'] as String? ?? 'admin';
+
+          final itemRevenue = price * qty;
+          final itemCost = basePrice * qty;
+          final itemProfit = itemRevenue - itemCost;
+
+          if (sellerId == 'admin') {
+            adminSales += itemRevenue;
+            adminPurchaseCost += itemCost;
+          } else {
+            partnerSales += itemRevenue;
+            if (itemProfit > 0) {
+              partnerCommissions += (itemProfit * (profitShare / 100));
+            }
+          }
+        }
+      }
+
+      // 2. Fetch Bookings for Service Commissions
+      Query bookingQuery = FirebaseFirestore.instance
+          .collection('bookings')
+          .where('status', isEqualTo: 'completed');
+
+      if (_selectedDateRange != null) {
+        bookingQuery = bookingQuery
+            .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.start))
+            .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59))));
+      }
+
+      final bookingSnapshot = await bookingQuery.get();
+      for (var doc in bookingSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final platformFee = (data['platformFee'] as num?)?.toDouble() ?? 0.0;
+        partnerCommissions += platformFee;
+      }
+
+      // 3. Fetch Payouts for Withdrawals
+      Query payoutQuery = FirebaseFirestore.instance
+          .collection('payouts')
+          .where('status', isEqualTo: 'approved')
+          .where('type', isEqualTo: 'withdrawal');
+
+      if (_selectedDateRange != null) {
+        payoutQuery = payoutQuery
+            .where('processedDate', isGreaterThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.start))
+            .where('processedDate', isLessThanOrEqualTo: Timestamp.fromDate(_selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59))));
+      }
+
+      final payoutSnapshot = await payoutQuery.get();
+      double totalWithdrawals = 0;
+      for (var doc in payoutSnapshot.docs) {
+        totalWithdrawals += (doc.data() as Map<String, dynamic>)['amount'] as num;
+      }
+
+      // 3. Keep Recent Transactions for the list view
+      final txSnapshot = await FirebaseFirestore.instance
+          .collection('transactions')
+          .orderBy('createdAt', descending: true)
+          .limit(50)
+          .get();
 
       final List<Map<String, dynamic>> enhancedTxns = [];
-      final Map<String, Map<String, dynamic>> _userCache = {};
-      final Map<String, Map<String, dynamic>> _orderCache = {};
-
-      for (var doc in querySnapshot.docs) {
+      for (var doc in txSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final tx = TransactionModel.fromMap(data, doc.id);
-        final metadata = tx.metadata ?? {};
-        
-        bool isRelevant = false;
-        double amount = tx.amount;
-        String typeLabel = '';
-        
-        // --- 1. Identify Logic ---
-        
-        // Delivery Cost
-        if (metadata['source'] == 'delivery_fee' || tx.description.toLowerCase().contains('delivery payout')) {
-          isRelevant = true;
-          typeLabel = 'Delivery Cost';
-          deliveryFeePaid += tx.amount;
-        } 
-        
-        // Order Related
-        else if (metadata.containsKey('orderId')) {
-          isRelevant = true;
-          final orderId = metadata['orderId'];
-          
-          // Check if it's a commission (debit from seller) or payment
-          if (tx.description.contains('Commission') || metadata.containsKey('platformFee')) {
-            // It's a commission
-            final fee = (metadata['platformFee'] as num?)?.toDouble() ?? tx.amount;
-            if (metadata['isPlatformOwned'] == true) {
-               // Should not happen for commissions usually, but handle if so
-               typeLabel = 'Store Owned';
-            } else {
-               typeLabel = 'Commission';
-               // sellerComm += fee; // Deprecated
-            }
-          } else if (tx.type == TransactionType.credit) {
-            // It's a direct payment
-             typeLabel = 'Order Payment';
-             totalSalesRevenue += tx.amount;
-             
-             // Check ownership via sellerId in metadata (Strict attribution)
-             final sellerId = metadata['sellerId'];
-             
-             if (sellerId != null) {
-               Map<String, dynamic>? uData;
-               if (_userCache.containsKey(sellerId)) {
-                 uData = _userCache[sellerId];
-               } else {
-                 final uDoc = await FirebaseFirestore.instance.collection('users').doc(sellerId).get();
-                 if (uDoc.exists) {
-                   uData = uDoc.data();
-                   _userCache[sellerId] = uData!;
-                 }
-               }
-
-               final role = (uData?['role'] as String? ?? '').toLowerCase();
-               final platformRoles = ['admin', 'super_admin', 'state_admin', 'store_manager', 'core_staff', 'manager'];
-               
-               if (platformRoles.contains(role)) {
-                 typeLabel = 'Store Owned';
-                 storeRevenue += tx.amount;
-                 
-                 // Calculate Purchase Cost for this order
-                 if (!_orderCache.containsKey(orderId)) {
-                   final oDoc = await FirebaseFirestore.instance.collection('orders').doc(orderId).get();
-                   if (oDoc.exists) {
-                     _orderCache[orderId] = oDoc.data()!;
-                   }
-                 }
-                 
-                 if (_orderCache.containsKey(orderId)) {
-                   final oData = _orderCache[orderId]!;
-                   final items = (oData['items'] as List<dynamic>?) ?? [];
-                   for (var item in items) {
-                      final itemBasePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
-                      final qty = (item['quantity'] as num?)?.toInt() ?? 1;
-                      storePurchaseCost += (itemBasePrice * qty);
-                   }
-                 }
-               }
-             }
-          }
-        }
-        
-        // Service Related
-        else if (metadata.containsKey('bookingId')) {
-          isRelevant = true;
-
-          if (tx.description.contains('Commission') || metadata.containsKey('platformFee')) {
-            final fee = (metadata['platformFee'] as num?)?.toDouble() ?? tx.amount;
-            typeLabel = 'Commission';
-            serviceComm += fee;
-          } else {
-            typeLabel = 'Service Payment';
-            totalSalesRevenue += tx.amount;
-          }
-        }
-
-        if (!isRelevant) continue;
-
         enhancedTxns.add({
           'tx': tx,
-          'type': typeLabel,
-          'amount': amount,
-          'storeName': metadata['storeName'] ?? 'N/A',
+          'type': tx.description.contains('Commission') ? 'Commission' : 'Payment',
+          'amount': tx.amount,
+          'storeName': (tx.metadata ?? {})['storeName'] ?? 'N/A',
         });
       }
 
       if (mounted) {
         setState(() {
+          _adminSales = adminSales;
+          _partnerSales = partnerSales;
+          _adminProfit = adminSales - adminPurchaseCost;
+          _partnerCommissions = partnerCommissions;
+          _deliveryCost = deliveryFees;
+          _totalPurchase = adminPurchaseCost;
+          _totalWithdrawals = totalWithdrawals;
           _enhancedTransactions = enhancedTxns;
-          _storeProfit = storeRevenue - storePurchaseCost;
-          _commission = serviceComm;
-          _deliveryCost = deliveryFeePaid;
-          _totalPurchase = storePurchaseCost;
-          _totalSell = totalSalesRevenue;
-
-          _totalProfit = _storeProfit + _commission - _deliveryCost;
+          
+          // Total Platform Net Profit = (Own Profit on direct items + Commissions on partner items + Booking Platform Fees)
+          _totalProfit = (_adminProfit + _partnerCommissions);
+          
           _isLoading = false;
         });
       }
@@ -251,13 +230,14 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
           pw.Table.fromTextArray(
             headers: ['Category', 'Amount / Count'],
             data: [
-              ['Total Profit', 'INR ${_totalProfit.toStringAsFixed(2)}'],
-              ['Store Profit', 'INR ${_storeProfit.toStringAsFixed(2)}'],
-              ['Commission', 'INR ${_commission.toStringAsFixed(2)}'],
-              ['Delivery Cost', '(INR ${_deliveryCost.toStringAsFixed(2)})'],
-              ['Total Purchase (Buying Cost)', 'INR ${_totalPurchase.toStringAsFixed(2)}'],
-              ['Total Sell (Revenue)', 'INR ${_totalSell.toStringAsFixed(2)}'],
-
+              ['Total Net Profit', 'INR ${_totalProfit.toStringAsFixed(2)}'],
+              ['Admin Sales', 'INR ${_adminSales.toStringAsFixed(2)}'],
+              ['Admin Profit', 'INR ${_adminProfit.toStringAsFixed(2)}'],
+              ['Partner Commissions', 'INR ${_partnerCommissions.toStringAsFixed(2)}'],
+              ['Partner Sales', 'INR ${_partnerSales.toStringAsFixed(2)}'],
+              ['Delivery Costs', '(INR ${_deliveryCost.toStringAsFixed(2)})'],
+              ['Total Withdrawals', '(INR ${_totalWithdrawals.toStringAsFixed(2)})'],
+              ['Admin Purchase Cost', 'INR ${_totalPurchase.toStringAsFixed(2)}'],
             ],
             headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
             cellAlignment: pw.Alignment.centerLeft,
@@ -381,13 +361,14 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
           children: [
-            _buildKpiCard('Total Profit', _totalProfit, Icons.account_balance_wallet, Colors.green),
-            _buildKpiCard('Store Profit', _storeProfit, Icons.storefront, Colors.blue),
-            _buildKpiCard('Commission', _commission, Icons.account_balance_wallet, Colors.orange),
+            _buildKpiCard('Total Net Profit', _totalProfit, Icons.account_balance, Colors.green),
+            _buildKpiCard('Admin Sales', _adminSales, Icons.trending_up, Colors.blue),
+            _buildKpiCard('Admin Profit', _adminProfit, Icons.storefront, Colors.teal),
+            _buildKpiCard('Partner Commissions', _partnerCommissions, Icons.account_balance_wallet, Colors.orange),
+            _buildKpiCard('Partner Sales', _partnerSales, Icons.shopping_bag, Colors.indigo),
             _buildKpiCard('Delivery Cost', _deliveryCost, Icons.local_shipping, Colors.red),
-            _buildKpiCard('Total Purchase', _totalPurchase, Icons.shopping_basket, Colors.blueGrey),
-            _buildKpiCard('Total Sell', _totalSell, Icons.trending_up, Colors.indigo),
-
+            _buildKpiCard('Withdrawals', _totalWithdrawals, Icons.payments, Colors.deepPurple),
+            _buildKpiCard('Purchase Cost', _totalPurchase, Icons.inventory, Colors.blueGrey),
           ],
         ),
 

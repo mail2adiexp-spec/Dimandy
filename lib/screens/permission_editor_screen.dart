@@ -146,6 +146,22 @@ class _PermissionEditorScreenState extends State<PermissionEditorScreen> {
         'can_manage_delivery_partners': 'Manage Delivery Partners (State)',
         'can_manage_partner_requests': 'Manage Partner Requests (State)',
       };
+    } else if (widget.userRole == 'store_partner') {
+      permissionSections['Store Operations'] = {
+        'can_view_own_stores': 'View Linked Stores',
+        'can_edit_store_settings': 'Edit Store Details',
+        'can_manage_store_products': 'Manage Store Products',
+        'can_manage_store_orders': 'Manage Store Orders',
+      };
+      permissionSections['Financials'] = {
+        'can_view_earnings': 'View Earnings/Commission',
+        'can_manage_payout_requests': 'Manage Payout Requests',
+        'can_view_financial_reports': 'View Financial Reports',
+      };
+      permissionSections['Analytics'] = {
+        'can_view_store_analytics': 'View Store Analytics',
+        'can_download_reports': 'Download Performance Reports',
+      };
     }
     
     // Check for "Custom" permissions (keys present in tempPermissions but not in sections)

@@ -6,6 +6,7 @@ import '../providers/cart_provider.dart';
 import '../providers/theme_provider.dart';
 import '../utils/currency.dart';
 import '../screens/cart_screen.dart';
+import '../screens/checkout_screen.dart';
 import '../widgets/more_bottom_sheet.dart';
 import '../services/recommendation_service.dart';
 
@@ -383,35 +384,63 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             const SizedBox(height: 16),
 
             // Add to Cart Button (Updated logic)
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: widget.product.stock <= 0 
-                  ? null 
-                  : () {
-                      if (_isWeightBased(product)) {
-                         _addToCartWeightBased();
-                      } else {
-                         _addToCartStandard();
-                      }
-                    },
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  backgroundColor: widget.product.stock <= 0 ? Colors.grey : Colors.deepPurple,
-                  foregroundColor: Colors.white,
-                  disabledBackgroundColor: Colors.grey,
-                  disabledForegroundColor: Colors.white,
+            // Action Buttons Row
+            Row(
+              children: [
+                // Add to Cart Button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: widget.product.stock <= 0 
+                      ? null 
+                      : () {
+                          if (_isWeightBased(product)) {
+                             _addToCartWeightBased();
+                          } else {
+                             _addToCartStandard();
+                          }
+                        },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: widget.product.stock <= 0 ? Colors.grey : Colors.deepPurple,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.add_shopping_cart, size: 18),
+                    label: Text(
+                      widget.product.stock <= 0 ? 'Out of Stock' : 'To Cart',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ),
-                icon: const Icon(Icons.add_shopping_cart, size: 20),
-                label: Text(
-                  widget.product.stock <= 0 
-                      ? 'Out of Stock' 
-                      : (_isWeightBased(product) 
-                          ? 'Add ${_selectedWeightVariant!.label} to Cart - ${formatINR(product.price * _selectedWeightVariant!.multiplier)}'
-                          : 'Add to Cart'), 
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                const SizedBox(width: 8),
+                // Buy Now Button
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: widget.product.stock <= 0 
+                      ? null 
+                      : () {
+                          if (_isWeightBased(product)) {
+                             _buyNowWeightBased();
+                          } else {
+                             _buyNowStandard();
+                          }
+                        },
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      backgroundColor: widget.product.stock <= 0 ? Colors.grey : Colors.orange.shade800,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    icon: const Icon(Icons.bolt, size: 18),
+                    label: const Text(
+                      'Buy Now',
+                      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ),
             const SizedBox(height: 8),
             // Description - Very compact
@@ -645,23 +674,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (_selectedWeightVariant == null) return;
     
     final variant = _selectedWeightVariant!;
-    // Create virtual product
-    final virtualProduct = Product(
-      id: '${widget.product.id}${variant.idSuffix}',
-      sellerId: widget.product.sellerId,
-      name: '${widget.product.name} (${variant.label})',
-      description: widget.product.description,
-      price: widget.product.price * variant.multiplier,
-      basePrice: widget.product.basePrice * variant.multiplier,
-      imageUrl: widget.product.imageUrl,
-      imageUrls: widget.product.imageUrls,
-      category: widget.product.category,
-      unit: 'Pack', // Now it's a pack of that weight
-      mrp: widget.product.mrp * variant.multiplier,
-      isFeatured: widget.product.isFeatured,
-      stock: widget.product.stock, // Warning: Shared stock
-      storeIds: widget.product.storeIds,
-    );
+    final virtualProduct = _createVirtualWeightProduct(variant);
 
     final cart = context.read<CartProvider>();
     try {
@@ -670,15 +683,72 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _showSuccessMsg('Added ${variant.label} pack to cart');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceAll('Exception: ', '')),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      _showErrorMsg(e.toString());
     }
+  }
+
+  // --- Buy Now Logic ---
+
+  Future<void> _buyNowStandard() async {
+    if (_quantity < widget.product.minimumQuantity) {
+       _showErrorMsg('Minimum quantity required is ${widget.product.minimumQuantity}');
+       return;
+    }
+    final cart = context.read<CartProvider>();
+    try {
+      await cart.addProduct(widget.product, quantityToAdd: _quantity);
+      if (mounted) {
+        Navigator.pushNamed(context, CheckoutScreen.routeName);
+      }
+    } catch (e) {
+      _showErrorMsg(e.toString());
+    }
+  }
+
+  Future<void> _buyNowWeightBased() async {
+    if (_selectedWeightVariant == null) return;
+    
+    final variant = _selectedWeightVariant!;
+    final virtualProduct = _createVirtualWeightProduct(variant);
+
+    final cart = context.read<CartProvider>();
+    try {
+      await cart.addProduct(virtualProduct);
+      if (mounted) {
+        Navigator.pushNamed(context, CheckoutScreen.routeName);
+      }
+    } catch (e) {
+      _showErrorMsg(e.toString());
+    }
+  }
+
+  Product _createVirtualWeightProduct(_WeightVariant variant) {
+    return Product(
+      id: '${widget.product.id}${variant.idSuffix}',
+      sellerId: widget.product.sellerId,
+      name: '${widget.product.name} (${variant.label})',
+      description: widget.product.description,
+      price: double.parse((widget.product.price * variant.multiplier).toStringAsFixed(2)),
+      basePrice: double.parse((widget.product.basePrice * variant.multiplier).toStringAsFixed(2)),
+      imageUrl: widget.product.imageUrl,
+      imageUrls: widget.product.imageUrls,
+      category: widget.product.category,
+      unit: 'Pack', 
+      mrp: double.parse((widget.product.mrp * variant.multiplier).toStringAsFixed(2)),
+      isFeatured: widget.product.isFeatured,
+      stock: widget.product.stock, 
+      storeIds: widget.product.storeIds,
+    );
+  }
+
+  void _showErrorMsg(String error) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error.replaceAll('Exception: ', '')),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 
   void _showSuccessMsg(String msg) {

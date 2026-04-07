@@ -7,7 +7,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../models/app_settings_model.dart';
+import '../models/product_model.dart';
 import '../providers/auth_provider.dart';
+import '../providers/product_provider.dart';
 
 class AdminSettingsScreen extends StatefulWidget {
   const AdminSettingsScreen({super.key});
@@ -18,14 +20,18 @@ class AdminSettingsScreen extends StatefulWidget {
 
 class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _upiIdController = TextEditingController();
-  final _deliveryFeePercentageController = TextEditingController();
-  final _deliveryFeeMaxCapController = TextEditingController(); // This is correctly defined
+  final _deliveryFeeController = TextEditingController();
   final _freeDeliveryThresholdController = TextEditingController(); // New
   final _partnerDeliveryRateController = TextEditingController(); // New
   final _servicePlatformFeeController = TextEditingController();
   final _announcementController = TextEditingController();
-  final _contactPhoneController = TextEditingController(); // New
-  Map<String, double> _pincodeOverrides = {}; // New
+  final _contactPhoneController = TextEditingController(); 
+  final _productSearchController = TextEditingController(); 
+  Map<String, double> _pincodeOverrides = {}; 
+  List<Product> _productSearchResults = []; 
+  List<Product> _productsWithOverrides = []; 
+  bool _isSearchingProducts = false; 
+  bool _enableProductDeliveryFees = false;
   bool _isAnnouncementEnabled = false;
   bool _isLoading = true;
   bool _isUploading = false;
@@ -38,6 +44,83 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   void initState() {
     super.initState();
     _loadSettings();
+    _loadProductsWithOverrides(); // Load products that already have overrides
+  }
+
+  Future<void> _loadProductsWithOverrides() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance.collection('products').get();
+      final products = snapshot.docs
+          .map((doc) => Product.fromMap(doc.id, doc.data()))
+          .where((p) => (p.deliveryFeeOverride ?? 0) > 0 || (p.partnerPayoutOverride ?? 0) > 0)
+          .toList();
+      
+      if (mounted) {
+        setState(() {
+          _productsWithOverrides = products;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading product overrides: $e');
+    }
+  }
+
+  Future<void> _searchProducts(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() { _productSearchResults = []; _isSearchingProducts = false; });
+      return;
+    }
+    setState(() => _isSearchingProducts = true);
+    try {
+      final results = await context.read<ProductProvider>().searchProductsGlobal(query.trim());
+      setState(() { _productSearchResults = results; _isSearchingProducts = false; });
+    } catch (e) {
+      debugPrint('Search error: $e');
+      setState(() => _isSearchingProducts = false);
+    }
+  }
+
+  Future<void> _updateProductFees(String productId, double customerFee, double partnerExtra) async {
+    try {
+      await FirebaseFirestore.instance.collection('products').doc(productId).update({
+        'deliveryFeeOverride': customerFee,
+        'partnerPayoutOverride': partnerExtra,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Product fees updated!'), backgroundColor: Colors.green));
+        _loadProductsWithOverrides(); // Refresh list
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.red));
+    }
+  }
+
+  void _showUpdateProductFeeDialog(Product product) {
+    final customerFeeController = TextEditingController(text: (product.deliveryFeeOverride ?? 0).toString());
+    final partnerExtraController = TextEditingController(text: (product.partnerPayoutOverride ?? 0).toString());
+    
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: Text('Set Fees: ${product.name}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(controller: customerFeeController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Customer Fee (₹)')),
+          const SizedBox(height: 16),
+          TextField(controller: partnerExtraController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Partner Extra Payout (₹)')),
+        ],
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () { 
+          _updateProductFees(
+            product.id, 
+            double.tryParse(customerFeeController.text) ?? 0.0,
+            double.tryParse(partnerExtraController.text) ?? 0.0
+          ); 
+          Navigator.pop(ctx); 
+        }, child: const Text('Save')),
+      ],
+    ));
   }
 
   Future<void> _loadSettings() async {
@@ -51,8 +134,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
         setState(() {
           _settings = AppSettingsModel.fromMap(doc.data()!, doc.id);
           _upiIdController.text = _settings?.upiId ?? '';
-          _deliveryFeePercentageController.text = _settings?.deliveryFeePercentage.toString() ?? '0.0';
-          _deliveryFeeMaxCapController.text = _settings?.deliveryFeeMaxCap.toString() ?? '0.0';
+          _deliveryFeeController.text = _settings?.deliveryFee.toString() ?? '0.0';
           _freeDeliveryThresholdController.text = _settings?.freeDeliveryThreshold.toString() ?? '0.0';
           _partnerDeliveryRateController.text = _settings?.partnerDeliveryRate.toString() ?? '0.0';
           _pincodeOverrides = Map<String, double>.from(_settings?.pincodeOverrides ?? {});
@@ -60,6 +142,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _announcementController.text = _settings?.announcementText ?? '';
           _isAnnouncementEnabled = _settings?.isAnnouncementEnabled ?? false;
           _contactPhoneController.text = _settings?.contactPhoneNumber ?? ''; // New
+          _enableProductDeliveryFees = _settings?.enableProductDeliveryFees ?? false;
           _isLoading = false;
         });
       } else {
@@ -139,14 +222,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           .set({
         'upiQRCodeUrl': downloadUrl,
         'upiId': _upiIdController.text.trim(),
-        'deliveryFeePercentage': double.tryParse(_deliveryFeePercentageController.text.trim()) ?? 0.0,
-        'deliveryFeeMaxCap': double.tryParse(_deliveryFeeMaxCapController.text.trim()) ?? 0.0,
+        'deliveryFee': double.tryParse(_deliveryFeeController.text.trim()) ?? 0.0,
         'freeDeliveryThreshold': double.tryParse(_freeDeliveryThresholdController.text.trim()) ?? 0.0,
         'partnerDeliveryRate': double.tryParse(_partnerDeliveryRateController.text.trim()) ?? 0.0,
         'pincodeOverrides': _pincodeOverrides,
         'servicePlatformFeePercentage': double.tryParse(_servicePlatformFeeController.text.trim()) ?? 0.0,
         'announcementText': _announcementController.text.trim(),
         'isAnnouncementEnabled': _isAnnouncementEnabled,
+        'enableProductDeliveryFees': _enableProductDeliveryFees,
         'contactPhoneNumber': _contactPhoneController.text.trim(), // New
         'updatedAt': FieldValue.serverTimestamp(),
         'updatedBy': adminId,
@@ -287,41 +370,20 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                    ),
                    const SizedBox(height: 16),
                    
-                   // Percentage and Max Cap
-                   Row(
-                     children: [
-                       Expanded(
-                         child: TextField(
-                           controller: _deliveryFeePercentageController,
-                           keyboardType: TextInputType.number,
-                           decoration: const InputDecoration(
-                             labelText: 'Customer Fee (%)',
-                             hintText: 'e.g. 5',
-                             filled: true,
-                             fillColor: Colors.white,
-                             border: OutlineInputBorder(),
-                             prefixIcon: Icon(Icons.percent),
-                             suffixText: '%',
-                           ),
-                         ),
-                       ),
-                       const SizedBox(width: 16),
-                       Expanded(
-                         child: TextField(
-                           controller: _deliveryFeeMaxCapController,
-                           keyboardType: TextInputType.number,
-                           decoration: const InputDecoration(
-                             labelText: 'Max Fee Cap (₹)',
-                             hintText: 'e.g. 40',
-                             filled: true,
-                             fillColor: Colors.white,
-                             border: OutlineInputBorder(),
-                             prefixIcon: Icon(Icons.currency_rupee),
-                           ),
-                         ),
-                       ),
-                     ],
-                   ),
+                    // Flat Delivery Fee
+                    TextField(
+                      controller: _deliveryFeeController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Delivery Fee (₹)',
+                        hintText: 'e.g. 30',
+                        filled: true,
+                        fillColor: Colors.white,
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.currency_rupee),
+                        suffixText: '₹',
+                      ),
+                    ),
                    const SizedBox(height: 16),
                    
                    // Free Threshold
@@ -336,6 +398,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                        border: OutlineInputBorder(),
                        prefixIcon: Icon(Icons.shopping_bag),
                      ),
+                   ),
+                   const SizedBox(height: 16),
+                   SwitchListTile(
+                     title: const Text('Enable Product-Specific Fees'),
+                     subtitle: const Text('Adds extra charges set on products to total fee'),
+                     value: _enableProductDeliveryFees,
+                     activeColor: Colors.blue.shade900,
+                     onChanged: (val) => setState(() => _enableProductDeliveryFees = val),
                    ),
                    const SizedBox(height: 24),
 
@@ -368,6 +438,82 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      label: const Text('Add Pincode Override'),
                      style: TextButton.styleFrom(foregroundColor: Colors.blue.shade900),
                    ),
+                 ],
+               ),
+             ),
+          ),
+          const SizedBox(height: 24),
+
+          // PRODUCT SPECIFIC OVERRIDES SECTION (NEW)
+          Card(
+             color: Colors.blue.shade50,
+             child: Padding(
+               padding: const EdgeInsets.all(16),
+               child: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                   Row(
+                     children: [
+                       Icon(Icons.inventory_2_outlined, color: Colors.blue.shade800),
+                       const SizedBox(width: 8),
+                       Text('Product Specific Overrides', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
+                     ],
+                   ),
+                   const SizedBox(height: 8),
+                   const Text('Search products to set custom delivery fees or partner extras.', style: TextStyle(fontSize: 12)),
+                   const SizedBox(height: 16),
+                   TextField(
+                     controller: _productSearchController,
+                     onChanged: _searchProducts,
+                     decoration: InputDecoration(
+                       hintText: 'Search product...',
+                       prefixIcon: const Icon(Icons.search),
+                       suffixIcon: _isSearchingProducts ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
+                       border: const OutlineInputBorder(),
+                       filled: true, fillColor: Colors.white,
+                     ),
+                   ),
+                   if (_productSearchResults.isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                      child: ListView.separated(
+                        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                        itemCount: _productSearchResults.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (ctx, i) {
+                          final p = _productSearchResults[i];
+                          return ListTile(
+                            title: Text(p.name),
+                            trailing: ElevatedButton(onPressed: () => _showUpdateProductFeeDialog(p), child: const Text('Set Fee')),
+                          );
+                        },
+                      ),
+                    ),
+                   const SizedBox(height: 24),
+                   const Text('List of Product Overrides:', style: TextStyle(fontWeight: FontWeight.bold)),
+                   const SizedBox(height: 8),
+                   if (_productsWithOverrides.isEmpty)
+                    const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual fees set.', style: TextStyle(color: Colors.grey))))
+                   else
+                    ListView.builder(
+                      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _productsWithOverrides.length,
+                      itemBuilder: (ctx, i) {
+                        final p = _productsWithOverrides[i];
+                        return ListTile(
+                          title: Text(p.name),
+                          subtitle: Text('Cust: ₹${p.deliveryFeeOverride ?? 0} | Partner: +₹${p.partnerPayoutOverride ?? 0}'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showUpdateProductFeeDialog(p)),
+                              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _updateProductFees(p.id, 0, 0)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                  ],
                ),
              ),
@@ -685,8 +831,7 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   @override
   void dispose() {
     _upiIdController.dispose();
-    _deliveryFeePercentageController.dispose();
-    _deliveryFeeMaxCapController.dispose();
+    _deliveryFeeController.dispose();
     _freeDeliveryThresholdController.dispose(); // New
     _partnerDeliveryRateController.dispose(); // New
     _servicePlatformFeeController.dispose();

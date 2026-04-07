@@ -25,7 +25,9 @@ class Product {
   final List<String> storeIds; // Added storeIds for availability
   final String? state; // Added state field
   final List<String> searchKeywords; // Added for global search
+  final List<String> servicePincodes; // NEW: Area-based visibility
   final double? deliveryFeeOverride; // Optional: Custom delivery fee for this product
+  final double? partnerPayoutOverride; // Optional: Extra commission for delivery partner
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -54,7 +56,9 @@ class Product {
     this.storeIds = const [],
     this.state,
     this.deliveryFeeOverride,
+    this.partnerPayoutOverride,
     this.searchKeywords = const [],
+    this.servicePincodes = const [],
     this.createdAt,
     this.updatedAt,
   });
@@ -86,7 +90,9 @@ class Product {
       'storeIds': storeIds,
       'state': state,
       'deliveryFeeOverride': deliveryFeeOverride,
+      'partnerPayoutOverride': partnerPayoutOverride,
       'searchKeywords': searchKeywords,
+      'servicePincodes': servicePincodes,
       'createdAt': createdAt != null ? Timestamp.fromDate(createdAt!) : null,
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -120,7 +126,9 @@ class Product {
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       state: map['state'] as String?,
       deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),
+      partnerPayoutOverride: (map['partnerPayoutOverride'] as num?)?.toDouble(),
       searchKeywords: (map['searchKeywords'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      servicePincodes: (map['servicePincodes'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       createdAt: map['createdAt'] is Timestamp 
           ? (map['createdAt'] as Timestamp).toDate() 
           : null,

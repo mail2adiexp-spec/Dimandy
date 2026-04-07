@@ -102,6 +102,12 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
         final List<Uint8List> imageBytes = [];
         for (var image in images) {
           final bytes = await image.readAsBytes();
+          if (bytes.length > 800 * 1024) {
+             if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image ${image.name} exceeds 800 KB limit.')));
+             }
+             continue;
+          }
           imageBytes.add(bytes);
         }
         setState(() {
@@ -1064,6 +1070,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                     ),
                   ),
                 ),
+                if (!_isProductSelectionMode && widget.canManage && !Provider.of<AuthProvider>(context, listen: false).isStorePartner)
                 Positioned(
                   top: 4,
                   right: 4,
@@ -1251,12 +1258,14 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final maxQtyCtrl = TextEditingController(text: '0');
     final adminProfitPercentageCtrl = TextEditingController(); // Added commission controller
     final deliveryFeeOverrideCtrl = TextEditingController(); // Added delivery fee override
+    final servicePincodesCtrl = TextEditingController(); // NEW: Area visibility
 
     String selectedCategory = Provider.of<CategoryProvider>(context, listen: false).categories.isNotEmpty
         ? Provider.of<CategoryProvider>(context, listen: false).categories.first.name
         : '';
     String selectedUnit = 'Pic';
     bool isFeatured = false;
+    bool isCustomerChoice = false;
     bool isLoading = false;
     _selectedImages = [];
     final auth = Provider.of<AuthProvider>(context, listen: false);
@@ -1264,6 +1273,11 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     String? selectedState = widget.storeId != null 
         ? auth.currentUser?.storeId == widget.storeId ? auth.currentUser?.state : null 
         : auth.currentUser?.state;
+    
+    // Auto-fill service area for Store Partners
+    if (auth.isStorePartner) {
+      servicePincodesCtrl.text = auth.currentUser?.servicePincodes.join(', ') ?? '';
+    }
 
     Future<void> pickImages(StateSetter setState) async {
       try {
@@ -1272,6 +1286,10 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
           final List<Uint8List> imageBytes = [];
           for (var image in images.take(6 - _selectedImages.length)) {
             final bytes = await image.readAsBytes();
+            if (bytes.length > 800 * 1024) {
+               if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image ${image.name} exceeds 800 KB limit.')));
+               continue;
+            }
             imageBytes.add(bytes);
           }
           setState(() {
@@ -1343,7 +1361,18 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       ]),
                       const SizedBox(height: 16),
                       TextFormField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Selling Price *', border: OutlineInputBorder(), prefixText: '\u20B9'), keyboardType: TextInputType.number, validator: (v) => (v?.isEmpty == true) ? 'Required' : null),
-                      const SizedBox(height: 12),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: servicePincodesCtrl, 
+                        decoration: const InputDecoration(
+                          labelText: 'Service Area Pincodes *', 
+                          hintText: 'e.g. 742223, 742212',
+                          border: OutlineInputBorder(),
+                          helperText: 'Only customers in these areas can see this product',
+                        ),
+                        validator: (v) => (v?.isEmpty == true) ? 'Area Pincodes required for visibility' : null,
+                      ),
+                      const SizedBox(height: 16),
                       ListenableBuilder(
                         listenable: Listenable.merge([priceCtrl, mrpCtrl]),
                         builder: (context, _) {
@@ -1365,32 +1394,11 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                       DropdownButtonFormField<String>(value: selectedCategory, decoration: const InputDecoration(labelText: 'Category', border: OutlineInputBorder()), items: Provider.of<CategoryProvider>(context, listen: false).categories.map((c) => DropdownMenuItem(value: c.name, child: Text(c.name))).toList(), onChanged: (v) => setState(() => selectedCategory = v!)),
                       const SizedBox(height: 16),
                       SwitchListTile(title: const Text('Featured Product'), value: isFeatured, onChanged: (v) => setState(() => isFeatured = v)),
-                      const SizedBox(height: 16),
-                      // Admin Commission & Delivery Fee (Only for Admin/Super Admin)
-                      if (auth.hasAdminAccess) ...[
-                        TextFormField(
-                          controller: adminProfitPercentageCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Admin Profit Sharing (%) [Admin Only]',
-                            border: OutlineInputBorder(),
-                            suffixText: '%',
-                            helperText: 'Leave empty for 0% (Seller gets full profit)',
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: deliveryFeeOverrideCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Delivery Fee Override (₹) [Admin Only]',
-                            border: OutlineInputBorder(),
-                            prefixText: '₹',
-                            helperText: 'Leave empty for default delivery fee',
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
+                      SwitchListTile(title: const Text('Customer Choice Product'), subtitle: const Text('Shows in "Customer Choice" home section'), value: isCustomerChoice, onChanged: (v) => setState(() => isCustomerChoice = v)),
+                      // Image Section
+                      const Text('Product Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('Size: 512 x 512 pixcell, Max: 800 KB', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      const SizedBox(height: 8),
                       OutlinedButton.icon(
                         onPressed: () => pickImages(setState), 
                         icon: const Icon(Icons.image), 
@@ -1443,8 +1451,11 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 'unit': selectedUnit,
                                 'isFeatured': isFeatured,
                                 'isHotDeal': m > sp,
+                                'isCustomerChoice': isCustomerChoice,
+                                'salesCount': 0,
                                 'sellerId': auth.isAdmin ? 'admin' : auth.currentUser?.uid ?? 'partner',
                                 'storeIds': selectedStoreIds,
+                                'servicePincodes': servicePincodesCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
                                 'state': selectedState,
                                 'adminProfitPercentage': adminProfitPercentageCtrl.text.isNotEmpty 
                                     ? double.tryParse(adminProfitPercentageCtrl.text) 
@@ -1494,6 +1505,9 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
     final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
     final adminProfitPercentageCtrl = TextEditingController(text: (productData['adminProfitPercentage'] as num?)?.toString() ?? '');
     final deliveryFeeOverrideCtrl = TextEditingController(text: (productData['deliveryFeeOverride'] as num?)?.toString() ?? '');
+    final servicePincodesCtrl = TextEditingController(
+      text: (productData['servicePincodes'] as List<dynamic>?)?.join(', ') ?? ''
+    );
 
     String selectedCategory = productData['category'] ?? '';
     String selectedUnit = productData['unit'] ?? 'Pic';
@@ -1573,6 +1587,17 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         Expanded(child: TextFormField(controller: priceCtrl, decoration: const InputDecoration(labelText: 'Price', border: OutlineInputBorder()))),
                       ]),
                       const SizedBox(height: 16),
+                      TextFormField(
+                        controller: servicePincodesCtrl, 
+                        decoration: const InputDecoration(
+                          labelText: 'Service Area Pincodes *', 
+                          hintText: 'e.g. 742223, 742212',
+                          border: OutlineInputBorder(),
+                          helperText: 'Only customers in these areas can see this product',
+                        ),
+                        validator: (v) => (v?.isEmpty == true) ? 'Area Pincodes required for visibility' : null,
+                      ),
+                      const SizedBox(height: 16),
                       ListenableBuilder(
                         listenable: Listenable.merge([priceCtrl, mrpCtrl]),
                         builder: (context, _) {
@@ -1583,31 +1608,6 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                         }
                       ),
                       const SizedBox(height: 16),
-                      // Admin Commission & Delivery Fee (Only for Admin/Super Admin)
-                      if (auth.hasAdminAccess) ...[
-                        TextFormField(
-                          controller: adminProfitPercentageCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Admin Profit Sharing (%) [Admin Only]',
-                            border: OutlineInputBorder(),
-                            suffixText: '%',
-                            helperText: 'Leave empty for 0% (Seller gets full profit)',
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: deliveryFeeOverrideCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Delivery Fee Override (₹) [Admin Only]',
-                            border: OutlineInputBorder(),
-                            prefixText: '₹',
-                            helperText: 'Leave empty for default delivery fee',
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        ),
-                        const SizedBox(height: 16),
-                      ],
                       OutlinedButton.icon(
                         onPressed: () => pickImages(setState),
                         icon: const Icon(Icons.image),
@@ -1683,6 +1683,7 @@ class _SharedProductsTabState extends State<SharedProductsTab> {
                                 'deliveryFeeOverride': deliveryFeeOverrideCtrl.text.isNotEmpty 
                                     ? double.tryParse(deliveryFeeOverrideCtrl.text) 
                                     : null,
+                                'servicePincodes': servicePincodesCtrl.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
                                 'updatedAt': FieldValue.serverTimestamp(),
                                 'imageUrls': updatedUrls,
                                 'imageUrl': updatedUrls.isNotEmpty ? updatedUrls.first : null,

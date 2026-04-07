@@ -60,10 +60,16 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
       final picker = ImagePicker();
       final picked = await picker.pickImage(
         source: ImageSource.gallery,
-        maxWidth: 1024,
+        maxWidth: 512,
+        maxHeight: 512,
         imageQuality: 85,
       );
       if (picked != null) {
+        final sizeInBytes = await picked.length();
+        if (sizeInBytes > 800 * 1024) {
+           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile image exceeds 800 KB limit.')));
+           return;
+        }
         final bytes = await picked.readAsBytes();
         if (!mounted) return;
         setState(() => _profileImageBytes = bytes);
@@ -85,6 +91,11 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
         imageQuality: 85,
       );
       if (picked != null) {
+        final sizeInBytes = await picked.length();
+        if (sizeInBytes > 800 * 1024) {
+           if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Document image exceeds 800 KB limit.')));
+           return;
+        }
         final bytes = await picked.readAsBytes();
         if (!mounted) return;
         setState(() {
@@ -373,14 +384,19 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                               : null,
                         ),
                         const SizedBox(width: 12),
-                        // Expanded hata diya, sirf button direct Row ke andar
-                        ElevatedButton.icon(
-                          onPressed: _pickProfileImage,
-                          icon: const Icon(Icons.photo_camera_back),
-                          label: const Text('Upload Profile Picture'),
-                          style: ElevatedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _pickProfileImage,
+                              icon: const Icon(Icons.photo_camera_back),
+                              label: const Text('Upload Profile Picture'),
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                            ),
+                            const Text('512x512 px, Max 800 KB', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          ],
                         ),
                       ],
                     ),
@@ -716,6 +732,7 @@ class _JoinPartnerScreenState extends State<JoinPartnerScreen> {
                   imageBytes == null ? 'No document selected' : 'Document Selected ✅',
                   style: TextStyle(fontSize: 12, color: imageBytes == null ? Colors.red : Colors.green),
                 ),
+                const Text('Max 800 KB', style: TextStyle(fontSize: 10, color: Colors.grey)),
               ],
             ),
           ),

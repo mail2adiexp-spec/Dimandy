@@ -48,9 +48,11 @@ import 'admin_settings_screen.dart';
 // import 'admin_reports_screen.dart';
 import '../widgets/manage_stores_tab.dart';
 import 'permission_editor_screen.dart';
+import 'add_store_partner_screen.dart';
 import '../widgets/manage_admins_tab.dart'; // NEW
 import 'admin_financial_screen.dart'; // NEW
 import '../screens/add_manual_order_screen.dart';
+import '../widgets/edit_product_dialog.dart';
 
 
 class AdminPanelScreen extends StatefulWidget {
@@ -84,6 +86,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   String _featuredFilter = 'All'; // All, Featured, NonFeatured
   DateTime? _productStartDate;
   DateTime? _productEndDate;
+  String _payoutTimeRange = 'all'; // all, today, yesterday, 7day
   
   
   // Stream variables
@@ -236,6 +239,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       {'title': 'Service Categories', 'icon': Icons.miscellaneous_services, 'index': 14, 'requiresSuperAdmin': true},
       {'title': 'Featured Sections', 'icon': Icons.star, 'index': 4, 'requiresSuperAdmin': true},
       {'title': 'Financials', 'icon': Icons.account_balance, 'index': 24, 'requiresSuperAdmin': true}, // NEW
+      {'title': 'Store Partners', 'icon': Icons.business_center, 'index': 25}, // NEW
     ];
 
     if (isSuperAdmin) {
@@ -291,20 +295,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   backgroundColor: Colors.orange,
                 )
               : _currentStackIndex == 1
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        FloatingActionButton.extended(
-                          onPressed: _syncProductSearchKeywords,
-                          label: const Text('Sync Search'),
-                          icon: const Icon(Icons.sync),
-                          backgroundColor: Colors.blue,
-                          heroTag: 'sync_search',
-                        ),
-                      ],
+                  ? FloatingActionButton.extended(
+                      onPressed: _syncProductSearchKeywords,
+                      label: const Text('Sync Search'),
+                      icon: const Icon(Icons.sync),
+                      backgroundColor: Colors.blue,
+                      heroTag: 'sync_search',
                     )
-                  : null,
+                  : _currentStackIndex == 25
+                      ? FloatingActionButton.extended(
+                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const AddStorePartnerScreen())),
+                          label: const Text('Add Store Partner'),
+                          icon: const Icon(Icons.person_add),
+                          backgroundColor: Colors.indigo,
+                          heroTag: 'add_store_partner',
+                        )
+                      : null,
           body: SizedBox.expand(
             child: Column(
               children: [
@@ -437,6 +443,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildMessagesTab(), // 22 - MESSAGES
                             _buildDeleteRequestsTab(), // 23 - DELETE REQUESTS
                             const AdminFinancialScreen(), // 24 - FINANCIALS
+                            _buildRoleBasedUsersTab('store_partner'), // 25 - STORE PARTNERS
                           ],
                         ),
                       ),
@@ -1887,11 +1894,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         final picker = ImagePicker();
         final pickedFile = await picker.pickImage(
           source: ImageSource.gallery,
-          maxWidth: 1024,
-          maxHeight: 1024,
+          maxWidth: 512,
+          maxHeight: 512,
           imageQuality: 85,
         );
         if (pickedFile != null) {
+          final sizeInBytes = await pickedFile.length();
+          if (sizeInBytes > 800 * 1024) {
+             if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image size exceeds 800 KB limit. Please upload a smaller image.')));
+             }
+             return;
+          }
           fileNames[index] = pickedFile.name;
           existingUrls[index] = null; // Clear existing URL if replacing
           if (kIsWeb) {
@@ -2039,6 +2053,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       ),
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  const Text('Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text('Size: 512 x 512 pixcell, Max: 800 KB', style: TextStyle(fontSize: 12, color: Colors.grey)),
                   const SizedBox(height: 8),
                   SizedBox(
                     height: 240,
@@ -3636,17 +3653,117 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   Widget _buildPayoutRequestsTab() {
+    return DefaultTabController(
+      length: 5,
+      child: Column(
+        children: [
+          Container(
+            color: Colors.white,
+            child: const TabBar(
+              isScrollable: true,
+              labelColor: Colors.deepPurple,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: Colors.deepPurple,
+              indicatorWeight: 3,
+              tabs: [
+                Tab(text: 'All Requests'),
+                Tab(text: 'Delivery Partners'),
+                Tab(text: 'Store Partners'),
+                Tab(text: 'Service Providers'),
+                Tab(text: 'Core Staff'),
+              ],
+            ),
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildPayoutList(null), // All
+                _buildPayoutList(UserRole.deliveryPartner),
+                _buildPayoutList(UserRole.storePartner),
+                _buildPayoutList(UserRole.serviceProvider),
+                _buildPayoutList(UserRole.coreStaff),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPayoutList(String? roleFilter) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Status, Search and Time Filters
         Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            'Payout Requests',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurface,
-                ),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      onChanged: (val) => setState(() => _searchQuery = val),
+                      decoration: InputDecoration(
+                        hintText: 'Search User ID/Details...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[400]!),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: _filterStatus,
+                          onChanged: (val) => setState(() => _filterStatus = val!),
+                          items: ['all', 'pending', 'approved', 'rejected']
+                              .map((s) => DropdownMenuItem(value: s, child: Text("Status: ${s.toUpperCase()}")))
+                              .toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey[400]!),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          isExpanded: true,
+                          value: _payoutTimeRange,
+                          onChanged: (val) => setState(() => _payoutTimeRange = val!),
+                          items: [
+                            {'value': 'all', 'label': 'Any Time'},
+                            {'value': 'today', 'label': 'Today'},
+                            {'value': 'yesterday', 'label': 'Yesterday'},
+                            {'value': '7day', 'label': 'Last 7 Days'},
+                          ].map((item) => DropdownMenuItem(
+                            value: item['value'], 
+                            child: Text(item['label']!),
+                          )).toList(),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -3661,10 +3778,59 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 return Center(child: Text('Error: ${snapshot.error}'));
               }
 
-              final payouts = snapshot.data ?? [];
+              var payouts = snapshot.data ?? [];
+
+              // Filter by Role
+              if (roleFilter != null) {
+                payouts = payouts.where((p) => p.userRole == roleFilter).toList();
+              }
+
+              // Filter by Time Range
+              if (_payoutTimeRange != 'all') {
+                final now = DateTime.now();
+                final todayStart = DateTime(now.year, now.month, now.day);
+                
+                payouts = payouts.where((p) {
+                  if (_payoutTimeRange == 'today') {
+                    return p.requestDate.isAfter(todayStart);
+                  } else if (_payoutTimeRange == 'yesterday') {
+                    final yestStart = todayStart.subtract(const Duration(days: 1));
+                    return p.requestDate.isAfter(yestStart) && p.requestDate.isBefore(todayStart);
+                  } else if (_payoutTimeRange == '7day') {
+                    final sevenDaysAgo = todayStart.subtract(const Duration(days: 7));
+                    return p.requestDate.isAfter(sevenDaysAgo);
+                  }
+                  return true;
+                }).toList();
+              }
+
+              // Filter by Status
+              if (_filterStatus != 'all') {
+                payouts = payouts.where((p) => p.status.name == _filterStatus).toList();
+              }
+
+              // Filter by Search Query
+              if (_searchQuery.isNotEmpty) {
+                payouts = payouts.where((p) => 
+                  p.userId.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+                  p.paymentDetails.toLowerCase().contains(_searchQuery.toLowerCase())
+                ).toList();
+              }
 
               if (payouts.isEmpty) {
-                return const Center(child: Text('No payout requests found'));
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.payment_outlined, size: 64, color: Colors.grey[400]!.withOpacity(0.3)),
+                      const SizedBox(height: 16),
+                      Text(
+                        'No payout requests found',
+                        style: TextStyle(color: Colors.grey[600], fontSize: 16),
+                      ),
+                    ],
+                  ),
+                );
               }
 
               return ListView.builder(
@@ -3675,77 +3841,123 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   final payout = payouts[index];
                   return Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    child: ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: payout.status == PayoutStatus.pending
-                            ? Colors.orange.withOpacity(0.1)
-                            : payout.status == PayoutStatus.approved
-                                ? Colors.green.withOpacity(0.1)
-                                : Colors.red.withOpacity(0.1),
-                        child: Icon(
-                          payout.status == PayoutStatus.pending
-                              ? Icons.pending
-                              : payout.status == PayoutStatus.approved
-                                  ? Icons.check
-                                  : Icons.close,
-                          color: payout.status == PayoutStatus.pending
-                              ? Colors.orange
-                              : payout.status == PayoutStatus.approved
-                                  ? Colors.green
-                                  : Colors.red,
-                        ),
-                      ),
-                      title: Row(
-                        children: [
-                          Text(
-                            '₹${payout.amount.toStringAsFixed(2)}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: payout.type == PayoutType.commission_transfer 
-                                  ? Colors.blue.withOpacity(0.1) 
-                                  : Colors.purple.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              payout.type == PayoutType.commission_transfer ? 'COMMISSION' : 'WITHDRAWAL',
-                              style: TextStyle(
-                                fontSize: 10, 
-                                color: payout.type == PayoutType.commission_transfer ? Colors.blue : Colors.purple, 
-                                fontWeight: FontWeight.bold
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      subtitle: Column(
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('User ID: ${payout.userId}'),
-                          Text('Date: ${DateFormat('MMM d, yyyy').format(payout.requestDate)}'),
-                          Text('Details: ${payout.paymentDetails}'),
-                        ],
-                      ),
-                      trailing: payout.status == PayoutStatus.pending
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
+                          CircleAvatar(
+                            backgroundColor: payout.status == PayoutStatus.pending
+                                ? Colors.orange.withOpacity(0.1)
+                                : payout.status == PayoutStatus.approved
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.red.withOpacity(0.1),
+                            child: Icon(
+                              payout.status == PayoutStatus.pending
+                                  ? Icons.pending
+                                  : payout.status == PayoutStatus.approved
+                                      ? Icons.check
+                                      : Icons.close,
+                              color: payout.status == PayoutStatus.pending
+                                  ? Colors.orange
+                                  : payout.status == PayoutStatus.approved
+                                      ? Colors.green
+                                      : Colors.red,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                IconButton(
-                                  icon: const Icon(Icons.check, color: Colors.green),
-                                  onPressed: () => _handlePayoutAction(payout, true),
-                                  tooltip: 'Approve',
+                                Wrap(
+                                  crossAxisAlignment: WrapCrossAlignment.center,
+                                  spacing: 8,
+                                  runSpacing: 4,
+                                  children: [
+                                    Text(
+                                      '₹${payout.amount.toStringAsFixed(2)}',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                                    ),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: payout.type == PayoutType.commission_transfer 
+                                            ? Colors.blue.withOpacity(0.1) 
+                                            : Colors.purple.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        payout.type == PayoutType.commission_transfer ? 'COMMISSION' : 'WITHDRAWAL',
+                                        style: TextStyle(
+                                          fontSize: 10, 
+                                          color: payout.type == PayoutType.commission_transfer ? Colors.blue : Colors.purple, 
+                                          fontWeight: FontWeight.bold
+                                        ),
+                                      ),
+                                    ),
+                                    if (roleFilter == null)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey.withOpacity(0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          payout.userRole.toUpperCase().replaceAll('_', ' '),
+                                          style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
+                                        ),
+                                      ),
+                                  ],
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.close, color: Colors.red),
-                                  onPressed: () => _handlePayoutAction(payout, false),
-                                  tooltip: 'Reject',
+                                const SizedBox(height: 8),
+                                Text(
+                                  'User ID: ${payout.userId}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                                ),
+                                Text(
+                                  'Date: ${DateFormat('MMM d, yyyy • hh:mm a').format(payout.requestDate)}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[50],
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.grey[200]!),
+                                  ),
+                                  child: Text(
+                                    payout.paymentDetails,
+                                    style: const TextStyle(fontSize: 12, fontFamily: 'monospace'),
+                                  ),
                                 ),
                               ],
-                            )
-                          : _getStatusChip(payout.status.name),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          payout.status == PayoutStatus.pending
+                              ? Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.check_circle, color: Colors.green),
+                                      onPressed: () => _handlePayoutAction(payout, true),
+                                      tooltip: 'Approve',
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.cancel, color: Colors.red),
+                                      onPressed: () => _handlePayoutAction(payout, false),
+                                      tooltip: 'Reject',
+                                    ),
+                                  ],
+                                )
+                              : _getStatusChip(payout.status.name),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -4374,7 +4586,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     
     final List<String> positions = [
       'Store Manager',
-      'Store Partner',
       'Product Picker',
       'Packer',
       'House Keeper',
@@ -4398,9 +4609,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     final ImagePicker picker = ImagePicker();
     Future<void> pickImage(StateSetter setState) async {
        try {
-        final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+        final XFile? image = await picker.pickImage(
+          source: ImageSource.gallery,
+          maxWidth: 512,
+          maxHeight: 512,
+          imageQuality: 75,
+        );
         if (image != null) {
           final bytes = await image.readAsBytes();
+          if (bytes.length > 800 * 1024) {
+             if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image size exceeds 800 KB limit.')));
+             return;
+          }
           setState(() {
             selectedImage = bytes;
           });
@@ -4441,17 +4661,23 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   // Image Picker UI
                   GestureDetector(
                     onTap: () => pickImage(setState),
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Colors.grey[200],
-                      backgroundImage: selectedImage != null
-                          ? MemoryImage(selectedImage!)
-                          : (currentImageUrl != null
-                              ? NetworkImage(currentImageUrl!) as ImageProvider
-                              : null),
-                      child: (selectedImage == null && currentImageUrl == null)
-                          ? const Icon(Icons.add_a_photo, size: 30, color: Colors.grey)
-                          : null,
+                    child: Column(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: Colors.grey[200],
+                          backgroundImage: selectedImage != null
+                              ? MemoryImage(selectedImage!)
+                              : (currentImageUrl != null
+                                  ? NetworkImage(currentImageUrl!) as ImageProvider
+                                  : null),
+                          child: (selectedImage == null && currentImageUrl == null)
+                              ? const Icon(Icons.add_a_photo, size: 30, color: Colors.grey)
+                              : null,
+                        ),
+                        const SizedBox(height: 4),
+                        const Text('512x512, 800KB', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -4471,7 +4697,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     items: const [
                       DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
                       DropdownMenuItem(value: 'store_manager', child: Text('Store Manager')),
-                      DropdownMenuItem(value: 'store_partner', child: Text('Store Partner')),
                     ],
                     onChanged: (val) => setState(() => selectedRoleValue = val!),
                     validator: (value) => value == null ? 'Please select a role' : null,
@@ -4726,6 +4951,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+
+
   Future<void> _saveCoreStaff(
     String name,
     String position,
@@ -4867,6 +5094,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                 DropdownMenuItem(value: 'delivery_partner', child: Text('Delivery Partners')),
                 DropdownMenuItem(value: 'core_staff', child: Text('Core Staff')),
                 DropdownMenuItem(value: 'store_manager', child: Text('Store Managers')),
+                DropdownMenuItem(value: 'store_partner', child: Text('Store Partners')),
                 DropdownMenuItem(value: 'admin', child: Text('Global Admins')),
                 DropdownMenuItem(value: 'state_admin', child: Text('State Admins')),
                 DropdownMenuItem(value: 'super_admin', child: Text('Super Admins')),
@@ -5057,7 +5285,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_manage_gifts'] = 'Manage Gifts';
       availablePermissions['can_manage_refunds'] = 'Manage Refunds';
 
-    } else if (_selectedPermissionRole == 'store_manager') {
+    } else if (_selectedPermissionRole == 'store_manager' || _selectedPermissionRole == 'store_partner') {
       availablePermissions['can_manage_store_products'] = 'Manage Store Products';
       availablePermissions['can_manage_store_orders'] = 'Manage Store Orders';
       availablePermissions['can_view_store_dashboard'] = 'View Store Dashboard';
@@ -5065,6 +5293,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       availablePermissions['can_manage_gifts'] = 'Manage Gifts';
       availablePermissions['can_manage_featured'] = 'Manage Featured Sections';
       availablePermissions['can_download_reports'] = 'Download Reports';
+      if (_selectedPermissionRole == 'store_partner') {
+        availablePermissions['can_view_earnings'] = 'View Earnings';
+        availablePermissions['can_manage_payout_requests'] = 'Manage Payout Requests';
+      }
 
     } else if (_selectedPermissionRole == 'admin' || _selectedPermissionRole == 'super_admin') {
       availablePermissions['can_manage_products'] = 'Manage Products';
@@ -5389,7 +5621,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           ? 'Seller' 
           : role == 'service_provider'
               ? 'Service Provider'
-              : 'Delivery Partner',
+              : role == 'store_partner'
+                  ? 'Store Partner'
+                  : 'Delivery Partner',
       onEdit: _editUser,
       onDelete: _deleteUser,
       onRequestAction: _updateRequestStatus,
@@ -5400,6 +5634,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           _showServiceProviderDashboard(id, data);
         } else if (role == 'delivery_partner') {
           _showDeliveryPartnerDashboard(id, data);
+        } else if (role == 'store_partner') {
+          _showStorePartnerDashboard(id, data);
         }
       },
     );
@@ -5408,6 +5644,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   void _editUser(String userId, Map<String, dynamic> userData) {
     final role = userData['role'] ?? 'user';
+    
+    if (role == 'store_partner') {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AddStorePartnerScreen(
+            partnerId: userId,
+            initialData: userData,
+          ),
+        ),
+      );
+      return;
+    }
+
     final formKey = GlobalKey<FormState>();
     final nameCtrl = TextEditingController(text: userData['name'] ?? '');
     final phoneCtrl = TextEditingController(text: userData['phone'] ?? '');
@@ -6538,6 +6788,170 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  void _showStorePartnerDashboard(
+    String partnerId,
+    Map<String, dynamic> partnerData,
+  ) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        insetPadding: const EdgeInsets.all(16),
+        child: Container(
+          width: 800,
+          height: 600,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DefaultTabController(
+            length: 4,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.shade50,
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(12),
+                      topRight: Radius.circular(12),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: Colors.deepPurple,
+                        backgroundImage: partnerData['photoURL'] != null
+                            ? NetworkImage(partnerData['photoURL'])
+                            : null,
+                        child: partnerData['photoURL'] == null
+                            ? Text(
+                                (partnerData['name'] ?? 'P')[0].toUpperCase(),
+                                style: const TextStyle(fontSize: 24, color: Colors.white),
+                              )
+                            : null,
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              partnerData['name'] ?? 'Unknown Partner',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            Text(
+                              'Store Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
+                              style: TextStyle(color: Colors.grey.shade600),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                ),
+                const TabBar(
+                  labelColor: Colors.deepPurple,
+                  unselectedLabelColor: Colors.grey,
+                  isScrollable: true,
+                  tabs: [
+                    Tab(icon: Icon(Icons.person), text: 'Profile'),
+                    Tab(icon: Icon(Icons.store), text: 'Linked Stores'),
+                    Tab(icon: Icon(Icons.inventory), text: 'Products'),
+                    Tab(icon: Icon(Icons.account_balance), text: 'Financials'),
+                  ],
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      // Profile Tab
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Personal Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Divider(),
+                            const SizedBox(height: 16),
+                            _buildInfoRow('Full Name', partnerData['name'] ?? '-'),
+                            _buildInfoRow('Email', partnerData['email'] ?? '-'),
+                            _buildInfoRow('Phone', partnerData['phoneNumber'] ?? partnerData['phone'] ?? '-'),
+                            _buildInfoRow('State', partnerData['state'] ?? '-'),
+                            _buildInfoRow('Pincode', partnerData['pincode'] ?? '-'),
+                            const SizedBox(height: 24),
+                            const Text(
+                              'Business Information',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const Divider(),
+                            _buildInfoRow('Business Name', partnerData['businessName'] ?? '-'),
+                            _buildInfoRow('PAN', partnerData['panNumber'] ?? '-'),
+                            _buildInfoRow('Aadhaar', partnerData['aadhaarNumber'] ?? '-'),
+                          ],
+                        ),
+                      ),
+                      // Linked Stores Tab
+                      StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('stores')
+                            .where('partnerId', isEqualTo: partnerId)
+                            .snapshots(),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                          final docs = snapshot.data?.docs ?? [];
+                          if (docs.isEmpty) return const Center(child: Text('No stores linked to this partner'));
+                          
+                          return ListView.builder(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: docs.length,
+                            itemBuilder: (context, index) {
+                              final data = docs[index].data() as Map<String, dynamic>;
+                              return Card(
+                                child: ListTile(
+                                  leading: const Icon(Icons.store, color: Colors.deepPurple),
+                                  title: Text(data['name'] ?? 'Unnamed Store'),
+                                  subtitle: Text(data['address'] ?? 'No address'),
+                                  trailing: const Icon(Icons.chevron_right),
+                                  onTap: () {
+                                    // Optionally navigate to store details
+                                  },
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                      // Products Tab
+                      _buildSellerProductsTab(partnerId), // Reusing existing seller products tab logic
+                      // Financials Tab
+                      _buildFinancialTab(partnerId, 'store_partner'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildProviderServicesTab(String providerId) {
     return SharedServicesTab(
       canManage: true,
@@ -6798,374 +7212,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   void _showEditProductDialog(String productId, Map<String, dynamic> productData) {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController(text: productData['name']);
-    final descCtrl = TextEditingController(text: productData['description']);
-    final priceCtrl = TextEditingController(text: productData['price'].toString());
-    final stockCtrl = TextEditingController(text: productData['stock'].toString());
-    final mrpCtrl = TextEditingController(text: (productData['mrp'] ?? 0).toString());
-    final minQtyCtrl = TextEditingController(text: (productData['minimumQuantity'] ?? 1).toString());
-    
-    String selectedCategory = productData['category'] ?? ProductCategory.dailyNeeds;
-    String selectedUnit = productData['unit'] ?? 'Pic';
-    bool isFeatured = productData['isFeatured'] ?? false;
-    bool isLoading = false;
-    
-    // Image Handling
-    List<String> existingImages = List<String>.from(productData['imageUrls'] ?? []);
-    if (existingImages.isEmpty && productData['imageUrl'] != null) {
-      existingImages.add(productData['imageUrl']);
-    }
-    List<Uint8List> newImages = [];
-    final ImagePicker picker = ImagePicker();
-
-    Future<void> pickImages(StateSetter setState) async {
-       try {
-         final List<XFile> images = await picker.pickMultiImage();
-         if (images.isNotEmpty) {
-            if (existingImages.length + newImages.length + images.length > 6) {
-               if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Max 6 images allowed total')));
-               return;
-            }
-            for (var img in images) {
-              final bytes = await img.readAsBytes();
-              newImages.add(bytes);
-            }
-            setState(() {});
-         }
-       } catch (e) {
-         debugPrint('Error picking images: $e');
-       }
-    }
-
-    Future<List<String>> uploadNewImages() async {
-      List<String> uploadedUrls = [];
-      for (int i = 0; i < newImages.length; i++) {
-         final ref = FirebaseStorage.instance.ref().child('products').child(productId).child('new_${DateTime.now().millisecondsSinceEpoch}_$i.jpg');
-         await ref.putData(newImages[i]);
-         uploadedUrls.add(await ref.getDownloadURL());
-      }
-      return uploadedUrls;
-    }
-
     showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          child: Container(
-            width: 700,
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Edit Product',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    
-                    // Product Name
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Name *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) => v?.isEmpty == true ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Description
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Price and MRP
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: mrpCtrl,
-                            decoration: const InputDecoration(labelText: 'MRP', border: OutlineInputBorder(), prefixText: '₹'),
-                            keyboardType: TextInputType.number,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: TextFormField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(labelText: 'Price *', border: OutlineInputBorder(), prefixText: '₹'),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null) ? 'Invalid' : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Stock and Unit
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: const InputDecoration(labelText: 'Stock *', border: OutlineInputBorder()),
-                            keyboardType: TextInputType.number,
-                            validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: selectedUnit,
-                            isExpanded: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Unit',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
-                                .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                                .toList(),
-                            onChanged: (val) => setState(() => selectedUnit = val!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Min Qty
-                    TextFormField(
-                       controller: minQtyCtrl,
-                       decoration: InputDecoration(labelText: 'Minimum Quantity', border: const OutlineInputBorder(), suffixText: selectedUnit),
-                       keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null) ? 'Invalid' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Category
-                    StreamBuilder<QuerySnapshot>(
-                            stream: FirebaseFirestore.instance.collection('categories').orderBy('order').snapshots(),
-                            builder: (context, snapshot) {
-                              if (!snapshot.hasData) {
-                                return const SizedBox(height: 50, child: Center(child: CircularProgressIndicator()));
-                              }
-                              
-                              final categories = snapshot.data!.docs.map((doc) {
-                                return (doc.data() as Map<String, dynamic>)['name'] as String;
-                              }).toList();
-                              
-                              // Ensure selectedCategory is in the list
-                              if (selectedCategory != null && !categories.contains(selectedCategory)) {
-                                categories.add(selectedCategory!);
-                              }
-
-                              return DropdownButtonFormField<String>(
-                                initialValue: selectedCategory,
-                                isExpanded: true,
-                                menuMaxHeight: 300,
-                                decoration: const InputDecoration(
-                                  labelText: 'Category',
-                                  border: OutlineInputBorder(),
-                                ),
-                                items: categories.map((cat) {
-                                  return DropdownMenuItem(
-                                    value: cat, 
-                                    child: Text(cat, overflow: TextOverflow.ellipsis),
-                                  );
-                                }).toList(),
-                                onChanged: (val) => setState(() => selectedCategory = val!),
-                              );
-                            }
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Featured Toggle
-                    SwitchListTile(
-                      title: const Text('Featured Product'),
-                      value: isFeatured,
-                      onChanged: (val) => setState(() => isFeatured = val),
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Image Management
-                    const Text('Product Images', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      height: 100,
-                      child: ListView(
-                        scrollDirection: Axis.horizontal,
-                        children: [
-                          // Existing Images
-                          ...existingImages.asMap().entries.map((entry) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.network(entry.value, width: 100, height: 100, fit: BoxFit.cover),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    right: 0,
-                                    child: InkWell(
-                                      onTap: () => setState(() => existingImages.removeAt(entry.key)),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                        child: const Icon(Icons.close, size: 16, color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          
-                          // New Images
-                          ...newImages.asMap().entries.map((entry) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: Image.memory(entry.value, width: 100, height: 100, fit: BoxFit.cover),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    right: 0,
-                                    child: InkWell(
-                                      onTap: () => setState(() => newImages.removeAt(entry.key)),
-                                      child: Container(
-                                        padding: const EdgeInsets.all(4),
-                                        decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                                        child: const Icon(Icons.close, size: 16, color: Colors.white),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-
-                          // Add Button
-                          if ((existingImages.length + newImages.length) < 6)
-                            InkWell(
-                              onTap: () => pickImages(setState),
-                              child: Container(
-                                width: 100,
-                                height: 100,
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.add_photo_alternate, size: 40, color: Colors.grey),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    
-                    // Action Buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isLoading ? null : () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  if (!formKey.currentState!.validate()) return;
-                                  
-                                  setState(() => isLoading = true);
-                                  
-                                  try {
-                                    // Upload new images
-                                    final newUrls = await uploadNewImages();
-                                    final allImages = [...existingImages, ...newUrls];
-                                    
-                                    await FirebaseFirestore.instance
-                                        .collection('products')
-                                        .doc(productId)
-                                        .update({
-                                      'name': nameCtrl.text,
-                                      'description': descCtrl.text,
-                                      'price': double.parse(priceCtrl.text),
-                                      'mrp': double.tryParse(mrpCtrl.text) ?? 0,
-                                      'stock': int.parse(stockCtrl.text),
-                                      'minimumQuantity': int.tryParse(minQtyCtrl.text) ?? 1,
-                                      'category': selectedCategory,
-                                      'unit': selectedUnit,
-                                      'isFeatured': isFeatured,
-                                      'imageUrls': allImages,
-                                      'imageUrl': allImages.isNotEmpty ? allImages.first : null,
-                                      'updatedAt': FieldValue.serverTimestamp(),
-                                    });
-                                    
-                                    if (context.mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Product updated successfully')),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    setState(() => isLoading = false);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: $e'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Save Changes'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
+      builder: (context) => EditProductDialog(
+        productId: productId,
+        productData: productData,
       ),
     );
   }
@@ -7193,6 +7244,12 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           final List<Uint8List> imageBytes = [];
           for (var image in images) {
             final bytes = await image.readAsBytes();
+            if (bytes.length > 800 * 1024) {
+               if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image ${image.name} exceeds 800 KB limit.')));
+               }
+               continue;
+            }
             imageBytes.add(bytes);
           }
           setState(() {
@@ -7373,6 +7430,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     const SizedBox(height: 16),
                     
                     // Image Upload
+                    const Text('Product Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Size: 512 x 512 pixcell, Max: 800 KB', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    const SizedBox(height: 8),
                     OutlinedButton.icon(
                       onPressed: () => pickImages(setState),
                       icon: const Icon(Icons.image),
@@ -8421,21 +8481,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                     final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
                                     final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
                                     final itemRevenue = price * quantity;
+                                    final itemProfit = itemRevenue - (basePrice * quantity);
                                     
                                     final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
-                                    final isPlatformItem = metadata['isPlatformOwned'] == true || 
-                                                         item['sellerId'] == 'admin' || 
-                                                         data['storeId'] == 'admin' ||
-                                                         basePrice > 0;
+                                    // REAL Platform items (Admin owned) take 100% margin
+                                    final isPlatformOwned = metadata['isPlatformOwned'] == true || 
+                                                         item['sellerId'] == 'admin';
                                     
-                                    if (isPlatformItem) {
-                                      totalProfitValue += (itemRevenue - (basePrice * quantity));
-                                    } else {
-                                      if (basePrice > 0) {
-                                        totalProfitValue += (itemRevenue - (basePrice * quantity)) * 0.25;
-                                      } else {
-                                        totalProfitValue += (itemRevenue * 0.2);
-                                      }
+                                    if (isPlatformOwned) {
+                                      totalProfitValue += itemProfit;
+                                    } else if (itemProfit > 0) {
+                                      // Partner items: Admin only takes 'adminProfitPercentage' share of profit
+                                      final commPercent = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0;
+                                      totalProfitValue += (itemProfit * (commPercent / 100));
                                     }
                                   }
                                 }

@@ -316,7 +316,12 @@ class _SellerWalletScreenState extends State<SellerWalletScreen> {
                   final details = parts.join(' | ');
 
                   try {
-                    await _payoutService.requestPayout(widget.user.uid, amount, details);
+                    await _payoutService.requestPayout(
+                      widget.user.uid, 
+                      amount, 
+                      details, 
+                      userRole: widget.user.role ?? 'general'
+                    );
                     if (context.mounted) {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(context).showSnackBar(

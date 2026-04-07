@@ -273,7 +273,8 @@ class _FinancialsTabState extends State<_FinancialsTab> {
   }
 
   Future<void> _generatePDF({
-    required double sales,
+    required double partnerSales,
+    required double platformFulfillment,
     required double purchase,
     required double profit,
     required double netProfit,
@@ -327,11 +328,12 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             
             pw.Text('Financial Summary', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
             pw.SizedBox(height: 10),
-            _buildPdfRow('Total Sales', 'Rs. ${sales.toStringAsFixed(2)}'),
-            _buildPdfRow('Total Spent on Stock', 'Rs. ${purchase.toStringAsFixed(2)}'),
-            _buildPdfRow('Gross Profit (on Sales)', 'Rs. ${profit.toStringAsFixed(2)}'),
-            _buildPdfRow('Admin Commission', 'Rs. ${commission.toStringAsFixed(2)}'),
-            _buildPdfRow('Your Net Profit', 'Rs. ${netProfit.toStringAsFixed(2)}'),
+            _buildPdfRow('My Store Sales', 'Rs. ${partnerSales.toStringAsFixed(2)}'),
+            _buildPdfRow('Purchase Cost on Stock', 'Rs. ${purchase.toStringAsFixed(2)}'),
+            _buildPdfRow('Gross Profit (Our Stock)', 'Rs. ${profit.toStringAsFixed(2)}'),
+            _buildPdfRow('Admin Platform Share', 'Rs. ${commission.toStringAsFixed(2)}'),
+            _buildPdfRow('Your Net Profit', 'Rs. ${netProfit.toStringAsFixed(2)}', isBold: true),
+            _buildPdfRow('Platform Items Fulfilled', 'Rs. ${platformFulfillment.toStringAsFixed(2)}'),
             
             pw.SizedBox(height: 30),
             pw.Text('Order Statistics', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 14)),
@@ -387,14 +389,14 @@ class _FinancialsTabState extends State<_FinancialsTab> {
     await Printing.layoutPdf(onLayout: (PdfPageFormat format) async => pdf.save());
   }
 
-  pw.Widget _buildPdfRow(String label, String value) {
+  pw.Widget _buildPdfRow(String label, String value, {bool isBold = false}) {
     return pw.Padding(
       padding: const pw.EdgeInsets.symmetric(vertical: 4),
       child: pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Text(label),
-          pw.Text(value, style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+          pw.Text(value, style: pw.TextStyle(fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
         ],
       ),
     );
@@ -409,9 +411,10 @@ class _FinancialsTabState extends State<_FinancialsTab> {
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-        double totalSales = 0.0;
+        double partnerSales = 0.0;
+        double platformSales = 0.0;
         double totalPurchaseCost = 0.0;
-        double totalPlatformShare = 0.0; // Dynamic commission calculation
+        double partnerPlatformShare = 0.0; // Commission on partner-owned items
         int totalSoldQty = 0;
         int cancelledOrders = 0;
         int refundedOrders = 0;
@@ -446,14 +449,19 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             final itemPurchase = buyingPrice * qty;
             final itemProfit = itemSales - itemPurchase;
             
-            totalSales += itemSales;
-            totalPurchaseCost += itemPurchase;
-            totalSoldQty += qty;
-            
-            // Apply platform share only on profit
-            if (itemProfit > 0) {
-              totalPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+            final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
+            final isPlatformOwned = metadata['isPlatformOwned'] == true || item['sellerId'] == 'admin';
+
+            if (isPlatformOwned) {
+              platformSales += itemSales;
+            } else {
+              partnerSales += itemSales;
+              totalPurchaseCost += itemPurchase;
+              if (itemProfit > 0) {
+                partnerPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+              }
             }
+            totalSoldQty += qty;
           }
 
           final paymentMethod = data['paymentMethod'] as String? ?? '';
@@ -466,10 +474,10 @@ class _FinancialsTabState extends State<_FinancialsTab> {
           }
         }
 
-        double totalGrossProfit = totalSales - totalPurchaseCost;
-        double platformShare = totalPlatformShare; // Uses dynamic per-item calculation
-        double netPartnerProfit = totalGrossProfit - totalPlatformShare;
+        double partnerGrossProfit = partnerSales - totalPurchaseCost;
+        double netPartnerProfit = partnerGrossProfit - partnerPlatformShare;
         
+        // Rightful Earning = What Partner should have (Purchase Cost + Net Profit)
         double rightfulEarning = totalPurchaseCost + netPartnerProfit;
         double settlementAmount = rightfulEarning - totalCashCollected;
 
@@ -527,11 +535,12 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                         children: [
                           IconButton(
                             onPressed: () => _generatePDF(
-                              sales: totalSales,
+                              partnerSales: partnerSales,
+                              platformFulfillment: platformSales,
                               purchase: totalPurchaseCost,
-                              profit: totalGrossProfit,
+                              profit: partnerGrossProfit,
                               netProfit: netPartnerProfit,
-                              commission: platformShare,
+                              commission: partnerPlatformShare,
                                totalOrders: totalOrders,
                               cancelled: cancelledOrders,
                               refunded: refundedOrders,
@@ -591,12 +600,12 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                     crossAxisSpacing: 12,
                     childAspectRatio: 1.4,
                     children: [
-                      _SummaryMiniCard(title: 'Total Sales', value: '₹${totalSales.toStringAsFixed(2)}', icon: Icons.trending_up, color: Colors.blue),
-                      _SummaryMiniCard(title: 'Total Purchase', value: '₹${totalInventoryInvestment.toStringAsFixed(2)}', icon: Icons.shopping_cart_checkout, color: Colors.orange),
-                      _SummaryMiniCard(title: 'Gross Profit', value: '₹${totalGrossProfit.toStringAsFixed(2)}', icon: Icons.analytics, color: Colors.green),
-                      _SummaryMiniCard(title: 'Admin Commission', value: '₹${platformShare.toStringAsFixed(2)}', icon: Icons.account_balance, color: Colors.deepOrange),
-                      _SummaryMiniCard(title: 'Total Orders', value: '$totalOrders', icon: Icons.receipt_long, color: Colors.purple),
-                      _SummaryMiniCard(title: 'Total Cancelled', value: '$cancelledOrders', icon: Icons.cancel_outlined, color: Colors.red),
+                      _SummaryMiniCard(title: 'My Sales', value: '₹${partnerSales.toStringAsFixed(2)}', icon: Icons.trending_up, color: Colors.blue),
+                      _SummaryMiniCard(title: 'Purchase Invist', value: '₹${totalPurchaseCost.toStringAsFixed(2)}', icon: Icons.shopping_cart_checkout, color: Colors.orange),
+                      _SummaryMiniCard(title: 'Gross Profit', value: '₹${partnerGrossProfit.toStringAsFixed(2)}', icon: Icons.analytics, color: Colors.green),
+                      _SummaryMiniCard(title: 'Admin Share', value: '₹${partnerPlatformShare.toStringAsFixed(2)}', icon: Icons.account_balance, color: Colors.deepOrange),
+                      _SummaryMiniCard(title: 'Sales Fulfillment', value: '₹${platformSales.toStringAsFixed(2)}', icon: Icons.local_shipping, color: Colors.teal),
+                      _SummaryMiniCard(title: 'Orders Processed', value: '$totalOrders', icon: Icons.receipt_long, color: Colors.purple),
                     ],
                   ),
                   
@@ -951,7 +960,7 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                             'status': 'pending', 
                             'requestDate': Timestamp.now(),
                             'paymentDetails': details,
-                            'role': 'store_partner',
+                            'userRole': 'store_partner',
                             'storeId': widget.store.id,
                           });
                           
