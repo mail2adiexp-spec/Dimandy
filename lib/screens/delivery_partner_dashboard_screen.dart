@@ -1756,7 +1756,10 @@ class _DeliveryPartnerDashboardScreenState
                 final data = doc.data() as Map<String, dynamic>;
                 final deliveredAt = data['deliveredAt'] as Timestamp?;
                 final method = data['paymentMethod']?.toString().toUpperCase() ?? 'COD'; 
-                final amount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                final subtotal = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+                final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                final amount = subtotal + fee; // Full collection amount
+
                 final pointOfSaleQR = data['paymentProofUrl'] != null || data['qrAtDoorstep'] == true;
 
                 if (deliveredAt != null) {
@@ -1774,7 +1777,7 @@ class _DeliveryPartnerDashboardScreenState
                   cashToDeposit += amount;
                 }
                 
-                totalEarnings += (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0;
+                totalEarnings += (data['partnerPayout'] as num?)?.toDouble() ?? fee;
               }
 
               final successRate = totalCount > 0 

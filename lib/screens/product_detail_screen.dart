@@ -25,7 +25,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   late final PageController _pageController;
   int _currentIndex = 0;
   int _currentNavIndex = 0;
-  int _quantity = 1;
+  double _quantity = 1.0;
   List<Product> _recommendedProducts = [];
 
   List<String> get _images {
@@ -50,7 +50,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() {
     super.initState();
     _pageController = PageController();
-    _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1;
+    _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1.0;
     _trackView();
     _loadRecommendations();
   }
@@ -335,7 +335,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                           },
                         ),
                         Text(
-                          '$_quantity',
+                          _quantity % 1 == 0 ? _quantity.toInt().toString() : _quantity.toStringAsFixed(2),
                           style: const TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
@@ -653,10 +653,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     final cart = context.read<CartProvider>();
     try {
-      await cart.addProduct(widget.product, quantityToAdd: _quantity);
+      await cart.addProduct(widget.product, quantityToAdd: _quantity.round());
       if (mounted) {
-        _showSuccessMsg('Added $_quantity item(s) to cart');
-        setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1);
+        _showSuccessMsg('Added ${_quantity % 1 == 0 ? _quantity.toInt() : _quantity} item(s) to cart');
+        setState(() => _quantity = widget.product.minimumQuantity > 0 ? widget.product.minimumQuantity : 1.0);
       }
     } catch (e) {
       if (mounted) {
@@ -696,7 +696,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     final cart = context.read<CartProvider>();
     try {
-      await cart.addProduct(widget.product, quantityToAdd: _quantity);
+      await cart.addProduct(widget.product, quantityToAdd: _quantity.round());
       if (mounted) {
         Navigator.pushNamed(context, CheckoutScreen.routeName);
       }

@@ -44,7 +44,7 @@ class CartItem {
         price: double.parse(((map['price'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)),
         basePrice: double.parse(((map['basePrice'] as num?)?.toDouble() ?? 0.0).toStringAsFixed(2)),
         imageUrl: map['imageUrl']?.toString() ?? '',
-        stock: (map['stock'] as num?)?.toInt() ?? 0, // Restore stock
+        stock: (map['stock'] as num?)?.toDouble() ?? 0.0, // Restore stock
         storeIds: List<String>.from(map['storeIds'] ?? []),
         adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
         deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),
@@ -112,12 +112,12 @@ class CartProvider extends ChangeNotifier {
            doc = await FirebaseFirestore.instance.collection('products').doc(id).get();
         }
 
-        int remoteStock = product.stock; // Fallback to passed stock
+        double remoteStock = product.stock; // Fallback to passed stock
 
         if (doc.exists) {
           final data = doc.data() as Map<String, dynamic>?;
           if (data != null) {
-            remoteStock = (data['stock'] as num?)?.toInt() ?? 0;
+            remoteStock = (data['stock'] as num?)?.toDouble() ?? 0.0;
           }
         }
         
@@ -128,11 +128,11 @@ class CartProvider extends ChangeNotifier {
         // --- ENFORCE MAXIMUM QUANTITY ---
         if (product.maximumQuantity > 0) {
            // Calculate total quantity of THIS BASE PRODUCT already in cart (including variants)
-           int totalBaseQtyInCart = 0;
+           double totalBaseQtyInCart = 0.0;
            for (var item in _items.values) {
               final itemBaseId = getBaseProductId(item.product.id);
               if (itemBaseId == baseProductId) {
-                 totalBaseQtyInCart += item.quantity;
+                 totalBaseQtyInCart += item.quantity.toDouble();
               }
            }
            
@@ -143,11 +143,11 @@ class CartProvider extends ChangeNotifier {
         // --------------------------------
         
         // Calculate total quantity for STOCK check
-        int totalBaseQtyInCart = 0;
+        double totalBaseQtyInCart = 0.0;
         for (var item in _items.values) {
            final itemBaseId = getBaseProductId(item.product.id);
            if (itemBaseId == baseProductId) {
-              totalBaseQtyInCart += item.quantity;
+              totalBaseQtyInCart += item.quantity.toDouble();
            }
         }
 

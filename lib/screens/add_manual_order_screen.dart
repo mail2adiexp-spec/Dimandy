@@ -29,6 +29,9 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
   bool _isSaving = false;
   bool _isSearching = false;
   Timer? _searchDebounce; // NEW: Debounce timer
+  double _flatDeliveryFee = 0.0;
+  double _freeDeliveryThreshold = 0.0;
+  Map<String, double> _pincodeOverrides = {};
 
   @override
   void initState() {
@@ -40,7 +43,26 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
         _stateController.text = auth.currentUser!.assignedState!;
       }
       _loadInitialProducts(); // NEW: Load products on start
+      _loadDeliverySettings(); // NEW: Load delivery settings
     });
+  }
+
+  Future<void> _loadDeliverySettings() async {
+    try {
+      final doc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+      if (doc.exists) {
+        final data = doc.data()!;
+        setState(() {
+          _flatDeliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+          _freeDeliveryThreshold = (data['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0;
+          _pincodeOverrides = (data['pincodeOverrides'] as Map<String, dynamic>?)?.map(
+            (k, v) => MapEntry(k, (v as num).toDouble())
+          ) ?? {};
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading delivery settings: $e');
+    }
   }
 
   @override
@@ -87,17 +109,50 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
   }
 
   double get _totalDeliveryFee {
-    return _selectedItems.fold(
+    final subtotal = _totalAmount;
+    
+    // 1. Calculate Product-Specific Extras
+    double productOverrides = _selectedItems.fold(
       0.0,
       (sum, item) => sum + ((item['deliveryFeeOverride'] ?? 0.0) * item['quantity']),
     );
+
+    // 2. Determine Base Delivery Fee (Flat or Pincode)
+    double baseFee = _flatDeliveryFee;
+    final enteredPincode = _pincodeController.text.trim();
+    if (_pincodeOverrides.containsKey(enteredPincode)) {
+      baseFee = _pincodeOverrides[enteredPincode]!;
+    }
+
+    // 3. Check for Free Delivery Threshold
+    if (_freeDeliveryThreshold > 0 && subtotal >= _freeDeliveryThreshold) {
+      baseFee = 0.0;
+    }
+
+    return baseFee + productOverrides;
   }
 
-  void _addItem(Product product) {
+  void _addItem(Product product, {double? customQty}) {
+    if (product.stock <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${product.name} is Out of Stock'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+    
+    final qtyToAdd = customQty ?? 1.0;
+
     setState(() {
       final index = _selectedItems.indexWhere((item) => item['productId'] == product.id);
       if (index != -1) {
-        _selectedItems[index]['quantity']++;
+        final currentQty = (_selectedItems[index]['quantity'] as num).toDouble();
+        if (currentQty + qtyToAdd <= product.stock) {
+          _selectedItems[index]['quantity'] = currentQty + qtyToAdd;
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cannot add more than available stock')),
+          );
+        }
       } else {
         _selectedItems.add({
           'productId': product.id,
@@ -105,12 +160,13 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
           'productImageUrl': product.imageUrl,
           'price': product.price,
           'basePrice': product.basePrice,
-          'adminProfitPercentage': product.adminProfitPercentage, // Inherit commission
-          'deliveryFeeOverride': product.deliveryFeeOverride, // Inherit delivery fee override
-          'quantity': 1,
+          'adminProfitPercentage': product.adminProfitPercentage,
+          'deliveryFeeOverride': product.deliveryFeeOverride,
+          'quantity': qtyToAdd,
           'sellerId': product.sellerId,
           'storeIds': product.storeIds,
           'unit': product.unit,
+          'maxStock': product.stock,
         });
       }
       _searchResults.clear();
@@ -118,9 +174,118 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
     });
   }
 
+  void _showQuantityDialog(Product product) {
+    final controller = TextEditingController(text: '1.0');
+    String selectedDialogUnit = product.unit ?? 'Kg';
+    List<String> availableUnits = [selectedDialogUnit];
+    
+    // Add compatible units
+    if (selectedDialogUnit == 'Kg') availableUnits.add('Grm');
+    if (selectedDialogUnit == 'Grm') availableUnits.add('Kg');
+    if (selectedDialogUnit == 'Ltr') availableUnits.add('Ml');
+    if (selectedDialogUnit == 'Ml') availableUnits.add('Ltr');
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text('Enter Quantity'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextField(
+                      controller: controller,
+                      decoration: const InputDecoration(
+                        labelText: 'Quantity',
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      autofocus: true,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    flex: 1,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedDialogUnit,
+                          isExpanded: true,
+                          items: availableUnits.map((u) => DropdownMenuItem(value: u, child: Text(u, style: const TextStyle(fontSize: 12)))).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() => selectedDialogUnit = val);
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () {
+                double val = double.tryParse(controller.text) ?? 0;
+                if (val <= 0) return;
+
+                double baseQty = val;
+                // Convert to product base unit
+                if (product.unit == 'Kg' && selectedDialogUnit == 'Grm') baseQty = val / 1000;
+                if (product.unit == 'Ltr' && selectedDialogUnit == 'Ml') baseQty = val / 1000;
+                if (product.unit == 'Grm' && selectedDialogUnit == 'Kg') baseQty = val * 1000;
+                if (product.unit == 'Ml' && selectedDialogUnit == 'Ltr') baseQty = val * 1000;
+
+                if (baseQty > product.stock) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Only ${product.stock} ${product.unit} available')),
+                  );
+                } else {
+                  Navigator.pop(ctx);
+                  _addItem(product, customQty: baseQty);
+                }
+              },
+              child: const Text('Add to Order'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _updateQuantity(int index, int delta) {
     setState(() {
-      final newQty = _selectedItems[index]['quantity'] + delta;
+      final currentQty = (_selectedItems[index]['quantity'] as num).toDouble();
+      final maxStock = (_selectedItems[index]['maxStock'] as num?)?.toDouble() ?? 999999.0;
+      final unit = _selectedItems[index]['unit'] as String?;
+      
+      // For weighted items, +/- 0.5 can be useful, but let's stick to 1.0 for simple +/- buttons
+      // To add exactly 0.5, user can use the dialog by adding it again.
+      // Or we can allow fractional delta here. Let's stay with 1.0 for now but handle double.
+      
+      final newQty = currentQty + delta;
+      
+      if (newQty > maxStock && delta > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Reached maximum available stock')),
+        );
+        return;
+      }
+      
       if (newQty > 0) {
         _selectedItems[index]['quantity'] = newQty;
       } else {
@@ -237,6 +402,31 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
     setState(() => _isSaving = true);
 
     try {
+      final firestore = FirebaseFirestore.instance;
+      
+      // NEW: STOCK CHECK BEFORE SAVING
+      for (var item in _selectedItems) {
+        final productId = item['productId'] as String;
+        final requiredQty = item['quantity'] as int;
+        
+        final productDoc = await firestore.collection('products').doc(productId).get();
+        if (productDoc.exists) {
+          final currentStock = (productDoc.data()?['stock'] as num?)?.toInt() ?? 0;
+          if (currentStock < requiredQty) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Not enough stock for ${item['productName']}. Available: $currentStock'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              setState(() => _isSaving = false);
+            }
+            return;
+          }
+        }
+      }
+
       final auth = context.read<AuthProvider>();
       final adminId = auth.currentUser?.uid;
       
@@ -364,6 +554,9 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
                                       border: OutlineInputBorder(),
                                     ),
                                     keyboardType: TextInputType.number,
+                                    onChanged: (val) {
+                                      setState(() {}); // Trigger re-calculation of delivery fee
+                                    },
                                     validator: (v) => v!.isEmpty ? 'Required' : null,
                                   ),
                                 ),
@@ -420,27 +613,117 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
                             ),
                             if (_searchResults.isNotEmpty)
                               Container(
-                                constraints: const BoxConstraints(maxHeight: 300),
+                                constraints: const BoxConstraints(maxHeight: 500),
                                 margin: const EdgeInsets.only(top: 8),
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey.shade300),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: ListView.separated(
+                                child: GridView.builder(
                                   shrinkWrap: true,
+                                  physics: const AlwaysScrollableScrollPhysics(),
                                   itemCount: _searchResults.length,
-                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 3,
+                                    crossAxisSpacing: 6,
+                                    mainAxisSpacing: 6,
+                                    childAspectRatio: 0.62,
+                                  ),
                                   itemBuilder: (ctx, i) {
                                     final p = _searchResults[i];
-                                    return ListTile(
-                                      leading: p.imageUrl != null 
-                                        ? ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.network(p.imageUrl!, width: 40, height: 40, fit: BoxFit.cover))
-                                        : const Icon(Icons.image_outlined),
-                                      title: Text(p.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                      subtitle: Text('₹${p.price} / ${p.unit}'),
-                                      trailing: IconButton(
-                                        icon: const Icon(Icons.add_circle, color: Colors.blue),
-                                        onPressed: () => _addItem(p),
+                                    final bool isOutOfStock = p.stock <= 0;
+                                    
+                                    return Card(
+                                      elevation: 0,
+                                      margin: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        side: BorderSide(color: Colors.grey.shade200),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            flex: 3, // Give more space to image
+                                            child: Stack(
+                                              children: [
+                                                Container(
+                                                  width: double.infinity,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey.shade50,
+                                                    borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                                                  ),
+                                                  child: p.imageUrl != null 
+                                                    ? Opacity(
+                                                        opacity: isOutOfStock ? 0.5 : 1.0,
+                                                        child: Image.network(p.imageUrl!, fit: BoxFit.cover),
+                                                      )
+                                                    : const Icon(Icons.image_outlined, color: Colors.grey, size: 20),
+                                                ),
+                                                if (isOutOfStock)
+                                                  Container(
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black.withOpacity(0.5),
+                                                      borderRadius: const BorderRadius.vertical(top: Radius.circular(6)),
+                                                    ),
+                                                    child: const Center(
+                                                      child: Text(
+                                                        'OUT OF\nSTOCK',
+                                                        textAlign: TextAlign.center,
+                                                        style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  p.name,
+                                                  maxLines: 1,
+                                                  overflow: TextOverflow.ellipsis,
+                                                  style: TextStyle(
+                                                    fontSize: 10, // Smaller text
+                                                    fontWeight: FontWeight.bold,
+                                                    color: isOutOfStock ? Colors.grey : Colors.black87,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 1),
+                                                Text(
+                                                  '₹${p.price.toStringAsFixed(0)}${p.unit != null ? ' / ${p.unit}' : ''}',
+                                                  style: TextStyle(
+                                                    fontSize: 9, // Smaller text
+                                                    color: isOutOfStock ? Colors.grey : Colors.blue.shade700,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                SizedBox(
+                                                  width: double.infinity,
+                                                  height: 24, // Compact button
+                                                  child: ElevatedButton(
+                                                    onPressed: isOutOfStock ? null : () {
+                                                      // If it's Kg or Ltr, show a dialog to enter weight
+                                                      if (p.unit == 'Kg' || p.unit == 'Ltr') {
+                                                        _showQuantityDialog(p);
+                                                      } else {
+                                                        _addItem(p);
+                                                      }
+                                                    },
+                                                    style: ElevatedButton.styleFrom(
+                                                      padding: EdgeInsets.zero,
+                                                      backgroundColor: Colors.blue,
+                                                      elevation: 0,
+                                                      disabledBackgroundColor: Colors.grey.shade200,
+                                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                                    ),
+                                                    child: const Text('Add', style: TextStyle(fontSize: 10, color: Colors.white, fontWeight: FontWeight.bold)),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                     );
                                   },

@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import 'home_screen.dart';
-import 'services_screen.dart';
 import 'static_pages.dart';
+import 'services_screen.dart';
+import 'package:provider/provider.dart';
+import '../providers/category_provider.dart';
+import '../providers/service_category_provider.dart';
+import '../providers/gift_provider.dart';
+import '../providers/featured_section_provider.dart';
+import '../providers/product_provider.dart';
 import '../widgets/more_bottom_sheet.dart';
 import '../widgets/pwa_install_banner.dart';
 
@@ -22,6 +28,26 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.initState();
     // Always start from Home screen
     _currentIndex = widget.initialIndex;
+    
+    // Defer heavy initialization to after the first frame to keep splash smooth
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initAppData();
+    });
+  }
+
+  void _initAppData() {
+    if (!mounted) return;
+    
+    // Start realtime listeners in the background
+    context.read<CategoryProvider>().startListening();
+    context.read<ServiceCategoryProvider>().startListening();
+    context.read<GiftProvider>().startListening();
+    
+    // Fetch initial static data
+    context.read<FeaturedSectionProvider>().fetchSections();
+    
+    // Initial products fetch (for main list)
+    context.read<ProductProvider>().fetchProducts(refresh: true);
   }
 
   final List<Widget> _screens = const [

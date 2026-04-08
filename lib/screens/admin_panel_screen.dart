@@ -51,7 +51,8 @@ import 'permission_editor_screen.dart';
 import 'add_store_partner_screen.dart';
 import '../widgets/manage_admins_tab.dart'; // NEW
 import 'admin_financial_screen.dart'; // NEW
-import '../screens/add_manual_order_screen.dart';
+import 'add_manual_order_screen.dart';
+import 'admin_add_edit_product_screen.dart';
 import '../widgets/edit_product_dialog.dart';
 
 
@@ -5391,8 +5392,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
 
   Widget _buildFinancialTab(String userId, String role) {
-    final transactionService = TransactionService();
+    if (role == 'store_partner') {
+      return _buildStorePartnerFinancials(userId);
+    }
 
+    final transactionService = TransactionService();
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -5440,14 +5444,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           ),
           const SizedBox(height: 24),
           
-          // Payout Stats (Calculated from transactions for now)
+          // Payout Stats
           StreamBuilder<List<TransactionModel>>(
             stream: transactionService.getTransactions(userId, role: role),
             builder: (context, snapshot) {
               final transactions = snapshot.data ?? [];
-              
-              // Calculate Total Payouts (Debits) and Pending (mock for now or query payout requests)
-              // Assuming 'debit' with status 'completed' is a paid out amount
               double totalPayouts = 0;
               for (var tx in transactions) {
                 if (tx.type == 'debit' && tx.status == 'completed') {
@@ -5477,7 +5478,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       Expanded(
                         child: StreamBuilder<QuerySnapshot>(
                           stream: FirebaseFirestore.instance
-                              .collection('payout_requests')
+                              .collection('payouts')
                               .where('userId', isEqualTo: userId)
                               .where('status', isEqualTo: 'pending')
                               .snapshots(),
@@ -5550,6 +5551,94 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
+  Widget _buildStorePartnerFinancials(String partnerId) {
+    return StorePartnerFinancialsTab(
+      partnerId: partnerId,
+      adminPanel: this,
+    );
+  }
+
+  Widget _buildAdminSettlementBanner(double amount, String partnerId) {
+    final isAdminOwning = amount >= 0;
+    final displayAmount = amount.abs().toStringAsFixed(2);
+    final color = isAdminOwning ? Colors.blue.shade700 : Colors.red.shade700;
+    final bgColor = isAdminOwning ? Colors.blue.shade50 : Colors.red.shade50;
+    final title = isAdminOwning ? 'Admin owes Partner' : 'Partner owes Admin';
+    final desc = isAdminOwning 
+        ? 'Admin needs to pay ₹$displayAmount to the partner for online/QR sales.'
+        : 'Partner has collected ₹$displayAmount extra in cash. They need to pay commission.';
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(isAdminOwning ? Icons.account_balance_wallet : Icons.warning_amber_rounded, color: color),
+              const SizedBox(width: 12),
+              Text(
+                'Settlement Status',
+                style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(title, style: TextStyle(color: Colors.grey.shade800, fontSize: 14)),
+          Text('₹$displayAmount', style: TextStyle(color: color, fontSize: 32, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Text(desc, style: TextStyle(color: Colors.grey.shade700, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFinancialActions(String partnerId) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Recent Payout History', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 12),
+        StreamBuilder<List<PayoutModel>>(
+          stream: PayoutService().getPayouts(partnerId),
+          builder: (context, snapshot) {
+            final payouts = snapshot.data ?? [];
+            if (payouts.isEmpty) return const Center(child: Text('No payout history found'));
+            
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: payouts.length > 5 ? 5 : payouts.length,
+              itemBuilder: (context, index) {
+                final p = payouts[index];
+                return Card(
+                  child: ListTile(
+                    leading: Icon(
+                      p.type == PayoutType.withdrawal ? Icons.arrow_upward : Icons.arrow_downward,
+                      color: p.type == PayoutType.withdrawal ? Colors.red : Colors.green,
+                    ),
+                    title: Text('${p.type == PayoutType.withdrawal ? 'Withdrawal' : 'Commission'} - ₹${p.amount}'),
+                    subtitle: Text(DateFormat('dd MMM yyyy').format(p.requestDate)),
+                    trailing: Chip(
+                      label: Text(p.status.name.toUpperCase(), style: const TextStyle(fontSize: 10)),
+                      backgroundColor: p.status == PayoutStatus.approved ? Colors.green.shade100 : Colors.orange.shade100,
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   Widget _buildBalanceAction(IconData icon, String label) {
     return Column(
       children: [
@@ -5575,28 +5664,34 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 32, color: color),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: color,
+            Icon(icon, size: 28, color: color),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
@@ -6792,71 +6887,55 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     String partnerId,
     Map<String, dynamic> partnerData,
   ) {
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          width: 800,
-          height: 600,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.deepPurple.shade50,
+            elevation: 0,
+            title: Row(
+              children: [
+                CircleAvatar(
+                  radius: 20,
+                  backgroundColor: Colors.deepPurple,
+                  backgroundImage: partnerData['photoURL'] != null
+                      ? NetworkImage(partnerData['photoURL'])
+                      : null,
+                  child: partnerData['photoURL'] == null
+                      ? Text(
+                          (partnerData['name'] ?? 'P')[0].toUpperCase(),
+                          style: const TextStyle(fontSize: 16, color: Colors.white),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      partnerData['name'] ?? 'Unknown Partner',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      'Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            automaticallyImplyLeading: true,
+            iconTheme: const IconThemeData(color: Colors.black87),
           ),
-          child: DefaultTabController(
+          body: DefaultTabController(
             length: 4,
             child: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple.shade50,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      topRight: Radius.circular(12),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 30,
-                        backgroundColor: Colors.deepPurple,
-                        backgroundImage: partnerData['photoURL'] != null
-                            ? NetworkImage(partnerData['photoURL'])
-                            : null,
-                        child: partnerData['photoURL'] == null
-                            ? Text(
-                                (partnerData['name'] ?? 'P')[0].toUpperCase(),
-                                style: const TextStyle(fontSize: 24, color: Colors.white),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              partnerData['name'] ?? 'Unknown Partner',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Store Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
-                    ],
-                  ),
-                ),
                 const TabBar(
                   labelColor: Colors.deepPurple,
                   unselectedLabelColor: Colors.grey,
@@ -6874,6 +6953,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                       // Profile Tab
                       SingleChildScrollView(
                         padding: const EdgeInsets.all(24),
+                        physics: const AlwaysScrollableScrollPhysics(),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -6903,6 +6983,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                             _buildInfoRow('Business Name', partnerData['businessName'] ?? '-'),
                             _buildInfoRow('PAN', partnerData['panNumber'] ?? '-'),
                             _buildInfoRow('Aadhaar', partnerData['aadhaarNumber'] ?? '-'),
+                            const SizedBox(height: 100), // Extra space at bottom
                           ],
                         ),
                       ),
@@ -6938,7 +7019,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                         },
                       ),
                       // Products Tab
-                      _buildSellerProductsTab(partnerId), // Reusing existing seller products tab logic
+                      _buildSellerProductsTab(partnerId),
                       // Financials Tab
                       _buildFinancialTab(partnerId, 'store_partner'),
                     ],
@@ -7013,7 +7094,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
             // Products Grid
             Expanded(
               child: GridView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 16, bottom: 120),
+                physics: const AlwaysScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
                   crossAxisSpacing: 8, // Reduced spacing
@@ -7212,358 +7294,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   }
 
   void _showEditProductDialog(String productId, Map<String, dynamic> productData) {
-    showDialog(
-      context: context,
-      builder: (context) => EditProductDialog(
-        productId: productId,
-        productData: productData,
-      ),
+    Navigator.pushNamed(
+      context,
+      AdminAddEditProductScreen.routeName,
+      arguments: {
+        'productId': productId,
+        'productData': productData,
+      },
     );
   }
 
 
 
   void _showAddProductDialog() {
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl = TextEditingController();
-    final descCtrl = TextEditingController();
-    final priceCtrl = TextEditingController();
-    final stockCtrl = TextEditingController();
-    
-    String selectedCategory = ProductCategory.dailyNeeds;
-    String selectedUnit = 'Pic';
-    bool isFeatured = false;
-    bool isLoading = false;
-    List<Uint8List> selectedImages = [];
-    final ImagePicker picker = ImagePicker();
-
-    Future<void> pickImages(StateSetter setState) async {
-      try {
-        final List<XFile> images = await picker.pickMultiImage();
-        if (images.isNotEmpty && images.length <= 6) {
-          final List<Uint8List> imageBytes = [];
-          for (var image in images) {
-            final bytes = await image.readAsBytes();
-            if (bytes.length > 800 * 1024) {
-               if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Image ${image.name} exceeds 800 KB limit.')));
-               }
-               continue;
-            }
-            imageBytes.add(bytes);
-          }
-          setState(() {
-            selectedImages = imageBytes;
-          });
-        } else if (images.length > 6) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Maximum 6 images allowed')),
-            );
-          }
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error picking images: $e')),
-          );
-        }
-      }
-    }
-
-    Future<List<String>> uploadImages(String productId) async {
-      List<String> imageUrls = [];
-      for (int i = 0; i < selectedImages.length; i++) {
-        try {
-          final ref = FirebaseStorage.instance
-              .ref()
-              .child('products')
-              .child(productId)
-              .child('image_$i.jpg');
-          await ref.putData(selectedImages[i]);
-          final url = await ref.getDownloadURL();
-          imageUrls.add(url);
-        } catch (e) {
-          print('Error uploading image $i: $e');
-        }
-      }
-      return imageUrls;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => Dialog(
-          child: Container(
-            width: 700,
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Add New Product',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close),
-                          onPressed: () => Navigator.pop(context),
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 16),
-                    
-                    // Product Name
-                    TextFormField(
-                      controller: nameCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Product Name *',
-                        border: OutlineInputBorder(),
-                      ),
-                      validator: (v) {
-                        if (v?.isEmpty == true) return 'Required';
-                        if (v!.length < 3) return 'Minimum 3 characters';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Description
-                    TextFormField(
-                      controller: descCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'Description',
-                        border: OutlineInputBorder(),
-                      ),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Price and Stock
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: priceCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Price *',
-                              border: OutlineInputBorder(),
-                              prefixText: '₹',
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final price = double.tryParse(v!);
-                              if (price == null || price <= 0) return 'Invalid price';
-                              return null;
-                            },
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: stockCtrl,
-                            decoration: const InputDecoration(
-                              labelText: 'Stock *',
-                              border: OutlineInputBorder(),
-                            ),
-                            keyboardType: TextInputType.number,
-                            validator: (v) {
-                              if (v?.isEmpty == true) return 'Required';
-                              final stock = int.tryParse(v!);
-                              if (stock == null || stock < 0) return 'Invalid stock';
-                              return null;
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Category and Unit
-                    Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: selectedCategory,
-                            decoration: const InputDecoration(
-                              labelText: 'Category',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: ProductCategory.all.map((cat) {
-                              return DropdownMenuItem(value: cat, child: Text(cat));
-                            }).toList(),
-                            onChanged: (val) => setState(() => selectedCategory = val!),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            initialValue: selectedUnit,
-                            decoration: const InputDecoration(
-                              labelText: 'Unit',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm']
-                                .map((u) => DropdownMenuItem(value: u, child: Text(u)))
-                                .toList(),
-                            onChanged: (val) => setState(() => selectedUnit = val!),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Featured Toggle
-                    SwitchListTile(
-                      title: const Text('Featured Product'),
-                      value: isFeatured,
-                      onChanged: (val) => setState(() => isFeatured = val),
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Image Upload
-                    const Text('Product Images (Max 6)', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const Text('Size: 512 x 512 pixcell, Max: 800 KB', style: TextStyle(fontSize: 12, color: Colors.grey)),
-                    const SizedBox(height: 8),
-                    OutlinedButton.icon(
-                      onPressed: () => pickImages(setState),
-                      icon: const Icon(Icons.image),
-                      label: Text(selectedImages.isEmpty 
-                          ? 'Select Images (Max 6)' 
-                          : '${selectedImages.length} image(s) selected'),
-                    ),
-                    if (selectedImages.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: 80,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: selectedImages.length,
-                          itemBuilder: (context, index) {
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: Stack(
-                                children: [
-                                  Image.memory(
-                                    selectedImages[index],
-                                    width: 80,
-                                    height: 80,
-                                    fit: BoxFit.cover,
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    right: 0,
-                                    child: IconButton(
-                                      icon: const Icon(Icons.close, size: 16),
-                                      onPressed: () {
-                                        setState(() {
-                                          selectedImages.removeAt(index);
-                                        });
-                                      },
-                                      style: IconButton.styleFrom(
-                                        backgroundColor: Colors.red,
-                                        foregroundColor: Colors.white,
-                                        padding: EdgeInsets.zero,
-                                        minimumSize: const Size(24, 24),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    
-                    // Action Buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        TextButton(
-                          onPressed: isLoading ? null : () => Navigator.pop(context),
-                          child: const Text('Cancel'),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton(
-                          onPressed: isLoading
-                              ? null
-                              : () async {
-                                  if (!formKey.currentState!.validate()) return;
-                                  
-                                  setState(() => isLoading = true);
-                                  
-                                  try {
-                                    // Create product document
-                                    final docRef = await FirebaseFirestore.instance
-                                        .collection('products')
-                                        .add({
-                                      'name': nameCtrl.text,
-                                      'description': descCtrl.text,
-                                      'price': double.parse(priceCtrl.text),
-                                      'stock': int.parse(stockCtrl.text),
-                                      'category': selectedCategory,
-                                      'unit': selectedUnit,
-                                      'isFeatured': isFeatured,
-                                      'sellerId': 'admin',
-                                      'createdAt': FieldValue.serverTimestamp(),
-                                      'updatedAt': FieldValue.serverTimestamp(),
-                                    });
-                                    
-                                    // Upload images if any
-                                    if (selectedImages.isNotEmpty) {
-                                      final imageUrls = await uploadImages(docRef.id);
-                                      await docRef.update({'images': imageUrls});
-                                    }
-                                    
-                                    if (context.mounted) {
-                                      Navigator.pop(context);
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Product added successfully')),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    setState(() => isLoading = false);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text('Error: $e'),
-                                          backgroundColor: Colors.red,
-                                        ),
-                                      );
-                                    }
-                                  }
-                                },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.blue,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: isLoading
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Text('Add Product'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
+    Navigator.pushNamed(
+      context,
+      AdminAddEditProductScreen.routeName,
     );
   }
 
@@ -8799,6 +8545,223 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
           ),
         ),
       ),
+    );
+  }
+}
+
+class StorePartnerFinancialsTab extends StatefulWidget {
+  final String partnerId;
+  final _AdminPanelScreenState adminPanel;
+
+  const StorePartnerFinancialsTab({
+    super.key,
+    required this.partnerId,
+    required this.adminPanel,
+  });
+
+  @override
+  State<StorePartnerFinancialsTab> createState() => _StorePartnerFinancialsTabState();
+}
+
+class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
+  String selectedFilter = 'All Time';
+  DateTimeRange? selectedDateRange;
+
+  void handleFilterChange(String? value) {
+    if (value == null) return;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    DateTimeRange? newRange;
+
+    switch (value) {
+      case 'Today':
+        newRange = DateTimeRange(start: today, end: today);
+        break;
+      case 'Yesterday':
+        final yesterday = today.subtract(const Duration(days: 1));
+        newRange = DateTimeRange(start: yesterday, end: yesterday);
+        break;
+      case 'Last 7 Days':
+        newRange = DateTimeRange(start: today.subtract(const Duration(days: 7)), end: today);
+        break;
+      case 'Last 30 Days':
+        newRange = DateTimeRange(start: today.subtract(const Duration(days: 30)), end: today);
+        break;
+      case 'All Time':
+        newRange = null;
+        break;
+    }
+
+    setState(() {
+      selectedFilter = value;
+      selectedDateRange = newRange;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance
+          .collection('stores')
+          .where('partnerId', isEqualTo: widget.partnerId)
+          .get(),
+      builder: (context, storeSnapshot) {
+        if (!storeSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+        
+        final stores = storeSnapshot.data!.docs;
+        if (stores.isEmpty) return const Center(child: Text('No stores linked to this partner'));
+
+        final List<String> allPincodes = [];
+        for (var doc in stores) {
+          final data = doc.data() as Map<String, dynamic>;
+          final pincodes = List<String>.from(data['pincodes'] ?? []);
+          allPincodes.addAll(pincodes);
+        }
+
+        if (allPincodes.isEmpty) return const Center(child: Text('No service area pincodes configured for linked stores'));
+
+        Query ordersQuery = FirebaseFirestore.instance
+            .collection('orders')
+            .where('deliveryPincode', whereIn: allPincodes);
+
+        if (selectedDateRange != null) {
+          ordersQuery = ordersQuery
+              .where('orderDate', isGreaterThanOrEqualTo: selectedDateRange!.start)
+              .where('orderDate', isLessThanOrEqualTo: selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59, seconds: 59)));
+        }
+
+        return StreamBuilder<QuerySnapshot>(
+          stream: ordersQuery.snapshots(),
+          builder: (context, orderSnapshot) {
+            if (!orderSnapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+            double partnerSales = 0.0;
+            double totalPurchaseCost = 0.0;
+            double partnerPlatformShare = 0.0;
+            double totalCashCollected = 0.0;
+            int totalOrders = 0;
+
+            for (var doc in orderSnapshot.data!.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final status = (data['status'] as String? ?? '').toLowerCase();
+              if (['cancelled', 'refunded', 'returned'].contains(status)) continue;
+              if (status != 'delivered' && status != 'completed') continue;
+
+              totalOrders++;
+              final items = (data['items'] as List<dynamic>?) ?? [];
+              for (var item in items) {
+                final price = (item['price'] as num?)?.toDouble() ?? 0.0;
+                final buyingPrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
+                final qty = (item['quantity'] as num?)?.toInt() ?? 1;
+                final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0;
+
+                final itemSales = price * qty;
+                final itemPurchase = buyingPrice * qty;
+                final itemProfit = itemSales - itemPurchase;
+                
+                final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
+                final isPlatformOwned = metadata['isPlatformOwned'] == true || item['sellerId'] == 'admin';
+
+                if (!isPlatformOwned) {
+                  partnerSales += itemSales;
+                  totalPurchaseCost += itemPurchase;
+                  if (itemProfit > 0) {
+                    partnerPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+                  }
+                }
+              }
+
+              final paymentMethod = data['paymentMethod'] as String? ?? '';
+              final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+              final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
+              final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+              
+              if (paymentMethod != 'online' && collectedMethod != 'qr') {
+                totalCashCollected += (totalAmount + dFee);
+              }
+            }
+
+            double partnerGrossProfit = partnerSales - totalPurchaseCost;
+            double netPartnerProfit = partnerGrossProfit - partnerPlatformShare;
+            double rightfulEarning = totalPurchaseCost + netPartnerProfit;
+
+            return StreamBuilder<List<PayoutModel>>(
+              stream: PayoutService().getPayouts(widget.partnerId),
+              builder: (context, payoutSnap) {
+                double totalWithdrawals = 0.0;
+                double totalCommissionPaid = 0.0;
+                if (payoutSnap.hasData) {
+                  for (var payout in payoutSnap.data!) {
+                    if (payout.status == PayoutStatus.approved) {
+                      if (payout.type == PayoutType.withdrawal) {
+                        totalWithdrawals += payout.amount;
+                      } else {
+                        totalCommissionPaid += payout.amount;
+                      }
+                    }
+                  }
+                }
+
+                double settlementAmount = (rightfulEarning - totalCashCollected) - totalWithdrawals + totalCommissionPaid;
+
+                return ListView(
+                  padding: const EdgeInsets.all(16),
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Financial Overview', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.grey.shade300),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: selectedFilter,
+                              items: ['All Time', 'Today', 'Yesterday', 'Last 7 Days', 'Last 30 Days']
+                                  .map((f) => DropdownMenuItem(value: f, child: Text(f)))
+                                  .toList(),
+                              onChanged: handleFilterChange,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    widget.adminPanel._buildAdminSettlementBanner(settlementAmount, widget.partnerId),
+                    const SizedBox(height: 24),
+                    const Text('Financial Breakdown', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    GridView.count(
+                      crossAxisCount: 2,
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      childAspectRatio: 1.2,
+                      children: [
+                        widget.adminPanel._buildStatCard('Partner Sales', '₹${partnerSales.toStringAsFixed(0)}', Icons.trending_up, Colors.blue),
+                        widget.adminPanel._buildStatCard('Purchase Cost', '₹${totalPurchaseCost.toStringAsFixed(0)}', Icons.shopping_bag, Colors.orange),
+                        widget.adminPanel._buildStatCard('Admin Share', '₹${partnerPlatformShare.toStringAsFixed(0)}', Icons.account_balance, Colors.deepOrange),
+                        widget.adminPanel._buildStatCard('Cash Collected', '₹${totalCashCollected.toStringAsFixed(0)}', Icons.payments, Colors.green),
+                        widget.adminPanel._buildStatCard('Net Partner Profit', '₹${netPartnerProfit.toStringAsFixed(0)}', Icons.assignment_turned_in, Colors.teal),
+                        widget.adminPanel._buildStatCard('Total Orders', '$totalOrders', Icons.receipt_long, Colors.purple),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    widget.adminPanel._buildFinancialActions(widget.partnerId),
+                    const SizedBox(height: 100), // Extra space at bottom
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 }

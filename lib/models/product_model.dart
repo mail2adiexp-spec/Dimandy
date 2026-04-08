@@ -19,9 +19,9 @@ class Product {
   final bool isCustomerChoice;
   final int salesCount;
   final int viewCount;
-  int stock;
-  final int minimumQuantity; // Added minimum quantity field
-  final int maximumQuantity; // Added maximum quantity field
+  double stock;
+  final double minimumQuantity; // Changed to double
+  final double maximumQuantity; // Changed to double
   final List<String> storeIds; // Added storeIds for availability
   final String? state; // Added state field
   final List<String> searchKeywords; // Added for global search
@@ -50,9 +50,9 @@ class Product {
     this.isCustomerChoice = false,
     this.salesCount = 0,
     this.viewCount = 0,
-    this.stock = 0,
-    this.minimumQuantity = 1,
-    this.maximumQuantity = 0,
+    this.stock = 0.0,
+    this.minimumQuantity = 1.0,
+    this.maximumQuantity = 0.0,
     this.storeIds = const [],
     this.state,
     this.deliveryFeeOverride,
@@ -120,9 +120,9 @@ class Product {
       isCustomerChoice: map['isCustomerChoice'] ?? false,
       salesCount: (map['salesCount'] as num?)?.toInt() ?? 0,
       viewCount: (map['viewCount'] as num?)?.toInt() ?? 0,
-      stock: (map['stock'] as num?)?.toInt()?.clamp(0, 9999999) ?? 0,
-      minimumQuantity: (map['minimumQuantity'] as num?)?.toInt() ?? 1,
-      maximumQuantity: (map['maximumQuantity'] as num?)?.toInt() ?? 0,
+      stock: (map['stock'] as num?)?.toDouble() ?? 0.0,
+      minimumQuantity: (map['minimumQuantity'] as num?)?.toDouble() ?? 1.0,
+      maximumQuantity: (map['maximumQuantity'] as num?)?.toDouble() ?? 0.0,
       storeIds: (map['storeIds'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       state: map['state'] as String?,
       deliveryFeeOverride: (map['deliveryFeeOverride'] as num?)?.toDouble(),

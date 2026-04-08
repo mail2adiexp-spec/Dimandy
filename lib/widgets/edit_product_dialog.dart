@@ -32,7 +32,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
   late TextEditingController _minQtyController;
   late TextEditingController _maxQtyController;
   late TextEditingController _adminProfitPercentageController; // Added
-  late TextEditingController _deliveryFeeOverrideController; // Added
   late TextEditingController _servicePincodesController; // Added
   
   late String _selectedCategory;
@@ -41,6 +40,8 @@ class _EditProductDialogState extends State<EditProductDialog> {
   List<Uint8List> _newImages = []; // Bytes for web/mobile compatibility
   List<String> _selectedStoreIds = []; // Added for store linking
   bool _isCustomerChoice = false;
+  late String _minUnit;
+  late String _maxUnit;
   bool _isLoading = false;
 
   final ImagePicker _picker = ImagePicker();
@@ -62,9 +63,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _adminProfitPercentageController = TextEditingController(
       text: (widget.productData['adminProfitPercentage'] as num?)?.toString() ?? '',
     );
-    _deliveryFeeOverrideController = TextEditingController(
-      text: (widget.productData['deliveryFeeOverride'] as num?)?.toString() ?? '',
-    );
     _selectedCategory = widget.productData['category'] ?? 'Daily Needs';
     _selectedUnit = widget.productData['unit'] ?? 'Pic';
     _existingImageUrls = List<String>.from(widget.productData['imageUrls'] ?? (widget.productData['imageUrl'] != null ? [widget.productData['imageUrl']] : []));
@@ -73,6 +71,27 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _servicePincodesController = TextEditingController(
       text: (widget.productData['servicePincodes'] as List?)?.join(', ') ?? '',
     );
+    _minUnit = _selectedUnit;
+    _maxUnit = _selectedUnit;
+    
+    // Auto-detect if current values are sub-units (simple heuristic)
+    double minV = (widget.productData['minimumQuantity'] as num?)?.toDouble() ?? 1.0;
+    if (_selectedUnit == 'Kg' && minV < 1.0 && minV > 0) {
+      _minUnit = 'Grm';
+      _minQtyController.text = (minV * 1000).toStringAsFixed(0);
+    } else if (_selectedUnit == 'Ltr' && minV < 1.0 && minV > 0) {
+      _minUnit = 'Ml';
+      _minQtyController.text = (minV * 1000).toStringAsFixed(0);
+    }
+
+    double maxV = (widget.productData['maximumQuantity'] as num?)?.toDouble() ?? 0.0;
+    if (_selectedUnit == 'Kg' && maxV > 0 && maxV < 1.0) {
+      _maxUnit = 'Grm';
+      _maxQtyController.text = (maxV * 1000).toStringAsFixed(0);
+    } else if (_selectedUnit == 'Ltr' && maxV > 0 && maxV < 1.0) {
+      _maxUnit = 'Ml';
+      _maxQtyController.text = (maxV * 1000).toStringAsFixed(0);
+    }
   }
 
   @override
@@ -86,7 +105,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
     _minQtyController.dispose();
     _maxQtyController.dispose();
     _adminProfitPercentageController.dispose();
-    _deliveryFeeOverrideController.dispose();
     _servicePincodesController.dispose();
     super.dispose();
   }
@@ -163,9 +181,9 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'discountPercent': discountPercent > 0 ? discountPercent : null,
         'mrp': mrp,
         'isHotDeal': mrp > sellingPrice,
-        'stock': int.parse(_stockController.text),
-        'minimumQuantity': int.parse(_minQtyController.text),
-        'maximumQuantity': int.parse(_maxQtyController.text),
+        'stock': double.parse(_stockController.text),
+        'minimumQuantity': _getConvertedValue(double.parse(_minQtyController.text), _minUnit),
+        'maximumQuantity': _getConvertedValue(double.parse(_maxQtyController.text), _maxUnit),
         'category': _selectedCategory,
         'unit': _selectedUnit,
         'storeIds': _selectedStoreIds, // Save storeIds
@@ -174,17 +192,14 @@ class _EditProductDialogState extends State<EditProductDialog> {
         'adminProfitPercentage': _adminProfitPercentageController.text.isNotEmpty 
             ? double.tryParse(_adminProfitPercentageController.text) 
             : null,
-        'deliveryFeeOverride': _deliveryFeeOverrideController.text.isNotEmpty 
-            ? double.tryParse(_deliveryFeeOverrideController.text) 
-            : null,
         'isCustomerChoice': _isCustomerChoice,
         'servicePincodes': _servicePincodesController.text.split(',').map((e) => e.trim()).where((e) => e.isNotEmpty).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
       // --- LOG STOCK INCREASE AS PURCHASE ---
-      final newStock = int.parse(_stockController.text);
-      final oldStock = (widget.productData['stock'] as num?)?.toInt() ?? 0;
+      final newStock = double.parse(_stockController.text);
+      final oldStock = (widget.productData['stock'] as num?)?.toDouble() ?? 0.0;
       final bPrice = double.parse(_basePriceController.text);
       
       if (newStock > oldStock) {
@@ -215,6 +230,19 @@ class _EditProductDialogState extends State<EditProductDialog> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  double _getConvertedValue(double value, String unit) {
+    if ((_selectedUnit == 'Kg' && unit == 'Grm') || (_selectedUnit == 'Ltr' && unit == 'Ml')) {
+      return value / 1000.0;
+    }
+    return value;
+  }
+
+  List<String> _getQtyUnitOptions(String mainUnit) {
+    if (mainUnit == 'Kg') return ['Kg', 'Grm'];
+    if (mainUnit == 'Ltr') return ['Ltr', 'Ml'];
+    return [mainUnit];
   }
 
   @override
@@ -432,42 +460,84 @@ class _EditProductDialogState extends State<EditProductDialog> {
                       items: ['Kg', 'Ltr', 'Pic', 'Pkt', 'Grm', 'Box', 'Dozen', 'Set', 'Packet', 'Gram']
                           .map((c) => DropdownMenuItem(value: c, child: Text(c)))
                           .toList(),
-                      onChanged: (v) => setState(() => _selectedUnit = v!),
+                      onChanged: (v) {
+                        setState(() {
+                           _selectedUnit = v!;
+                           _minUnit = v;
+                           _maxUnit = v;
+                        });
+                      },
                       decoration: const InputDecoration(labelText: 'Product Unit', border: OutlineInputBorder()),
                     ),
                     const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
+                          flex: 2,
                           child: TextFormField(
                             controller: _stockController,
                             decoration: InputDecoration(labelText: 'Stock', border: const OutlineInputBorder(), suffixText: _selectedUnit),
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             validator: (v) {
-                              final val = int.tryParse(v ?? '');
+                              final val = double.tryParse(v ?? '');
                               if (val == null) return 'Invalid';
                               if (val < 0) return 'Cannot be negative';
                               return null;
                             },
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 8),
                         Expanded(
-                          child: TextFormField(
-                             controller: _minQtyController,
-                             decoration: InputDecoration(labelText: 'Min Order Qty', border: const OutlineInputBorder(), suffixText: _selectedUnit),
-                             keyboardType: TextInputType.number,
-                             validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v) < 1) ? 'Min 1' : null,
+                          flex: 3,
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                   controller: _minQtyController,
+                                   decoration: const InputDecoration(labelText: 'Min Qty', border: OutlineInputBorder()),
+                                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                   validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null || double.parse(v!) <= 0) ? 'Invalid' : null,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              SizedBox(
+                                width: 75,
+                                child: DropdownButtonFormField<String>(
+                                  value: _minUnit,
+                                  isDense: true,
+                                  decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8)),
+                                  items: _getQtyUnitOptions(_selectedUnit).map((u) => DropdownMenuItem(value: u, child: Text(u, style: const TextStyle(fontSize: 12)))).toList(),
+                                  onChanged: (v) => setState(() => _minUnit = v!),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                       controller: _maxQtyController,
-                       decoration: InputDecoration(labelText: 'Max Order Qty (0 for no limit)', border: const OutlineInputBorder(), suffixText: _selectedUnit),
-                       keyboardType: TextInputType.number,
-                       validator: (v) => (v?.isEmpty == true || int.tryParse(v!) == null || int.parse(v!) < 0) ? 'Invalid' : null,
+                    Row(
+                       children: [
+                         Expanded(
+                           child: TextFormField(
+                              controller: _maxQtyController,
+                              decoration: const InputDecoration(labelText: 'Max Order Qty (0 for no limit)', border: OutlineInputBorder()),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              validator: (v) => (v?.isEmpty == true || double.tryParse(v!) == null || double.parse(v!) < 0) ? 'Invalid' : null,
+                           ),
+                         ),
+                         const SizedBox(width: 8),
+                         SizedBox(
+                            width: 75,
+                            child: DropdownButtonFormField<String>(
+                              value: _maxUnit,
+                              isDense: true,
+                              decoration: const InputDecoration(border: OutlineInputBorder(), contentPadding: EdgeInsets.symmetric(horizontal: 4, vertical: 8)),
+                              items: _getQtyUnitOptions(_selectedUnit).map((u) => DropdownMenuItem(value: u, child: Text(u, style: const TextStyle(fontSize: 12)))).toList(),
+                              onChanged: (v) => setState(() => _maxUnit = v!),
+                            ),
+                         ),
+                       ],
                     ),
                   ],
                 ),
@@ -598,17 +668,6 @@ class _EditProductDialogState extends State<EditProductDialog> {
                       border: OutlineInputBorder(),
                       suffixText: '%',
                       helperText: 'Leave empty to use system default (0%)',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _deliveryFeeOverrideController,
-                    decoration: const InputDecoration(
-                      labelText: 'Delivery Fee Override (₹) [Admin Only]',
-                      border: OutlineInputBorder(),
-                      prefixText: '₹',
-                      helperText: 'Leave empty for default delivery fee',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),

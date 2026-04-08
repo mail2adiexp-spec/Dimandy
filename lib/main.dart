@@ -22,11 +22,13 @@ import 'package:ecommerce_app/screens/delivery_partner_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/core_staff_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/store_manager_dashboard_screen.dart';
 import 'package:ecommerce_app/screens/store_partner_dashboard_screen.dart';
+import 'package:ecommerce_app/screens/admin_add_edit_product_screen.dart';
 import 'package:ecommerce_app/screens/category_service_providers_screen.dart';
 import 'package:ecommerce_app/screens/provider_details_screen.dart';
 import 'package:ecommerce_app/screens/select_services_screen.dart';
-import 'package:ecommerce_app/screens/static_pages.dart';
 import 'package:ecommerce_app/screens/splash_screen.dart'; // Add this line
+import 'package:ecommerce_app/guards/admin_guard.dart'; // Add this line
+import 'package:ecommerce_app/screens/static_pages.dart'; // Add this line
 import 'package:ecommerce_app/models/service_category_model.dart';
 
 import 'package:ecommerce_app/screens/booking_tracking_screen.dart';
@@ -104,45 +106,11 @@ class MyApp extends StatelessWidget {
           update: (context, auth, previous) =>
               previous ?? AddressProvider(auth),
         ),
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = ProductProvider();
-            provider.fetchProducts(refresh: true);
-            return provider;
-          },
-        ),
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = CategoryProvider();
-            provider.startListening();
-            provider.seedDefaultCategories(); // Seed categories if missing
-            return provider;
-          },
-        ),
-        // GiftProvider for managing gift items
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = GiftProvider();
-            provider.startListening();
-            return provider;
-          },
-        ),
-        // ServiceCategoryProvider with realtime listener
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = ServiceCategoryProvider();
-            provider.startListening();
-            return provider;
-          },
-        ),
-        // FeaturedSectionProvider enabled
-        ChangeNotifierProvider(
-          create: (_) {
-            final provider = FeaturedSectionProvider();
-            provider.fetchSections();
-            return provider;
-          },
-        ),
+        ChangeNotifierProvider(create: (_) => ProductProvider()),
+        ChangeNotifierProvider(create: (_) => CategoryProvider()),
+        ChangeNotifierProvider(create: (_) => GiftProvider()),
+        ChangeNotifierProvider(create: (_) => ServiceCategoryProvider()),
+        ChangeNotifierProvider(create: (_) => FeaturedSectionProvider()),
         // RecommendationService
         ChangeNotifierProvider(
           create: (_) => RecommendationService(),
@@ -226,7 +194,7 @@ class MyApp extends StatelessWidget {
               AuthScreen.routeName: (ctx) => const AuthScreen(),
               AccountScreen.routeName: (ctx) => const AccountScreen(),
               EditProfileScreen.routeName: (ctx) => const EditProfileScreen(),
-              AdminPanelScreen.routeName: (ctx) => const _AdminPanelGuard(),
+              AdminPanelScreen.routeName: (ctx) => const AdminPanelGuard(),
               JoinPartnerScreen.routeName: (ctx) => const JoinPartnerScreen(),
               CheckPartnerStatusScreen.routeName: (ctx) =>
                   const CheckPartnerStatusScreen(),
@@ -313,6 +281,16 @@ class MyApp extends StatelessWidget {
                   settings: settings, // Pass settings to preserve arguments
                 );
               }
+              if (settings.name == AdminAddEditProductScreen.routeName) {
+                 final args = settings.arguments as Map<String, dynamic>?;
+                 return MaterialPageRoute(
+                   builder: (_) => AdminAddEditProductScreen(
+                     productId: args?['productId'],
+                     productData: args?['productData'],
+                     storeId: args?['storeId'],
+                   ),
+                 );
+              }
               if (settings.name == BookingTrackingScreen.routeName) {
                  final bookingId = settings.arguments as String;
                  return MaterialPageRoute(
@@ -328,41 +306,3 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// Route-level guard to ensure only admins can open Admin Panel
-class _AdminPanelGuard extends StatelessWidget {
-  const _AdminPanelGuard();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: true);
-
-    // Not logged in: show Auth screen
-    if (!auth.isLoggedIn) {
-      // Optionally, you could pushNamed(AuthScreen.routeName) instead
-      return const AuthScreen();
-    }
-
-    // Logged in but not admin: block access
-    if (!auth.hasAdminAccess) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Access denied: Admins only'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        if (Navigator.of(context).canPop()) {
-          Navigator.of(context).pop();
-        }
-      });
-
-      return Scaffold(
-        appBar: AppBar(title: const Text('Admin Panel')),
-        body: const Center(child: Text('Access denied: Admins only')),
-      );
-    }
-
-    // Admin: proceed
-    return const AdminPanelScreen();
-  }
-}

@@ -28,6 +28,8 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
   double _partnerSales = 0;
   double _totalPurchase = 0;
   double _totalWithdrawals = 0;
+  double _totalDeliveryPayouts = 0;
+  double _totalDeliveryProfit = 0;
 
 
   // Filters
@@ -77,11 +79,16 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
       double partnerSales = 0;
       double adminPurchaseCost = 0;
       double partnerCommissions = 0;
-      double deliveryFees = 0;
+      double deliveryFees = 0; // What users paid
+      double deliveryPayouts = 0; // What partners earned
 
       for (var doc in orderSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
-        deliveryFees += (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        final fee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+        final payout = (data['partnerPayout'] as num?)?.toDouble() ?? fee;
+        
+        deliveryFees += fee;
+        deliveryPayouts += payout;
         
         final items = (data['items'] as List<dynamic>?) ?? [];
         for (var item in items) {
@@ -154,11 +161,21 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
       for (var doc in txSnapshot.docs) {
         final data = doc.data() as Map<String, dynamic>;
         final tx = TransactionModel.fromMap(data, doc.id);
+        
+        String displayType = 'Payment';
+        if (tx.description.contains('Commission')) {
+          displayType = 'Commission';
+        } else if ((tx.metadata ?? {})['type'] == 'delivery_earning' || tx.description.contains('Delivery')) {
+          displayType = 'Delivery Fee';
+        } else if ((tx.metadata ?? {})['type'] == 'product_earning') {
+          displayType = 'Product Sale';
+        }
+
         enhancedTxns.add({
           'tx': tx,
-          'type': tx.description.contains('Commission') ? 'Commission' : 'Payment',
+          'type': displayType,
           'amount': tx.amount,
-          'storeName': (tx.metadata ?? {})['storeName'] ?? 'N/A',
+          'storeName': (tx.metadata ?? {})['storeName'] ?? (tx.metadata ?? {})['orderId']?.toString().substring(0, 8) ?? 'N/A',
         });
       }
 
@@ -173,8 +190,11 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
           _totalWithdrawals = totalWithdrawals;
           _enhancedTransactions = enhancedTxns;
           
-          // Total Platform Net Profit = (Own Profit on direct items + Commissions on partner items + Booking Platform Fees)
-          _totalProfit = (_adminProfit + _partnerCommissions);
+          _totalDeliveryPayouts = deliveryPayouts;
+          _totalDeliveryProfit = deliveryFees - deliveryPayouts; // Income - Expense
+          
+          // Total Platform Net Profit = (Own Profit on direct items + Commissions on partner items + Booking Platform Fees + Delivery Profit)
+          _totalProfit = (_adminProfit + _partnerCommissions + _totalDeliveryProfit);
           
           _isLoading = false;
         });
@@ -366,9 +386,11 @@ class _AdminFinancialScreenState extends State<AdminFinancialScreen> {
             _buildKpiCard('Admin Profit', _adminProfit, Icons.storefront, Colors.teal),
             _buildKpiCard('Partner Commissions', _partnerCommissions, Icons.account_balance_wallet, Colors.orange),
             _buildKpiCard('Partner Sales', _partnerSales, Icons.shopping_bag, Colors.indigo),
-            _buildKpiCard('Delivery Cost', _deliveryCost, Icons.local_shipping, Colors.red),
-            _buildKpiCard('Withdrawals', _totalWithdrawals, Icons.payments, Colors.deepPurple),
-            _buildKpiCard('Purchase Cost', _totalPurchase, Icons.inventory, Colors.blueGrey),
+            _buildKpiCard('Total Delivery Fees', _deliveryCost, Icons.wallet, Colors.blue),
+            _buildKpiCard('Delivery Partner Payouts', _totalDeliveryPayouts, Icons.payments_outlined, Colors.orange),
+            _buildKpiCard('Net Delivery Profit/Loss', _totalDeliveryProfit, Icons.local_shipping, Colors.teal),
+            _buildKpiCard('Withdrawals Approved', _totalWithdrawals, Icons.outbox, Colors.red),
+            _buildKpiCard('Admin Purchase Cost', _totalPurchase, Icons.inventory, Colors.blueGrey),
           ],
         ),
 

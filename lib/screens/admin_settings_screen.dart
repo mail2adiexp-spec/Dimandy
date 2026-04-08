@@ -26,11 +26,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
   final _servicePlatformFeeController = TextEditingController();
   final _announcementController = TextEditingController();
   final _contactPhoneController = TextEditingController(); 
-  final _productSearchController = TextEditingController(); 
+  final _customerSearchController = TextEditingController(); 
+  final _partnerSearchController = TextEditingController(); 
   Map<String, double> _pincodeOverrides = {}; 
-  List<Product> _productSearchResults = []; 
+  List<Product> _customerSearchResults = []; 
+  List<Product> _partnerSearchResults = []; 
   List<Product> _productsWithOverrides = []; 
-  bool _isSearchingProducts = false; 
+  bool _isSearchingCustomer = false; 
+  bool _isSearchingPartner = false; 
   bool _enableProductDeliveryFees = false;
   bool _isAnnouncementEnabled = false;
   bool _isLoading = true;
@@ -65,18 +68,33 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     }
   }
 
-  Future<void> _searchProducts(String query) async {
+  Future<void> _searchCustomerProducts(String query) async {
     if (query.trim().isEmpty) {
-      setState(() { _productSearchResults = []; _isSearchingProducts = false; });
+      setState(() { _customerSearchResults = []; _isSearchingCustomer = false; });
       return;
     }
-    setState(() => _isSearchingProducts = true);
+    setState(() => _isSearchingCustomer = true);
     try {
       final results = await context.read<ProductProvider>().searchProductsGlobal(query.trim());
-      setState(() { _productSearchResults = results; _isSearchingProducts = false; });
+      setState(() { _customerSearchResults = results; _isSearchingCustomer = false; });
     } catch (e) {
       debugPrint('Search error: $e');
-      setState(() => _isSearchingProducts = false);
+      setState(() => _isSearchingCustomer = false);
+    }
+  }
+
+  Future<void> _searchPartnerProducts(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() { _partnerSearchResults = []; _isSearchingPartner = false; });
+      return;
+    }
+    setState(() => _isSearchingPartner = true);
+    try {
+      final results = await context.read<ProductProvider>().searchProductsGlobal(query.trim());
+      setState(() { _partnerSearchResults = results; _isSearchingPartner = false; });
+    } catch (e) {
+      debugPrint('Search error: $e');
+      setState(() => _isSearchingPartner = false);
     }
   }
 
@@ -95,19 +113,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
     }
   }
 
-  void _showUpdateProductFeeDialog(Product product) {
+  void _showUpdateCustomerFeeDialog(Product product) {
     final customerFeeController = TextEditingController(text: (product.deliveryFeeOverride ?? 0).toString());
-    final partnerExtraController = TextEditingController(text: (product.partnerPayoutOverride ?? 0).toString());
     
     showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: Text('Set Fees: ${product.name}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(controller: customerFeeController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Customer Fee (₹)')),
-          const SizedBox(height: 16),
-          TextField(controller: partnerExtraController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Partner Extra Payout (₹)')),
-        ],
+      title: Text('Set Customer Fee: ${product.name}'),
+      content: TextField(
+        controller: customerFeeController, 
+        keyboardType: TextInputType.number, 
+        decoration: const InputDecoration(labelText: 'Customer Fee (₹)', hintText: 'Charged to customer'),
       ),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
@@ -115,9 +129,41 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
           _updateProductFees(
             product.id, 
             double.tryParse(customerFeeController.text) ?? 0.0,
-            double.tryParse(partnerExtraController.text) ?? 0.0
+            product.partnerPayoutOverride ?? 0.0
           ); 
           Navigator.pop(ctx); 
+          setState(() {
+            _customerSearchController.clear();
+            _customerSearchResults = [];
+          });
+        }, child: const Text('Save')),
+      ],
+    ));
+  }
+
+  void _showUpdatePartnerPayoutDialog(Product product) {
+    final partnerPayoutController = TextEditingController(text: (product.partnerPayoutOverride ?? 0).toString());
+    
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: Text('Set Partner Payout: ${product.name}'),
+      content: TextField(
+        controller: partnerPayoutController, 
+        keyboardType: TextInputType.number, 
+        decoration: const InputDecoration(labelText: 'Partner Extra Payout (₹)', hintText: 'Paid to partner'),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+        ElevatedButton(onPressed: () { 
+          _updateProductFees(
+            product.id, 
+            product.deliveryFeeOverride ?? 0.0,
+            double.tryParse(partnerPayoutController.text) ?? 0.0
+          ); 
+          Navigator.pop(ctx); 
+          setState(() {
+            _partnerSearchController.clear();
+            _partnerSearchResults = [];
+          });
         }, child: const Text('Save')),
       ],
     ));
@@ -350,12 +396,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      children: [
                        Icon(Icons.person_outline, color: Colors.blue.shade800),
                        const SizedBox(width: 8),
-                       Text(
-                         'Customer Delivery Fees',
-                         style: TextStyle(
-                           fontSize: 18,
-                           fontWeight: FontWeight.bold,
-                           color: Colors.blue.shade900,
+                       Expanded(
+                         child: Text(
+                           'Customer Delivery Fees (Admin Collects)',
+                           style: TextStyle(
+                             fontSize: 18,
+                             fontWeight: FontWeight.bold,
+                             color: Colors.blue.shade900,
+                           ),
                          ),
                        ),
                      ],
@@ -363,25 +411,21 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                    const SizedBox(height: 8),
                    Text(
                      'Manage how much the customer is charged for delivery.',
-                     style: TextStyle(
-                       fontSize: 12, 
-                       color: Colors.blue.shade800,
-                     ),
+                     style: TextStyle(fontSize: 12, color: Colors.blue.shade800),
                    ),
-                   const SizedBox(height: 16),
+                   const SizedBox(height: 24),
                    
                     // Flat Delivery Fee
                     TextField(
                       controller: _deliveryFeeController,
                       keyboardType: TextInputType.number,
                       decoration: const InputDecoration(
-                        labelText: 'Delivery Fee (₹)',
+                        labelText: 'Global Flat Delivery Fee (₹)',
                         hintText: 'e.g. 30',
                         filled: true,
                         fillColor: Colors.white,
                         border: OutlineInputBorder(),
                         prefixIcon: Icon(Icons.currency_rupee),
-                        suffixText: '₹',
                       ),
                     ),
                    const SizedBox(height: 16),
@@ -391,8 +435,8 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      controller: _freeDeliveryThresholdController,
                      keyboardType: TextInputType.number,
                      decoration: const InputDecoration(
-                       labelText: 'Free Delivery on Orders Above (₹)',
-                       hintText: 'e.g. 500 (Set 0 for No Free Delivery)',
+                       labelText: 'Free Delivery Threshold (₹)',
+                       hintText: 'e.g. 500 (Set 0 to disable)',
                        filled: true,
                        fillColor: Colors.white,
                        border: OutlineInputBorder(),
@@ -400,22 +444,12 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      ),
                    ),
                    const SizedBox(height: 16),
-                   SwitchListTile(
-                     title: const Text('Enable Product-Specific Fees'),
-                     subtitle: const Text('Adds extra charges set on products to total fee'),
-                     value: _enableProductDeliveryFees,
-                     activeColor: Colors.blue.shade900,
-                     onChanged: (val) => setState(() => _enableProductDeliveryFees = val),
-                   ),
-                   const SizedBox(height: 24),
-
+                   
                    // Pincode Overrides
+                   const Divider(),
                    Text(
                      'Pincode Specific Fees (Customer)',
-                     style: TextStyle(
-                       fontWeight: FontWeight.bold,
-                       color: Colors.blue.shade900,
-                     ),
+                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
                    ),
                    const SizedBox(height: 8),
                    ..._pincodeOverrides.entries.map((entry) => ListTile(
@@ -438,82 +472,63 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      label: const Text('Add Pincode Override'),
                      style: TextButton.styleFrom(foregroundColor: Colors.blue.shade900),
                    ),
-                 ],
-               ),
-             ),
-          ),
-          const SizedBox(height: 24),
 
-          // PRODUCT SPECIFIC OVERRIDES SECTION (NEW)
-          Card(
-             color: Colors.blue.shade50,
-             child: Padding(
-               padding: const EdgeInsets.all(16),
-               child: Column(
-                 crossAxisAlignment: CrossAxisAlignment.start,
-                 children: [
-                   Row(
-                     children: [
-                       Icon(Icons.inventory_2_outlined, color: Colors.blue.shade800),
-                       const SizedBox(width: 8),
-                       Text('Product Specific Overrides', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.blue.shade900)),
-                     ],
-                   ),
+                   // NEW: Product-Specific Search (Customer)
+                   const Divider(),
+                   const Text('Add Product Search (Customer Fee)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                    const SizedBox(height: 8),
-                   const Text('Search products to set custom delivery fees or partner extras.', style: TextStyle(fontSize: 12)),
-                   const SizedBox(height: 16),
                    TextField(
-                     controller: _productSearchController,
-                     onChanged: _searchProducts,
-                     decoration: InputDecoration(
-                       hintText: 'Search product...',
-                       prefixIcon: const Icon(Icons.search),
-                       suffixIcon: _isSearchingProducts ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
-                       border: const OutlineInputBorder(),
-                       filled: true, fillColor: Colors.white,
-                     ),
-                   ),
-                   if (_productSearchResults.isNotEmpty)
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
-                      child: ListView.separated(
-                        shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _productSearchResults.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (ctx, i) {
-                          final p = _productSearchResults[i];
-                          return ListTile(
-                            title: Text(p.name),
-                            trailing: ElevatedButton(onPressed: () => _showUpdateProductFeeDialog(p), child: const Text('Set Fee')),
-                          );
-                        },
+                      controller: _customerSearchController,
+                      onChanged: _searchCustomerProducts,
+                      decoration: InputDecoration(
+                        hintText: 'Search product for custom fee...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _isSearchingCustomer ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
+                        border: const OutlineInputBorder(),
+                        filled: true, fillColor: Colors.white,
                       ),
                     ),
-                   const SizedBox(height: 24),
-                   const Text('List of Product Overrides:', style: TextStyle(fontWeight: FontWeight.bold)),
+                    if (_customerSearchResults.isNotEmpty)
+                     Container(
+                       margin: const EdgeInsets.only(top: 8),
+                       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                       child: ListView.separated(
+                         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                         itemCount: _customerSearchResults.length,
+                         separatorBuilder: (_, __) => const Divider(height: 1),
+                         itemBuilder: (ctx, i) {
+                           final p = _customerSearchResults[i];
+                           return ListTile(
+                             title: Text(p.name, style: const TextStyle(fontSize: 14)),
+                             trailing: ElevatedButton(onPressed: () => _showUpdateCustomerFeeDialog(p), child: const Text('Set Fee')),
+                           );
+                         },
+                       ),
+                     ),
+
+                   const SizedBox(height: 16),
+                   Text(
+                     'Current Product-Specific (Customer Overrides)',
+                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue.shade900),
+                   ),
                    const SizedBox(height: 8),
-                   if (_productsWithOverrides.isEmpty)
-                    const Padding(padding: EdgeInsets.all(16), child: Center(child: Text('No manual fees set.', style: TextStyle(color: Colors.grey))))
-                   else
-                    ListView.builder(
-                      shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-                      itemCount: _productsWithOverrides.length,
-                      itemBuilder: (ctx, i) {
-                        final p = _productsWithOverrides[i];
-                        return ListTile(
-                          title: Text(p.name),
-                          subtitle: Text('Cust: ₹${p.deliveryFeeOverride ?? 0} | Partner: +₹${p.partnerPayoutOverride ?? 0}'),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _showUpdateProductFeeDialog(p)),
-                              IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _updateProductFees(p.id, 0, 0)),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                   Builder(builder: (context) {
+                     final list = _productsWithOverrides.where((p) => (p.deliveryFeeOverride ?? 0) > 0).toList();
+                     if (list.isEmpty) return const Text('No customer overrides set.', style: TextStyle(fontSize: 11, color: Colors.grey));
+                     return ListView.builder(
+                       shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                       itemCount: list.length,
+                       itemBuilder: (ctx, i) {
+                         final p = list[i];
+                         return ListTile(
+                           dense: true,
+                           title: Text(p.name, style: const TextStyle(fontSize: 12)),
+                           subtitle: Text('Fee: ₹${p.deliveryFeeOverride}', style: const TextStyle(fontSize: 10)),
+                           trailing: IconButton(icon: const Icon(Icons.delete, size: 18, color: Colors.grey), onPressed: () => _updateProductFees(p.id, 0, p.partnerPayoutOverride ?? 0)),
+                         );
+                       },
+                     );
+                   }),
                  ],
                ),
              ),
@@ -532,12 +547,14 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      children: [
                        Icon(Icons.delivery_dining, color: Colors.orange.shade800),
                        const SizedBox(width: 8),
-                       Text(
-                         'Delivery Partner Payout',
-                         style: TextStyle(
-                           fontSize: 18,
-                           fontWeight: FontWeight.bold,
-                           color: Colors.orange.shade900,
+                       Expanded(
+                         child: Text(
+                           'Delivery Partner Payout (Admin Pays)',
+                           style: TextStyle(
+                             fontSize: 18,
+                             fontWeight: FontWeight.bold,
+                             color: Colors.orange.shade900,
+                           ),
                          ),
                        ),
                      ],
@@ -545,31 +562,81 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                    const SizedBox(height: 8),
                    Text(
                      'Set the amount paid to the delivery partner for each order.',
-                     style: TextStyle(
-                       fontSize: 12, 
-                       color: Colors.orange.shade800,
-                     ),
+                     style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
                    ),
-                   const SizedBox(height: 16),
+                   const SizedBox(height: 24),
 
                    TextField(
                      controller: _partnerDeliveryRateController,
                      keyboardType: TextInputType.number,
                      decoration: const InputDecoration(
-                       labelText: 'Partner Commission Rate (₹)',
-                       hintText: 'Payable to Delivery Boy per Order',
+                       labelText: 'Global Partner Base Rate (₹)',
+                       hintText: 'Payable per Order',
                        filled: true,
                        fillColor: Colors.white,
                        border: OutlineInputBorder(),
                        prefixIcon: Icon(Icons.motorcycle),
-                       suffixText: '₹/Order',
                      ),
                    ),
+                   
+                   // NEW: Product-Specific Search (Partner)
+                   const SizedBox(height: 24),
+                   const Divider(),
+                   const Text('Add Product Search (Partner Extra)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                    const SizedBox(height: 8),
+                   TextField(
+                      controller: _partnerSearchController,
+                      onChanged: _searchPartnerProducts,
+                      decoration: InputDecoration(
+                        hintText: 'Search product for partner extra...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _isSearchingPartner ? const SizedBox(width: 20, height: 20, child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator(strokeWidth: 2))) : null,
+                        border: const OutlineInputBorder(),
+                        filled: true, fillColor: Colors.white,
+                      ),
+                    ),
+                    if (_partnerSearchResults.isNotEmpty)
+                     Container(
+                       margin: const EdgeInsets.only(top: 8),
+                       decoration: BoxDecoration(color: Colors.white, border: Border.all(color: Colors.grey.shade300), borderRadius: BorderRadius.circular(8)),
+                       child: ListView.separated(
+                         shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                         itemCount: _partnerSearchResults.length,
+                         separatorBuilder: (_, __) => const Divider(height: 1),
+                         itemBuilder: (ctx, i) {
+                           final p = _partnerSearchResults[i];
+                           return ListTile(
+                             title: Text(p.name, style: const TextStyle(fontSize: 14)),
+                             trailing: ElevatedButton(onPressed: () => _showUpdatePartnerPayoutDialog(p), child: const Text('Set Extra')),
+                           );
+                         },
+                       ),
+                     ),
+
+                   const SizedBox(height: 24),
+                   const Divider(),
                    Text(
-                     'This is the fixed cost subtracted from Gross Profit for each order.',
-                     style: TextStyle(fontSize: 11, color: Colors.orange.shade700, fontStyle: FontStyle.italic),
+                     'Current Product-Specific (Partner Extra Payout)',
+                     style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900),
                    ),
+                   const SizedBox(height: 8),
+                   Builder(builder: (context) {
+                     final list = _productsWithOverrides.where((p) => (p.partnerPayoutOverride ?? 0) > 0).toList();
+                     if (list.isEmpty) return const Text('No partner extras set.', style: TextStyle(fontSize: 11, color: Colors.grey));
+                     return ListView.builder(
+                       shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                       itemCount: list.length,
+                       itemBuilder: (ctx, i) {
+                         final p = list[i];
+                         return ListTile(
+                           dense: true,
+                           title: Text(p.name, style: const TextStyle(fontSize: 12)),
+                           subtitle: Text('Extra Payout: +₹${p.partnerPayoutOverride}', style: const TextStyle(fontSize: 10)),
+                           trailing: IconButton(icon: const Icon(Icons.delete, size: 18, color: Colors.grey), onPressed: () => _updateProductFees(p.id, p.deliveryFeeOverride ?? 0, 0)),
+                         );
+                       },
+                     );
+                   }),
                  ],
                ),
              ),
@@ -586,13 +653,15 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                    Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                       Text(
-                        'Home Page Announcement',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
+                       Expanded(
+                         child: Text(
+                          'Home Page Announcement',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
+                       ),
                       Switch(
                         value: _isAnnouncementEnabled,
                         onChanged: (val) => setState(() => _isAnnouncementEnabled = val),
@@ -679,11 +748,13 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                       children: [
                         Icon(Icons.check_circle, color: Colors.green),
                         const SizedBox(width: 8),
-                        Text(
-                          'Current QR Code',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
+                        Expanded(
+                          child: Text(
+                            'Current QR Code',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
                         ),
                       ],

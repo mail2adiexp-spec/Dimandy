@@ -19,7 +19,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "in.dimandy.app"
-    compileSdk = 36  // Required for latest plugins (mobile_scanner, image_picker, etc.)
+    compileSdk = 36  // Required by latest plugins and AndroidX libraries
     ndkVersion = "27.0.12077973"  // Use locally available NDK r27 for 16 KB page size support
 
     compileOptions {
@@ -40,7 +40,7 @@ android {
         minSdk = flutter.minSdkVersion  // Required for mobile_scanner
         targetSdk = 35
         versionCode = 38
-        versionName = "1.2.3"
+        versionName = "1.1.13.38"
 
         externalNativeBuild {
             cmake {
