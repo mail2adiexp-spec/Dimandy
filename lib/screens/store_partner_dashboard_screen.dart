@@ -449,17 +449,20 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             final itemPurchase = buyingPrice * qty;
             final itemProfit = itemSales - itemPurchase;
             
-            final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
-            final isPlatformOwned = metadata['isPlatformOwned'] == true || item['sellerId'] == 'admin';
+            final sellerId = item['sellerId'] as String?;
+            final partnerUid = context.read<AuthProvider>().currentUser?.uid;
+            
+            // Only consider it the partner's item if the sellerId explicitly matches their UID
+            final isOwnItem = (sellerId == partnerUid) && (partnerUid != null);
 
-            if (isPlatformOwned) {
-              platformSales += itemSales;
-            } else {
+            if (isOwnItem) {
               partnerSales += itemSales;
               totalPurchaseCost += itemPurchase;
               if (itemProfit > 0) {
                 partnerPlatformShare += (itemProfit * (adminProfitPercentage / 100));
               }
+            } else {
+              platformSales += itemSales;
             }
             totalSoldQty += qty;
           }

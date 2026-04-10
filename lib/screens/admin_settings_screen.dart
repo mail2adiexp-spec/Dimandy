@@ -473,6 +473,18 @@ class _AdminSettingsScreenState extends State<AdminSettingsScreen> {
                      style: TextButton.styleFrom(foregroundColor: Colors.blue.shade900),
                    ),
 
+                   // NEW: Enable Product-Specific Overrides Toggle
+                   const Divider(),
+                   SwitchListTile(
+                     title: const Text('Enable Product-Specific Delivery Fees'),
+                     subtitle: const Text('Allow individual products to have extra delivery fees added.'),
+                     value: _enableProductDeliveryFees,
+                     onChanged: (val) => setState(() => _enableProductDeliveryFees = val),
+                     contentPadding: EdgeInsets.zero,
+                     activeColor: Colors.blue.shade900,
+                   ),
+                   const SizedBox(height: 8),
+
                    // NEW: Product-Specific Search (Customer)
                    const Divider(),
                    const Text('Add Product Search (Customer Fee)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),

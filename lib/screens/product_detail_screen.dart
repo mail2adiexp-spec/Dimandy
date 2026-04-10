@@ -738,6 +738,9 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       isFeatured: widget.product.isFeatured,
       stock: widget.product.stock, 
       storeIds: widget.product.storeIds,
+      adminProfitPercentage: widget.product.adminProfitPercentage,
+      deliveryFeeOverride: widget.product.deliveryFeeOverride != null ? double.parse((widget.product.deliveryFeeOverride! * variant.multiplier).toStringAsFixed(2)) : null,
+      partnerPayoutOverride: widget.product.partnerPayoutOverride != null ? double.parse((widget.product.partnerPayoutOverride! * variant.multiplier).toStringAsFixed(2)) : null,
     );
   }
 

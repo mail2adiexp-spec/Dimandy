@@ -8077,8 +8077,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                   );
                 }
 
-                double profit = 0;
-                double deliveryCosts = 0;
+                double adminGrossProfit = 0;
+                double deliveryFeesCollected = 0;
+                double deliveryPayoutsPaid = 0;
                 double otherExpensesAmount = 0;
                 
                 if (orderSnap.hasData && orderSnap.data != null) {
@@ -8087,49 +8088,55 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     final status = (data['status'] as String? ?? '').toLowerCase();
                     if (status != 'delivered') continue;
                     
+                    // 1. & 3. Customer Delivery Fees and Delivery Payout
                     final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
-                    deliveryCosts += dFee;
+                    final rawPayout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
+                    final actualPayout = (rawPayout > 0) ? rawPayout : dFee; // Fallback
+                    
+                    deliveryFeesCollected += dFee;
+                    deliveryPayoutsPaid += actualPayout;
 
-                    // Gross Revenue includes Delivery Fee
-                    profit += dFee;
-
+                    // 2. & 4. Admin Product Profit & Partner Commission
                     final items = data['items'] as List<dynamic>? ?? [];
                     for (var item in items) {
                       final price = (item['price'] as num?)?.toDouble() ?? 0.0;
                       final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
                       final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
                       final itemRevenue = price * quantity;
+                      final itemCost = basePrice * quantity;
+                      final itemProfit = itemRevenue - itemCost;
+                      final sellerId = item['sellerId'] as String? ?? 'admin';
+                      final storeId = data['storeId'] as String? ?? 'admin';
                       
                       final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
-                      final isPlatformItem = metadata['isPlatformOwned'] == true || 
-                                           item['sellerId'] == 'admin' || 
-                                           data['storeId'] == 'admin' ||
-                                           basePrice > 0;
+                      final isPlatformItem = metadata['isPlatformOwned'] == true || sellerId == 'admin';
                       
                       if (isPlatformItem) {
-                        profit += (itemRevenue - (basePrice * quantity));
+                        adminGrossProfit += itemProfit;
                       } else {
-                        // For Store Partners: 25% of Margin (Price - Cost)
-                        // If basePrice is missing, fallback to 20% of Revenue
-                        if (basePrice > 0) {
-                          profit += (itemRevenue - (basePrice * quantity)) * 0.25;
-                        } else {
-                          profit += (itemRevenue * 0.2);
+                        if (itemProfit > 0) {
+                          final commPercent = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0;
+                          adminGrossProfit += (itemProfit * (commPercent / 100));
                         }
                       }
                     }
                   }
                 }
                 
+                // 5. Service Provider Commission
                 if (bookingSnap.hasData && bookingSnap.data != null) {
                   for (var doc in bookingSnap.data!.docs) {
                     final data = doc.data() as Map<String, dynamic>;
                     final status = (data['status'] as String? ?? '').toLowerCase();
                     if (status != 'completed' && status != 'delivered') continue;
                     
-                    double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
-                    double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
-                    profit += comm;
+                    final platformFee = (data['platformFee'] as num?)?.toDouble() ?? 0.0;
+                    if (platformFee > 0) {
+                      adminGrossProfit += platformFee;
+                    } else {
+                      final cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                      adminGrossProfit += (cost * 0.25);
+                    }
                   }
                 }
 
@@ -8140,13 +8147,18 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                    }
                 }
 
+                // Calculation logic based on EXACT user requirements
+                final deliveryNet = deliveryFeesCollected - deliveryPayoutsPaid;
+                final totalGross = adminGrossProfit + deliveryNet;
+                double displayValue = totalGross;
+                
                 if (isNetProfit) {
-                  profit = profit - deliveryCosts - otherExpensesAmount;
+                  displayValue = totalGross - otherExpensesAmount;
                 }
 
                 return _buildMetricTile(
                   label: label,
-                  value: '₹${profit.toStringAsFixed(0)}',
+                  value: '₹${displayValue.toStringAsFixed(0)}',
                   icon: isNetProfit ? Icons.account_balance_wallet : Icons.trending_up,
                   color: isNetProfit ? Colors.indigo : Colors.green,
                   error: orderSnap.error ?? bookingSnap.error ?? expenseSnap.error,
@@ -8202,9 +8214,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               return const Center(child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2));
                             }
 
-                              double totalProfitValue = 0;
-                              double totalPayoutsValue = 0;
-                              double totalExpensesValue = 0;
+                              double adminGrossProfit = 0;
+                              double deliveryFeesCollected = 0;
+                              double deliveryPayoutsPaid = 0;
+                              double totalExpenses = 0;
 
                               if (orderSnap.hasData && orderSnap.data != null) {
                                 for (var doc in orderSnap.data!.docs) {
@@ -8212,59 +8225,70 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                   final status = (data['status'] as String? ?? '').toLowerCase();
                                   if (status != 'delivered') continue;
                                   
+                                  // 1. & 3. Delivery
                                   final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
-                                  final payout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
+                                  final rawPayout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
+                                  final actualPayout = (rawPayout > 0) ? rawPayout : dFee; // Fallback
                                   
-                                  // Fallback: If partnerPayout is 0 but dFee exists, assume full payout
-                                  totalPayoutsValue += (payout > 0) ? payout : dFee;
-                                  
-                                  // Gross Revenue includes Delivery Fee
-                                  totalProfitValue += dFee;
+                                  deliveryFeesCollected += dFee;
+                                  deliveryPayoutsPaid += actualPayout;
 
+                                  // 2. & 4. Admin Product & Partner Commission
                                   final items = data['items'] as List<dynamic>? ?? [];
                                   for (var item in items) {
                                     final price = (item['price'] as num?)?.toDouble() ?? 0.0;
                                     final quantity = (item['quantity'] as num?)?.toInt() ?? 1;
                                     final basePrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
                                     final itemRevenue = price * quantity;
-                                    final itemProfit = itemRevenue - (basePrice * quantity);
+                                    final itemCost = basePrice * quantity;
+                                    final itemProfit = itemRevenue - itemCost;
                                     
+                                    final sellerId = item['sellerId'] as String? ?? 'admin';
+                                    final storeId = data['storeId'] as String? ?? 'admin';
                                     final metadata = item['metadata'] as Map<String, dynamic>? ?? {};
-                                    // REAL Platform items (Admin owned) take 100% margin
-                                    final isPlatformOwned = metadata['isPlatformOwned'] == true || 
-                                                         item['sellerId'] == 'admin';
+                                    final isPlatformOwned = metadata['isPlatformOwned'] == true || sellerId == 'admin';
                                     
                                     if (isPlatformOwned) {
-                                      totalProfitValue += itemProfit;
+                                      adminGrossProfit += itemProfit;
                                     } else if (itemProfit > 0) {
-                                      // Partner items: Admin only takes 'adminProfitPercentage' share of profit
                                       final commPercent = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0;
-                                      totalProfitValue += (itemProfit * (commPercent / 100));
+                                      adminGrossProfit += (itemProfit * (commPercent / 100));
                                     }
                                   }
                                 }
                               }
 
+                              // 5. Service Provider Commission
                               if (bookingSnap.hasData && bookingSnap.data != null) {
                                 for (var doc in bookingSnap.data!.docs) {
                                   final data = doc.data() as Map<String, dynamic>;
                                   final status = (data['status'] as String? ?? '').toLowerCase();
                                   if (status != 'delivered' && status != 'completed') continue;
-                                  double cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
-                                  double comm = (data['commission'] as num?)?.toDouble() ?? (cost * 0.25);
-                                  totalProfitValue += comm;
+                                  
+                                  final platformFee = (data['platformFee'] as num?)?.toDouble() ?? 0.0;
+                                  if (platformFee > 0) {
+                                    adminGrossProfit += platformFee;
+                                  } else {
+                                    final cost = (data['totalCost'] as num?)?.toDouble() ?? 0.0;
+                                    adminGrossProfit += (cost * 0.25);
+                                  }
                                 }
                               }
 
                               if (expenseSnap.hasData && expenseSnap.data != null) {
                                  for (var doc in expenseSnap.data!.docs) {
                                     final data = doc.data() as Map<String, dynamic>;
-                                    totalExpensesValue += (data['amount'] as num?)?.toDouble() ?? 0.0;
+                                    totalExpenses += (data['amount'] as num?)?.toDouble() ?? 0.0;
                                  }
                               }
 
+                              // Exact Definition Logic
+                              final deliveryNet = deliveryFeesCollected - deliveryPayoutsPaid;
+                              final totalGross = adminGrossProfit + deliveryNet;
+                              
+                              double displayValue = totalGross;
                               if (isNetProfit) {
-                                totalProfitValue = totalProfitValue - totalPayoutsValue - totalExpensesValue;
+                                displayValue = totalGross - totalExpenses;
                               }
 
                              return Center(
@@ -8276,7 +8300,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                      FittedBox(
                                        fit: BoxFit.scaleDown,
                                        child: Text(
-                                         '₹${totalProfitValue.toStringAsFixed(0)}',
+                                         '₹${displayValue.toStringAsFixed(0)}',
                                          style: const TextStyle(
                                            color: Colors.white,
                                            fontSize: 24,

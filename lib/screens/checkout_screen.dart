@@ -168,24 +168,23 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
                             final currentPincode = _postalCodeController.text.trim();
                             
-                            // 1. Pincode Override (Highest Priority)
+                            // 1. Determine Base Fee (Pincode has highest priority, otherwise Global Flat Fee)
                             if (currentPincode.isNotEmpty && _pincodeOverrides.containsKey(currentPincode)) {
                                _deliveryFee = _pincodeOverrides[currentPincode]!;
-                               // Only product overrides that are EXTRAS would add here, 
-                               // but user said "Priority", so we stop here.
-                            } 
-                            // 2. Product-Specific Overrides (Second Priority)
-                            else if (_enableProductDeliveryFees && totalProductOverrides > 0) {
-                               _deliveryFee = totalProductOverrides;
-                            }
-                            // 3. Free Threshold (Bonus priority)
-                            else if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
-                               _deliveryFee = 0.0;
-                            } 
-                            // 4. Default Flat Fee (Lowest Priority)
-                            else {
+                            } else {
                                _deliveryFee = _flatDeliveryFee;
                             }
+                            
+                            // 2. Add Product-Specific Extra Charges (ADD-ON)
+                            if (_enableProductDeliveryFees && totalProductOverrides > 0) {
+                               _deliveryFee += totalProductOverrides;
+                            }
+
+                            // 3. Last Check: Free Delivery Threshold on Cart Amount
+                            if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
+                               _deliveryFee = 0.0;
+                            }
+                            
                             _partnerPayout = _partnerDeliveryRate + totalPartnerOverrides; // Base + Extras
                             
                             final grandTotal = cart.totalAmount + _deliveryFee;
@@ -202,19 +201,20 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                                     ),
                                   ],
                                 ),
-                                if (_deliveryFee > 0) ...[
                                   const SizedBox(height: 8),
                                   Row(
                                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                     children: [
                                       const Text('Delivery Fee'),
                                       Text(
-                                        formatINR(_deliveryFee),
-                                        style: const TextStyle(fontWeight: FontWeight.w500),
+                                        _deliveryFee == 0.0 ? 'Free' : formatINR(_deliveryFee),
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: _deliveryFee == 0.0 ? Colors.green : null,
+                                        ),
                                       ),
                                     ],
                                   ),
-                                ],
                                 const Divider(height: 24),
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -417,6 +417,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           labelText: 'Postal Code',
                         ),
                         keyboardType: TextInputType.number,
+                        onChanged: (value) {
+                          // Trigger UI rebuild so delivery fee logic can fetch the current typed pincode
+                          setState(() {});
+                        },
                         validator: (value) {
                           if (value == null || value.isEmpty) {
                             return 'Enter postal code';
