@@ -8091,7 +8091,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                     // 1. & 3. Customer Delivery Fees and Delivery Payout
                     final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                     final rawPayout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
-                    final actualPayout = (rawPayout > 0) ? rawPayout : dFee; // Fallback
+                    final actualPayout = data.containsKey('partnerPayout') ? rawPayout : dFee; // Respect 0 if explicitly saved
                     
                     deliveryFeesCollected += dFee;
                     deliveryPayoutsPaid += actualPayout;
@@ -8218,7 +8218,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                               double deliveryFeesCollected = 0;
                               double deliveryPayoutsPaid = 0;
                               double totalExpenses = 0;
-
                               if (orderSnap.hasData && orderSnap.data != null) {
                                 for (var doc in orderSnap.data!.docs) {
                                   final data = doc.data() as Map<String, dynamic>;
@@ -8228,7 +8227,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                   // 1. & 3. Delivery
                                   final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
                                   final rawPayout = (data['partnerPayout'] as num?)?.toDouble() ?? 0.0;
-                                  final actualPayout = (rawPayout > 0) ? rawPayout : dFee; // Fallback
+                                  final actualPayout = data.containsKey('partnerPayout') ? rawPayout : dFee; // Respect 0 if explicitly saved
                                   
                                   deliveryFeesCollected += dFee;
                                   deliveryPayoutsPaid += actualPayout;

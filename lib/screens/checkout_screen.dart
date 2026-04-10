@@ -159,10 +159,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             
                             double totalProductOverrides = 0.0;
                             double totalPartnerOverrides = 0.0;
+                            
+                            for (var item in cart.items) {
+                                totalPartnerOverrides += (item.product.partnerPayoutOverride ?? 0.0) * item.quantity;
+                            }
+                            
                             if (_enableProductDeliveryFees) {
                               for (var item in cart.items) {
                                 totalProductOverrides += (item.product.deliveryFeeOverride ?? 0.0) * item.quantity;
-                                totalPartnerOverrides += (item.product.partnerPayoutOverride ?? 0.0) * item.quantity;
                               }
                             }
 
@@ -176,9 +180,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             }
                             
                             // 2. Add Product-Specific Extra Charges (ADD-ON)
-                            if (_enableProductDeliveryFees && totalProductOverrides > 0) {
-                               _deliveryFee += totalProductOverrides;
-                            }
+                            _deliveryFee += totalProductOverrides;
 
                             // 3. Last Check: Free Delivery Threshold on Cart Amount
                             if (_freeDeliveryThreshold > 0 && cart.totalAmount >= _freeDeliveryThreshold) {
