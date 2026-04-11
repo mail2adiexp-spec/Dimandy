@@ -17,6 +17,7 @@ class DeliveryPartnerEarningsScreen extends StatefulWidget {
 
 class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsScreen> {
   bool _isSyncing = false;
+  String _selectedDateFilter = 'all';
   late Stream<QuerySnapshot> _totalEarningsStream;
   late Stream<QuerySnapshot> _completedDeliveriesStream;
 
@@ -187,9 +188,38 @@ class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsS
             ),
             const SizedBox(height: 32),
 
-            Text(
-              'Completed Deliveries',
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Completed Deliveries',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _selectedDateFilter,
+                      items: const [
+                        DropdownMenuItem(value: 'all', child: Text('All Time')),
+                        DropdownMenuItem(value: 'today', child: Text('Today')),
+                        DropdownMenuItem(value: 'yesterday', child: Text('Yesterday')),
+                        DropdownMenuItem(value: 'week', child: Text('7 Days')),
+                        DropdownMenuItem(value: 'month', child: Text('30 Days')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          setState(() => _selectedDateFilter = val);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 12),
 
@@ -200,7 +230,36 @@ class _DeliveryPartnerEarningsScreenState extends State<DeliveryPartnerEarningsS
                   return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
                 }
 
-                final deliveries = snapshot.data?.docs ?? [];
+                var deliveries = snapshot.data?.docs ?? [];
+
+                // Filter Logic
+                if (_selectedDateFilter != 'all') {
+                  final now = DateTime.now();
+                  final todayStart = DateTime(now.year, now.month, now.day);
+                  final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+                  
+                  deliveries = deliveries.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final dateVal = data['deliveredAt'] ?? data['orderDate'];
+                    DateTime? date;
+                    if (dateVal is Timestamp) date = dateVal.toDate();
+                    else if (dateVal is String) date = DateTime.tryParse(dateVal);
+                    
+                    if (date == null) return false;
+
+                    if (_selectedDateFilter == 'today') {
+                      return date.isAfter(todayStart) || date.isAtSameMomentAs(todayStart);
+                    } else if (_selectedDateFilter == 'yesterday') {
+                      return (date.isAfter(yesterdayStart) || date.isAtSameMomentAs(yesterdayStart)) && date.isBefore(todayStart);
+                    } else if (_selectedDateFilter == 'week') {
+                      return date.isAfter(now.subtract(const Duration(days: 7)));
+                    } else if (_selectedDateFilter == 'month') {
+                      return date.isAfter(now.subtract(const Duration(days: 30)));
+                    }
+                    return true;
+                  }).toList();
+                }
+
                 if (deliveries.isEmpty) {
                   return _buildEmptyState();
                 }

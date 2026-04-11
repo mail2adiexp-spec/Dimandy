@@ -6642,175 +6642,245 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     String partnerId,
     Map<String, dynamic> partnerData,
   ) {
+    String selectedDateFilter = 'all';
+
     showDialog(
       context: context,
-      builder: (context) => Dialog(
-        insetPadding: const EdgeInsets.all(16),
-        child: Container(
-          width: 800,
-          height: 600,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: DefaultTabController(
-            length: 3,
-            child: Column(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade50,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(12),
-                      topRight: Radius.circular(12),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          insetPadding: const EdgeInsets.all(16),
+          child: Container(
+            width: 800,
+            height: 600,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: DefaultTabController(
+              length: 3,
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.green.shade50,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(12),
+                        topRight: Radius.circular(12),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 30,
+                          backgroundImage: partnerData['photoURL'] != null
+                              ? NetworkImage(partnerData['photoURL'])
+                              : null,
+                          child: partnerData['photoURL'] == null
+                              ? Text(
+                                  (partnerData['name'] ?? 'U')[0].toUpperCase(),
+                                  style: const TextStyle(fontSize: 24),
+                                )
+                              : null,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                partnerData['name'] ?? 'Unknown Partner',
+                                style: const TextStyle(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                'Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
+                                style: TextStyle(color: Colors.grey.shade600),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
                     ),
                   ),
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 30,
-                        backgroundImage: partnerData['photoURL'] != null
-                            ? NetworkImage(partnerData['photoURL'])
-                            : null,
-                        child: partnerData['photoURL'] == null
-                            ? Text(
-                                (partnerData['name'] ?? 'U')[0].toUpperCase(),
-                                style: const TextStyle(fontSize: 24),
-                              )
-                            : null,
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              partnerData['name'] ?? 'Unknown Partner',
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Partner ID: ${partnerData['displayId'] ?? partnerId.substring(0, 8)}',
-                              style: TextStyle(color: Colors.grey.shade600),
-                            ),
-                          ],
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.pop(context),
-                      ),
+                  const TabBar(
+                    labelColor: Colors.green,
+                    unselectedLabelColor: Colors.grey,
+                    tabs: [
+                      Tab(icon: Icon(Icons.person), text: 'Profile'),
+                      Tab(icon: Icon(Icons.local_shipping), text: 'Deliveries'),
+                      Tab(icon: Icon(Icons.account_balance), text: 'Financials'),
                     ],
                   ),
-                ),
-                const TabBar(
-                  labelColor: Colors.green,
-                  unselectedLabelColor: Colors.grey,
-                  tabs: [
-                    Tab(icon: Icon(Icons.person), text: 'Profile'),
-                    Tab(icon: Icon(Icons.local_shipping), text: 'Deliveries'),
-                    Tab(icon: Icon(Icons.account_balance), text: 'Financials'),
-                  ],
-                ),
-                Expanded(
-                  child: TabBarView(
-                    children: [
-                      // Profile Tab
-                      SingleChildScrollView(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Personal Information',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: TabBarView(
+                      children: [
+                        // Profile Tab
+                        SingleChildScrollView(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Personal Information',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                            const Divider(),
-                            const SizedBox(height: 16),
-                            _buildInfoRow('Full Name', partnerData['name'] ?? '-'),
-                            _buildInfoRow('Email', partnerData['email'] ?? '-'),
-                            _buildInfoRow('Phone', partnerData['phone'] ?? '-'),
-                            _buildInfoRow('User ID', partnerData['displayId'] ?? partnerId),
-                            _buildInfoRow(
-                              'Service Pincodes',
-                              (partnerData['servicePincodes'] as List?)?.join(', ') ?? '-',
-                            ),
-                          ],
+                              const Divider(),
+                              const SizedBox(height: 16),
+                              _buildInfoRow('Full Name', partnerData['name'] ?? '-'),
+                              _buildInfoRow('Email', partnerData['email'] ?? '-'),
+                              _buildInfoRow('Phone', partnerData['phone'] ?? '-'),
+                              _buildInfoRow('User ID', partnerData['displayId'] ?? partnerId),
+                              _buildInfoRow(
+                                'Service Pincodes',
+                                (partnerData['servicePincodes'] as List?)?.join(', ') ?? '-',
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      // Deliveries Tab
-                      StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('orders')
-                            .where('deliveryPartnerId', isEqualTo: partnerId)
-                            .orderBy('orderDate', descending: true)
-                            .limit(50)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-
-                          if (snapshot.hasError) {
-                            return Center(child: Text('Error: ${snapshot.error}'));
-                          }
-
-                          final deliveries = snapshot.data?.docs ?? [];
-
-                          if (deliveries.isEmpty) {
-                            return const Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
+                        // Deliveries Tab
+                        Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                 children: [
-                                  Icon(Icons.local_shipping, size: 64, color: Colors.grey),
-                                  SizedBox(height: 16),
-                                  Text(
-                                    'No deliveries assigned yet',
-                                    style: TextStyle(color: Colors.grey, fontSize: 16),
+                                  const Text(
+                                    'Delivery History',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[100],
+                                      borderRadius: BorderRadius.circular(20),
+                                    ),
+                                    child: DropdownButtonHideUnderline(
+                                      child: DropdownButton<String>(
+                                        value: selectedDateFilter,
+                                        items: const [
+                                          DropdownMenuItem(value: 'all', child: Text('All Time')),
+                                          DropdownMenuItem(value: 'today', child: Text('Today')),
+                                          DropdownMenuItem(value: 'yesterday', child: Text('Yesterday')),
+                                          DropdownMenuItem(value: 'week', child: Text('7 Days')),
+                                          DropdownMenuItem(value: 'month', child: Text('30 Days')),
+                                        ],
+                                        onChanged: (val) {
+                                          if (val != null) {
+                                            setDialogState(() => selectedDateFilter = val);
+                                          }
+                                        },
+                                      ),
+                                    ),
                                   ),
                                 ],
                               ),
-                            );
-                          }
+                            ),
+                            Expanded(
+                              child: StreamBuilder<QuerySnapshot>(
+                                stream: FirebaseFirestore.instance
+                                    .collection('orders')
+                                    .where('deliveryPartnerId', isEqualTo: partnerId)
+                                    .orderBy('orderDate', descending: true)
+                                    .limit(100) // Increased limit since we filter client-side
+                                    .snapshots(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState == ConnectionState.waiting) {
+                                    return const Center(child: CircularProgressIndicator());
+                                  }
 
-                          return ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: deliveries.length,
-                            itemBuilder: (context, index) {
-                              final doc = deliveries[index];
-                              final data = doc.data() as Map<String, dynamic>;
-                              final orderId = doc.id;
-                              final status = data['deliveryStatus'] ?? 'pending';
-                              final customerName = data['customerName'] ?? 'Unknown';
-                              final deliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0;
-                              DateTime? orderDate;
-                              final rawDate = data['orderDate'];
-                              if (rawDate is Timestamp) {
-                                orderDate = rawDate.toDate();
-                              } else if (rawDate is String) {
-                                orderDate = DateTime.tryParse(rawDate);
-                              }
+                                  if (snapshot.hasError) {
+                                    return Center(child: Text('Error: ${snapshot.error}'));
+                                  }
 
-                              Color statusColor;
-                              switch (status) {
-                                case 'delivered':
-                                  statusColor = Colors.green;
-                                  break;
-                                case 'in_transit':
-                                  statusColor = Colors.blue;
-                                  break;
-                                case 'picked_up':
-                                  statusColor = Colors.orange;
-                                  break;
-                                default:
-                                  statusColor = Colors.grey;
-                              }
+                                  var deliveries = snapshot.data?.docs ?? [];
+
+                                  // Apply Filter
+                                  if (selectedDateFilter != 'all') {
+                                    final now = DateTime.now();
+                                    final todayStart = DateTime(now.year, now.month, now.day);
+                                    final yesterdayStart = todayStart.subtract(const Duration(days: 1));
+                                    
+                                    deliveries = deliveries.where((doc) {
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      final dateVal = data['deliveredAt'] ?? data['orderDate'];
+                                      DateTime? date;
+                                      if (dateVal is Timestamp) date = dateVal.toDate();
+                                      else if (dateVal is String) date = DateTime.tryParse(dateVal);
+                                      
+                                      if (date == null) return false;
+
+                                      if (selectedDateFilter == 'today') {
+                                        return date.isAfter(todayStart) || date.isAtSameMomentAs(todayStart);
+                                      } else if (selectedDateFilter == 'yesterday') {
+                                        return (date.isAfter(yesterdayStart) || date.isAtSameMomentAs(yesterdayStart)) && date.isBefore(todayStart);
+                                      } else if (selectedDateFilter == 'week') {
+                                        return date.isAfter(now.subtract(const Duration(days: 7)));
+                                      } else if (selectedDateFilter == 'month') {
+                                        return date.isAfter(now.subtract(const Duration(days: 30)));
+                                      }
+                                      return true;
+                                    }).toList();
+                                  }
+
+                                  if (deliveries.isEmpty) {
+                                    return const Center(
+                                      child: Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.local_shipping, size: 64, color: Colors.grey),
+                                          SizedBox(height: 16),
+                                          Text(
+                                            'No deliveries found for this period',
+                                            style: TextStyle(color: Colors.grey, fontSize: 16),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+
+                                  return ListView.builder(
+                                    padding: const EdgeInsets.all(16),
+                                    itemCount: deliveries.length,
+                                    itemBuilder: (context, index) {
+                                      final doc = deliveries[index];
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      final orderId = doc.id;
+                                      final status = data['deliveryStatus'] ?? 'pending';
+                                      final customerName = data['customerName'] ?? 'Unknown';
+                                      final partnerPayout = (data['partnerPayout'] as num?)?.toDouble() ?? (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
+                                      DateTime? orderDate;
+                                      final rawDate = data['orderDate'];
+                                      if (rawDate is Timestamp) {
+                                        orderDate = rawDate.toDate();
+                                      } else if (rawDate is String) {
+                                        orderDate = DateTime.tryParse(rawDate);
+                                      }
+
+                                      Color statusColor;
+                                      switch (status) {
+                                        case 'delivered':
+                                          statusColor = Colors.green;
+                                          break;
+                                        case 'in_transit':
+                                          statusColor = Colors.blue;
+                                          break;
+                                        case 'picked_up':
+                                          statusColor = Colors.orange;
+                                          break;
+                                        default:
+                                          statusColor = Colors.grey;
+                                      }
 
                               return Card(
                                 margin: const EdgeInsets.only(bottom: 12),
@@ -6837,7 +6907,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                     crossAxisAlignment: CrossAxisAlignment.end,
                                     children: [
                                       Text(
-                                        '₹${deliveryFee.toStringAsFixed(0)}',
+                                        '₹${partnerPayout.toStringAsFixed(2)}',
                                         style: const TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 14,
@@ -6866,16 +6936,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                   ),
                                 ),
                               );
-                            },
-                          );
-                        },
-                      ),
-                      // Financials Tab
-                      _buildFinancialTab(partnerId, 'delivery_partner'),
-                    ],
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        // Financials Tab
+                        _buildFinancialTab(partnerId, 'delivery_partner'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
