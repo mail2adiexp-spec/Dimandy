@@ -704,7 +704,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           productId: cartItem.product.id,
           sellerId: cartItem.product.sellerId,
           productName: cartItem.product.name,
-          quantity: cartItem.quantity,
+          quantity: cartItem.quantity.toDouble(),
           price: cartItem.product.price,
           basePrice: cartItem.product.basePrice, // New: Capture buying price
           adminProfitPercentage: cartItem.product.adminProfitPercentage, // Capture commission

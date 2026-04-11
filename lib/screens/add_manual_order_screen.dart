@@ -31,6 +31,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
   Timer? _searchDebounce; // NEW: Debounce timer
   double _flatDeliveryFee = 0.0;
   double _freeDeliveryThreshold = 0.0;
+  double _partnerDeliveryRate = 0.0;
   Map<String, double> _pincodeOverrides = {};
 
   @override
@@ -55,6 +56,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
         setState(() {
           _flatDeliveryFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
           _freeDeliveryThreshold = (data['freeDeliveryThreshold'] as num?)?.toDouble() ?? 0.0;
+          _partnerDeliveryRate = (data['partnerDeliveryRate'] as num?)?.toDouble() ?? 0.0;
           _pincodeOverrides = (data['pincodeOverrides'] as Map<String, dynamic>?)?.map(
             (k, v) => MapEntry(k, (v as num).toDouble())
           ) ?? {};
@@ -162,6 +164,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
           'basePrice': product.basePrice,
           'adminProfitPercentage': product.adminProfitPercentage,
           'deliveryFeeOverride': product.deliveryFeeOverride,
+          'partnerPayoutOverride': product.partnerPayoutOverride,
           'quantity': qtyToAdd,
           'sellerId': product.sellerId,
           'storeIds': product.storeIds,
@@ -407,11 +410,11 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
       // NEW: STOCK CHECK BEFORE SAVING
       for (var item in _selectedItems) {
         final productId = item['productId'] as String;
-        final requiredQty = item['quantity'] as int;
+        final requiredQty = (item['quantity'] as num).toDouble();
         
         final productDoc = await firestore.collection('products').doc(productId).get();
         if (productDoc.exists) {
-          final currentStock = (productDoc.data()?['stock'] as num?)?.toInt() ?? 0;
+          final currentStock = (productDoc.data()?['stock'] as num?)?.toDouble() ?? 0.0;
           if (currentStock < requiredQty) {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -430,6 +433,12 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
       final auth = context.read<AuthProvider>();
       final adminId = auth.currentUser?.uid;
       
+      double totalPartnerOverrides = _selectedItems.fold(
+        0.0,
+        (sum, item) => sum + ((item['partnerPayoutOverride'] as num?)?.toDouble() ?? 0.0) * ((item['quantity'] as num?)?.toDouble() ?? 1.0),
+      );
+      double calculatedPartnerPayout = _partnerDeliveryRate + totalPartnerOverrides;
+
       final sellerIds = _selectedItems
           .map((item) => item['sellerId'] as String?)
           .where((id) => id != null)
@@ -449,6 +458,7 @@ class _AddManualOrderScreenState extends State<AddManualOrderScreen> {
         'sellerIds': sellerIds,
         'totalAmount': _totalAmount,
         'deliveryFee': _totalDeliveryFee, // Save the calculated delivery fee
+        'partnerPayout': calculatedPartnerPayout,
         'status': 'pending',
         'orderDate': FieldValue.serverTimestamp(),
         'isGuest': true,

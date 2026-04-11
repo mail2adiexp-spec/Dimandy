@@ -179,7 +179,7 @@ class OrderItem {
   final String productId;
   final String sellerId;
   final String productName;
-  final int quantity;
+  final double quantity;
   final double price;
   final double basePrice; // Added for profit calculation
   final double? adminProfitPercentage; // Custom profit sharing %
@@ -205,7 +205,7 @@ class OrderItem {
       productId: map['productId'] ?? '',
       sellerId: map['sellerId'] ?? '',
       productName: map['productName'] ?? map['name'] ?? 'Unknown Product',
-      quantity: map['quantity'] ?? 1,
+      quantity: (map['quantity'] as num?)?.toDouble() ?? 1.0,
       price: (map['price'] ?? 0).toDouble(),
       basePrice: (map['basePrice'] ?? 0).toDouble(),
       adminProfitPercentage: (map['adminProfitPercentage'] as num?)?.toDouble(),
