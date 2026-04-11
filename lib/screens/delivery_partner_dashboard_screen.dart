@@ -1457,11 +1457,17 @@ class _DeliveryPartnerDashboardScreenState
           if (paymentSelection == 'delivered_qr') {
             updateData['qrAtDoorstep'] = true;
             updateData['paymentVerified'] = true;
+            updateData['collectedPaymentMethod'] = 'qr';
           } else if (paymentSelection == 'delivered_cash') {
             updateData['qrAtDoorstep'] = false;
             updateData['paymentVerified'] = true;
+            updateData['collectedPaymentMethod'] = 'cash';
           } else {
              updateData['paymentVerified'] = true;
+             // For prepaid/online orders, collectedmethod is null or 'online'
+             if (latestPaymentMethod == 'ONLINE' || latestPaymentMethod == 'PREPAID') {
+                updateData['collectedPaymentMethod'] = 'online';
+             }
           }
 
           await FirebaseFirestore.instance.collection('orders').doc(orderId).update(updateData);

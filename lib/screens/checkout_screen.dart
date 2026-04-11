@@ -498,24 +498,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           });
                         },
                       ),
-                      const Divider(height: 1),
-                      RadioListTile<String>(
-                        title: const Row(
-                          children: [
-                            Icon(Icons.payment, color: Colors.blue),
-                            SizedBox(width: 8),
-                            Text('Online Payment'),
-                          ],
-                        ),
-                        subtitle: const Text('Secure Online Payment'),
-                        value: 'Online',
-                        groupValue: _selectedPaymentMethod,
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedPaymentMethod = value!;
-                          });
-                        },
-                      ),
                     ],
                   ),
                 ),

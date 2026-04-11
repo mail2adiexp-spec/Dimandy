@@ -11,6 +11,8 @@ import '../widgets/shared_orders_tab.dart';
 import '../widgets/shared_products_tab.dart';
 import '../models/payout_model.dart';
 import '../services/payout_service.dart';
+import '../models/order_model.dart';
+import 'order_tracking_screen.dart';
 import 'main_navigation_screen.dart';
 
 class StorePartnerDashboardScreen extends StatefulWidget {
@@ -414,12 +416,15 @@ class _FinancialsTabState extends State<_FinancialsTab> {
         double partnerSales = 0.0;
         double platformSales = 0.0;
         double totalPurchaseCost = 0.0;
-        double partnerPlatformShare = 0.0; // Commission on partner-owned items
         int totalSoldQty = 0;
         int cancelledOrders = 0;
         int refundedOrders = 0;
         int totalOrders = snapshot.data!.docs.length;
         double totalCashCollected = 0.0;
+
+        double partnerGrossProfit = 0.0;
+        double partnerPlatformShare = 0.0;
+        List<Map<String, dynamic>> orderBreakdown = [];
 
         for (var doc in snapshot.data!.docs) {
           final data = doc.data() as Map<String, dynamic>;
@@ -438,12 +443,18 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             continue; 
           }
 
+          double orderGrossProfit = 0.0;
+          double orderAdminShare = 0.0;
+          double orderNetProfit = 0.0;
+          double orderSales = 0.0;
+          double orderPurchase = 0.0;
+
           final items = (data['items'] as List<dynamic>?) ?? [];
           for (var item in items) {
             final price = (item['price'] as num?)?.toDouble() ?? 0.0;
             final buyingPrice = (item['basePrice'] as num?)?.toDouble() ?? 0.0;
             final qty = (item['quantity'] as num?)?.toInt() ?? 1;
-            final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0; // Default to 25% if empty
+            final adminProfitPercentage = (item['adminProfitPercentage'] as num?)?.toDouble() ?? 25.0;
 
             final itemSales = price * qty;
             final itemPurchase = buyingPrice * qty;
@@ -451,15 +462,16 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             
             final sellerId = item['sellerId'] as String?;
             final partnerUid = context.read<AuthProvider>().currentUser?.uid;
-            
-            // Only consider it the partner's item if the sellerId explicitly matches their UID
             final isOwnItem = (sellerId == partnerUid) && (partnerUid != null);
 
             if (isOwnItem) {
-              partnerSales += itemSales;
-              totalPurchaseCost += itemPurchase;
+              orderSales += itemSales;
+              orderPurchase += itemPurchase;
+              orderGrossProfit += itemProfit;
+              
               if (itemProfit > 0) {
-                partnerPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+                final share = (itemProfit * (adminProfitPercentage / 100));
+                orderAdminShare += share;
               }
             } else {
               platformSales += itemSales;
@@ -467,17 +479,35 @@ class _FinancialsTabState extends State<_FinancialsTab> {
             totalSoldQty += qty;
           }
 
-          final paymentMethod = data['paymentMethod'] as String? ?? '';
-          final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+          orderNetProfit = orderGrossProfit - orderAdminShare;
+          partnerSales += orderSales;
+          totalPurchaseCost += orderPurchase;
+          partnerGrossProfit += orderGrossProfit;
+          partnerPlatformShare += orderAdminShare;
+
+          if (orderSales > 0) {
+            orderBreakdown.add({
+              'id': doc.id,
+              'date': (data['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+              'sales': orderSales,
+              'purchase': orderPurchase,
+              'gross': orderGrossProfit,
+              'adminShare': orderAdminShare,
+              'net': orderNetProfit,
+            });
+          }
+
+          final paymentMethod = (data['paymentMethod'] as String? ?? '').toLowerCase();
+          final collectedMethod = (data['collectedPaymentMethod'] as String? ?? '').toLowerCase();
+          final qrAtDoorstep = data['qrAtDoorstep'] == true;
           final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
           final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
           
-          if (paymentMethod != 'online' && collectedMethod != 'qr') {
+          if (paymentMethod != 'online' && paymentMethod != 'prepaid' && collectedMethod != 'qr' && !qrAtDoorstep) {
             totalCashCollected += (totalAmount + dFee);
           }
         }
 
-        double partnerGrossProfit = partnerSales - totalPurchaseCost;
         double netPartnerProfit = partnerGrossProfit - partnerPlatformShare;
         
         // Rightful Earning = What Partner should have (Purchase Cost + Net Profit)
@@ -513,10 +543,10 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                   }
                 }
 
-                double rightfulEarning = totalPurchaseCost + netPartnerProfit;
+                rightfulEarning = totalPurchaseCost + netPartnerProfit;
                 // settlementAmount = (What Admin owes for goods + profit) - (What Partner already took in cash) 
                 // - (What Admin already paid Partner in payouts) + (What Partner paid back to Admin in commission)
-                double settlementAmount = (rightfulEarning - totalCashCollected) - totalWithdrawals + totalCommissionPaid;
+                settlementAmount = (rightfulEarning - totalCashCollected) - totalWithdrawals + totalCommissionPaid;
 
                 return SingleChildScrollView(
               padding: const EdgeInsets.all(16),
@@ -606,7 +636,13 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                       _SummaryMiniCard(title: 'My Sales', value: '₹${partnerSales.toStringAsFixed(2)}', icon: Icons.trending_up, color: Colors.blue),
                       _SummaryMiniCard(title: 'Purchase Invist', value: '₹${totalPurchaseCost.toStringAsFixed(2)}', icon: Icons.shopping_cart_checkout, color: Colors.orange),
                       _SummaryMiniCard(title: 'Gross Profit', value: '₹${partnerGrossProfit.toStringAsFixed(2)}', icon: Icons.analytics, color: Colors.green),
-                      _SummaryMiniCard(title: 'Admin Share', value: '₹${partnerPlatformShare.toStringAsFixed(2)}', icon: Icons.account_balance, color: Colors.deepOrange),
+                      _SummaryMiniCard(
+                        title: 'Admin Share', 
+                        value: '₹${partnerPlatformShare.toStringAsFixed(2)}', 
+                        icon: Icons.account_balance, 
+                        color: Colors.deepOrange,
+                        onTap: () => _showFinancialBreakdownDialog(context, orderBreakdown),
+                      ),
                       _SummaryMiniCard(title: 'Sales Fulfillment', value: '₹${platformSales.toStringAsFixed(2)}', icon: Icons.local_shipping, color: Colors.teal),
                       _SummaryMiniCard(title: 'Orders Processed', value: '$totalOrders', icon: Icons.receipt_long, color: Colors.purple),
                     ],
@@ -625,6 +661,110 @@ class _FinancialsTabState extends State<_FinancialsTab> {
           },
         );
       },
+    );
+  }
+
+  void _showFinancialBreakdownDialog(BuildContext context, List<Map<String, dynamic>> breakdown) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Financial Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        Text('${breakdown.length} Orders', style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Text('Calculation: (Sales - Purchase) = Gross Profit. Admin Share is 25% of Gross Profit.', 
+                               style: TextStyle(fontSize: 11, color: Colors.blue, fontStyle: FontStyle.italic)),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: breakdown.isEmpty 
+                      ? const Center(child: Text('No order calculations found for this period.'))
+                      : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: breakdown.length,
+                          separatorBuilder: (ctx, idx) => const Divider(),
+                          itemBuilder: (ctx, idx) {
+                            final item = breakdown[idx];
+                            final dateStr = DateFormat('dd MMM, hh:mm a').format(item['date']);
+                            
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Order #${item['id'].toString().substring(0, 8).toUpperCase()}', 
+                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    Text(dateStr, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _breakdownColumn('Sales', item['sales'], Colors.blue),
+                                    _breakdownColumn('Purchase', item['purchase'], Colors.orange),
+                                    _breakdownColumn('Gross', item['gross'], Colors.green),
+                                    _breakdownColumn('Admin (25%)', item['adminShare'], Colors.red),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Text('Net Earning: ₹${item['net'].toStringAsFixed(2)}', 
+                                             style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.indigo)),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _breakdownColumn(String label, double value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text('₹${value.toStringAsFixed(0)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+      ],
     );
   }
 
@@ -957,15 +1097,12 @@ class _FinancialsTabState extends State<_FinancialsTab> {
                              throw Exception('You can only make 2 payout requests every 24 hours');
                           }
 
-                          await FirebaseFirestore.instance.collection('payouts').add({
-                            'userId': userId,
-                            'amount': amount,
-                            'status': 'pending', 
-                            'requestDate': Timestamp.now(),
-                            'paymentDetails': details,
-                            'userRole': 'store_partner',
-                            'storeId': widget.store.id,
-                          });
+                          await PayoutService().requestPayout(
+                            userId,
+                            amount,
+                            details,
+                            userRole: 'store_partner',
+                          );
                           
                           if (context.mounted) {
                             Navigator.pop(context);
@@ -1130,26 +1267,55 @@ class _SummaryMiniCard extends StatelessWidget {
   final String value;
   final IconData icon;
   final Color color;
-  const _SummaryMiniCard({required this.title, required this.value, required this.icon, required this.color});
+  final VoidCallback? onTap;
+
+  const _SummaryMiniCard({
+    required this.title, 
+    required this.value, 
+    required this.icon, 
+    required this.color,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-          Text(title, style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7), fontWeight: FontWeight.bold)),
-        ],
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                   Icon(icon, color: color, size: 20),
+                   if (onTap != null)
+                     const Icon(Icons.info_outline, size: 14, color: Colors.grey),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                title,
+                style: TextStyle(color: Colors.grey[600], fontSize: 11, fontWeight: FontWeight.bold),
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1314,16 +1480,17 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
         groupedOrders.putIfAbsent(dpId, () => []).add(data);
         
         if (status == 'delivered') {
-          final paymentMethod = data['paymentMethod'] as String? ?? '';
+          final paymentMethod = (data['paymentMethod'] as String? ?? '').toLowerCase();
           final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
           final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
           final fullTotal = totalAmount + dFee;
-          final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+          final collectedMethod = (data['collectedPaymentMethod'] as String? ?? '').toLowerCase();
+          final qrAtDoorstep = data['qrAtDoorstep'] == true;
           
-          if (paymentMethod == 'online') {
+          if (paymentMethod == 'online' || paymentMethod == 'prepaid') {
             prepaid += fullTotal;
           } else {
-            if (collectedMethod == 'qr') {
+            if (collectedMethod == 'qr' || qrAtDoorstep) {
               qr += fullTotal;
             } else {
               cash += fullTotal;
@@ -1407,10 +1574,33 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
             crossAxisSpacing: 12,
             childAspectRatio: 1.4,
             children: [
-              _SummaryMiniCard(title: 'Cash to Collect', value: '₹${_totalCashToCollect.toStringAsFixed(2)}', icon: Icons.money, color: Colors.green),
-              _SummaryMiniCard(title: 'QR Payments', value: '₹${_totalQR.toStringAsFixed(2)}', icon: Icons.qr_code_2, color: Colors.blue),
-              _SummaryMiniCard(title: 'Prepaid Delivered', value: '₹${_totalPrepaid.toStringAsFixed(2)}', icon: Icons.credit_card, color: Colors.orange),
-              _SummaryMiniCard(title: 'Active Boys', value: '$_activeBoys', icon: Icons.motorcycle, color: Colors.purple),
+              _SummaryMiniCard(
+                title: 'Cash to Collect', 
+                value: '₹${_totalCashToCollect.toStringAsFixed(2)}', 
+                icon: Icons.money, 
+                color: Colors.green,
+                onTap: () => _showSettlementBreakdownDialog('Cash', 'cash'),
+              ),
+              _SummaryMiniCard(
+                title: 'QR Payments', 
+                value: '₹${_totalQR.toStringAsFixed(2)}', 
+                icon: Icons.qr_code_2, 
+                color: Colors.blue,
+                onTap: () => _showSettlementBreakdownDialog('QR Payments', 'qr'),
+              ),
+              _SummaryMiniCard(
+                title: 'Prepaid Delivered', 
+                value: '₹${_totalPrepaid.toStringAsFixed(2)}', 
+                icon: Icons.credit_card, 
+                color: Colors.orange,
+                onTap: () => _showSettlementBreakdownDialog('Prepaid', 'online'),
+              ),
+              _SummaryMiniCard(
+                title: 'Active Boys', 
+                value: '$_activeBoys', 
+                icon: Icons.motorcycle, 
+                color: Colors.purple,
+              ),
             ],
           ),
           
@@ -1451,16 +1641,17 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
       if (data['status'] == 'out_for_delivery') outForDelivery++;
       if (data['status'] == 'delivered') {
         delivered++;
-        final paymentMethod = data['paymentMethod'] as String? ?? '';
+        final paymentMethod = (data['paymentMethod'] as String? ?? '').toLowerCase();
         final totalAmount = (data['totalAmount'] as num?)?.toDouble() ?? 0.0;
         final dFee = (data['deliveryFee'] as num?)?.toDouble() ?? 0.0;
         final fullTotal = totalAmount + dFee;
-        final collectedMethod = data['collectedPaymentMethod'] as String? ?? '';
+        final collectedMethod = (data['collectedPaymentMethod'] as String? ?? '').toLowerCase();
+        final qrAtDoorstep = data['qrAtDoorstep'] == true;
         
-        if (paymentMethod == 'online') {
+        if (paymentMethod == 'online' || paymentMethod == 'prepaid') {
           prepaid += fullTotal;
         } else {
-          if (collectedMethod == 'qr') {
+          if (collectedMethod == 'qr' || qrAtDoorstep) {
             qr += fullTotal;
           } else {
             cash += fullTotal;
@@ -1556,6 +1747,161 @@ class _DeliverySettlementsTabState extends State<_DeliverySettlementsTab> {
           ),
         ],
       ),
+    );
+  }
+
+  void _showSettlementBreakdownDialog(String title, String filterType) {
+    // Flatten all orders into a single list
+    final List<Map<String, dynamic>> allOrders = _deliveryPartnerOrders.values.expand((orders) => orders).toList();
+    
+    // Initial filtering by payment type
+    final List<Map<String, dynamic>> typeFilteredOrders = allOrders.where((o) {
+      if (o['status'] != 'delivered') return false;
+      
+      final paymentMethod = (o['paymentMethod'] as String? ?? '').toLowerCase();
+      final collectedMethod = (o['collectedPaymentMethod'] as String? ?? '').toLowerCase();
+      final qrAtDoorstep = o['qrAtDoorstep'] == true;
+
+      // Logic must match exactly what is in _fetchSettlements
+      if (filterType == 'online') {
+        return paymentMethod == 'online' || paymentMethod == 'prepaid';
+      } else if (filterType == 'qr') {
+        if (paymentMethod == 'online' || paymentMethod == 'prepaid') return false;
+        return collectedMethod == 'qr' || qrAtDoorstep;
+      } else { // 'cash'
+        if (paymentMethod == 'online' || paymentMethod == 'prepaid') return false;
+        if (collectedMethod == 'qr' || qrAtDoorstep) return false;
+        return true;
+      }
+    }).toList();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return StatefulBuilder(
+              builder: (context, setInternalState) {
+                String searchPrompt = '';
+
+                return Container(
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.symmetric(vertical: 12),
+                        decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('$title Details', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                            Text('${typeFilteredOrders.length} Total', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      // Search Bar
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          decoration: InputDecoration(
+                            hintText: 'Search by Order ID...',
+                            prefixIcon: const Icon(Icons.search),
+                            filled: true,
+                            fillColor: Colors.grey.shade100,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                          ),
+                          onChanged: (val) {
+                            setInternalState(() {
+                               searchPrompt = val.toLowerCase();
+                            });
+                          },
+                        ),
+                      ),
+                      const Divider(),
+                      
+                      Expanded(
+                        child: Builder(
+                          builder: (context) {
+                            final List<Map<String, dynamic>> searchFiltered = searchPrompt.isEmpty 
+                                ? typeFilteredOrders 
+                                : typeFilteredOrders.where((o) => o['id'].toString().toLowerCase().contains(searchPrompt)).toList();
+
+                            if (searchFiltered.isEmpty) {
+                              return const Center(child: Text('No matching records found.'));
+                            }
+
+                            return ListView.separated(
+                              controller: scrollController,
+                              padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                              itemCount: searchFiltered.length,
+                              separatorBuilder: (ctx, idx) => const Divider(),
+                              itemBuilder: (ctx, idx) {
+                                final o = searchFiltered[idx];
+                                final id = o['id'].toString();
+                                final deliveryBoyId = o['deliveryPartnerId'] as String?;
+                                final deliveryBoyName = _deliveryPartnerProfiles[deliveryBoyId]?['name'] ?? 'Unknown Partner';
+                                final amount = ((o['totalAmount'] as num?)?.toDouble() ?? 0.0) + ((o['deliveryFee'] as num?)?.toDouble() ?? 0.0);
+                                final date = (o['deliveredAt'] as Timestamp?)?.toDate() ?? 
+                                             (o['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+
+                                return ListTile(
+                                  contentPadding: EdgeInsets.zero,
+                                  onTap: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => OrderTrackingScreen(
+                                          order: OrderModel.fromMap(o, id),
+                                          isAdminOrPartner: true,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  title: Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('#${id.substring(0, 8).toUpperCase()}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                      Text('₹${amount.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+                                    ],
+                                  ),
+                                  subtitle: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(DateFormat('dd MMM, hh:mm a').format(date), style: const TextStyle(fontSize: 11)),
+                                      const SizedBox(height: 2),
+                                      Text('Delivered by: $deliveryBoyName', style: const TextStyle(fontSize: 12, color: Colors.blueGrey)),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          }
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            );
+          },
+        );
+      },
     );
   }
 }

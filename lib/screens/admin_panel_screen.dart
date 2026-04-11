@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/clickable_error_text.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:io';
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:ecommerce_app/utils/web_download_helper.dart';
 import 'package:provider/provider.dart';
@@ -108,6 +109,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
   late AnimationController _refreshController;
 
+  Map<String, String> _userRoleMap = {};
+  Map<String, String> _userNameMap = {};
+  StreamSubscription<QuerySnapshot>? _userSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -135,6 +140,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
   @override
   void dispose() {
     _refreshController.dispose();
+    _userSubscription?.cancel();
     super.dispose();
   }
 
@@ -204,6 +210,19 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     _payoutRequestsStream = FirebaseFirestore.instance.collection('payouts').where('status', isEqualTo: 'pending').snapshots();
     _deleteRequestsStream = FirebaseFirestore.instance.collection('users').where('deleteRequested', isEqualTo: true).snapshots();
     _bookingsStream = FirebaseFirestore.instance.collection('bookings').snapshots();
+
+    _userSubscription?.cancel();
+    _userSubscription = usersQuery.snapshots().listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          for (var doc in snapshot.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            _userRoleMap[doc.id] = data['role'] ?? 'user';
+            _userNameMap[doc.id] = data['name'] ?? data['displayName'] ?? 'Unknown';
+          }
+        });
+      }
+    });
   }
 
   int _currentStackIndex = 0; // Replaces _selectedIndex for IndexedStack control
@@ -3783,7 +3802,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
 
               // Filter by Role
               if (roleFilter != null) {
-                payouts = payouts.where((p) => p.userRole == roleFilter).toList();
+                payouts = payouts.where((p) => _isRoleMatch(p.userRole, p.userId, roleFilter)).toList();
               }
 
               // Filter by Time Range
@@ -3907,7 +3926,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                           borderRadius: BorderRadius.circular(4),
                                         ),
                                         child: Text(
-                                          payout.userRole.toUpperCase().replaceAll('_', ' '),
+                                          (payout.userRole.toLowerCase() == 'general' 
+                                              ? (_userRoleMap[payout.userId] ?? 'GENERAL') 
+                                              : payout.userRole).toUpperCase().replaceAll('_', ' '),
                                           style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.bold),
                                         ),
                                       ),
@@ -3915,8 +3936,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  'User ID: ${payout.userId}',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.w500),
+                                  'User: ${_userNameMap[payout.userId] ?? payout.userId}',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey[700], fontWeight: FontWeight.bold),
                                 ),
                                 Text(
                                   'Date: ${DateFormat('MMM d, yyyy • hh:mm a').format(payout.requestDate)}',
@@ -3968,6 +3989,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
         ),
       ],
     );
+  }
+
+  bool _isRoleMatch(String userRole, String userId, String? filterRole) {
+    if (filterRole == null) return true;
+    
+    String actualRole = userRole;
+    if (actualRole.toLowerCase() == 'general' || actualRole.isEmpty) {
+      actualRole = _userRoleMap[userId] ?? 'general';
+    }
+
+    // Normalize both strings: lowercase and remove non-alphanumeric characters (like _ or - or spaces)
+    String normalize(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-zA-Z0-9]'), '');
+    
+    return normalize(actualRole) == normalize(filterRole);
   }
 
   Future<void> _handlePayoutAction(PayoutModel payout, bool approve) async {
@@ -5659,41 +5694,54 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerPr
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color, {VoidCallback? onTap}) {
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 28, color: color),
-            const SizedBox(height: 4),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 28, color: color),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: color,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey[600],
+              const SizedBox(height: 2),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    if (onTap != null) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.info_outline, size: 10, color: Colors.grey),
+                    ],
+                  ],
                 ),
-                textAlign: TextAlign.center,
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -8734,9 +8782,11 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
 
             double partnerSales = 0.0;
             double totalPurchaseCost = 0.0;
+            double totalGrossProfit = 0.0;
             double partnerPlatformShare = 0.0;
             double totalCashCollected = 0.0;
             int totalOrders = 0;
+            List<Map<String, dynamic>> orderBreakdown = [];
 
             for (var doc in orderSnapshot.data!.docs) {
               final data = doc.data() as Map<String, dynamic>;
@@ -8745,6 +8795,11 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
               if (status != 'delivered' && status != 'completed') continue;
 
               totalOrders++;
+              double orderSales = 0.0;
+              double orderPurchase = 0.0;
+              double orderGrossProfit = 0.0;
+              double orderAdminShare = 0.0;
+
               final items = (data['items'] as List<dynamic>?) ?? [];
               for (var item in items) {
                 final price = (item['price'] as num?)?.toDouble() ?? 0.0;
@@ -8760,12 +8815,30 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
                 final isPlatformOwned = metadata['isPlatformOwned'] == true || item['sellerId'] == 'admin';
 
                 if (!isPlatformOwned) {
-                  partnerSales += itemSales;
-                  totalPurchaseCost += itemPurchase;
+                  orderSales += itemSales;
+                  orderPurchase += itemPurchase;
+                  orderGrossProfit += itemProfit;
+                  
                   if (itemProfit > 0) {
-                    partnerPlatformShare += (itemProfit * (adminProfitPercentage / 100));
+                    orderAdminShare += (itemProfit * (adminProfitPercentage / 100));
                   }
                 }
+              }
+
+              partnerSales += orderSales;
+              totalPurchaseCost += orderPurchase;
+              totalGrossProfit += orderGrossProfit;
+              partnerPlatformShare += orderAdminShare;
+
+              if (orderSales > 0) {
+                orderBreakdown.add({
+                  'id': doc.id,
+                  'date': (data['orderDate'] as Timestamp?)?.toDate() ?? DateTime.now(),
+                  'sales': orderSales,
+                  'purchase': orderPurchase,
+                  'gross': orderGrossProfit,
+                  'adminShare': orderAdminShare,
+                });
               }
 
               final paymentMethod = data['paymentMethod'] as String? ?? '';
@@ -8778,7 +8851,7 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
               }
             }
 
-            double partnerGrossProfit = partnerSales - totalPurchaseCost;
+            double partnerGrossProfit = totalGrossProfit;
             double netPartnerProfit = partnerGrossProfit - partnerPlatformShare;
             double rightfulEarning = totalPurchaseCost + netPartnerProfit;
 
@@ -8843,7 +8916,13 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
                       children: [
                         widget.adminPanel._buildStatCard('Partner Sales', '₹${partnerSales.toStringAsFixed(0)}', Icons.trending_up, Colors.blue),
                         widget.adminPanel._buildStatCard('Purchase Cost', '₹${totalPurchaseCost.toStringAsFixed(0)}', Icons.shopping_bag, Colors.orange),
-                        widget.adminPanel._buildStatCard('Admin Share', '₹${partnerPlatformShare.toStringAsFixed(0)}', Icons.account_balance, Colors.deepOrange),
+                        widget.adminPanel._buildStatCard(
+                          'Admin Share', 
+                          '₹${partnerPlatformShare.toStringAsFixed(0)}', 
+                          Icons.account_balance, 
+                          Colors.deepOrange,
+                          onTap: () => _showFinancialBreakdownDialog(context, orderBreakdown),
+                        ),
                         widget.adminPanel._buildStatCard('Cash Collected', '₹${totalCashCollected.toStringAsFixed(0)}', Icons.payments, Colors.green),
                         widget.adminPanel._buildStatCard('Net Partner Profit', '₹${netPartnerProfit.toStringAsFixed(0)}', Icons.assignment_turned_in, Colors.teal),
                         widget.adminPanel._buildStatCard('Total Orders', '$totalOrders', Icons.receipt_long, Colors.purple),
@@ -8859,6 +8938,104 @@ class _StorePartnerFinancialsTabState extends State<StorePartnerFinancialsTab> {
           },
         );
       },
+    );
+  }
+
+  void _showFinancialBreakdownDialog(BuildContext context, List<Map<String, dynamic>> breakdown) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return DraggableScrollableSheet(
+          initialChildSize: 0.6,
+          minChildSize: 0.4,
+          maxChildSize: 0.95,
+          builder: (context, scrollController) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Financial Breakdown', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                        IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: Text('Calculation: (Sales - Purchase) = Gross Profit. Admin Share is 25% of Gross Profit.', 
+                               style: TextStyle(fontSize: 11, color: Colors.blue, fontStyle: FontStyle.italic)),
+                  ),
+                  const Divider(),
+                  Expanded(
+                    child: breakdown.isEmpty 
+                      ? const Center(child: Text('No order calculations found.'))
+                      : ListView.separated(
+                          controller: scrollController,
+                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          itemCount: breakdown.length,
+                          separatorBuilder: (ctx, idx) => const Divider(),
+                          itemBuilder: (ctx, idx) {
+                            final item = breakdown[idx];
+                            final dateStr = DateFormat('dd MMM, hh:mm a').format(item['date']);
+                            
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text('Order #${item['id'].toString().substring(0, 8).toUpperCase()}', 
+                                         style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                    Text(dateStr, style: const TextStyle(color: Colors.grey, fontSize: 11)),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    _breakdownColumn('Sales', item['sales'], Colors.blue),
+                                    _breakdownColumn('Purchase', item['purchase'], Colors.orange),
+                                    _breakdownColumn('Gross', item['gross'], Colors.green),
+                                    _breakdownColumn('Admin (25%)', item['adminShare'], Colors.red),
+                                  ],
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _breakdownColumn(String label, double value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        Text('₹${value.toStringAsFixed(0)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: color)),
+      ],
     );
   }
 }
